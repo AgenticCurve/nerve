@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Multi-session example - using core only.
+"""Multi-channel example - using core only.
 
-This demonstrates managing multiple AI CLI sessions.
+This demonstrates managing multiple terminal channels.
 
 Usage:
     python examples/core_only/multi_session.py
@@ -9,40 +9,40 @@ Usage:
 
 import asyncio
 
-from nerve.core import CLIType, SessionManager
+from nerve.core import ChannelManager, ParserType
 
 
 async def main():
-    print("Creating session manager...")
+    print("Creating channel manager...")
 
-    manager = SessionManager()
+    manager = ChannelManager()
 
-    # Create multiple sessions
-    claude1 = await manager.create(CLIType.CLAUDE, session_id="claude-1")
-    claude2 = await manager.create(CLIType.CLAUDE, session_id="claude-2")
+    # Create multiple channels
+    claude1 = await manager.create_terminal(command="claude", channel_id="claude-1")
+    claude2 = await manager.create_terminal(command="claude", channel_id="claude-2")
 
-    print(f"Active sessions: {manager.list()}")
+    print(f"Active channels: {manager.list()}")
     print()
 
     # Send messages to both
     print("Sending to claude-1...")
-    r1 = await claude1.send("Say 'Hello from session 1'")
+    r1 = await claude1.send("Say 'Hello from channel 1'", parser=ParserType.CLAUDE)
     print(f"  Response: {r1.raw[:100]}...")
 
     print("Sending to claude-2...")
-    r2 = await claude2.send("Say 'Hello from session 2'")
+    r2 = await claude2.send("Say 'Hello from channel 2'", parser=ParserType.CLAUDE)
     print(f"  Response: {r2.raw[:100]}...")
 
     print()
-    print(f"Active sessions: {manager.list_active()}")
+    print(f"Active channels: {manager.list_open()}")
 
     # Close one
     print("\nClosing claude-1...")
     await manager.close("claude-1")
-    print(f"Active sessions: {manager.list_active()}")
+    print(f"Active channels: {manager.list_open()}")
 
     # Close all
-    print("\nClosing all sessions...")
+    print("\nClosing all channels...")
     await manager.close_all()
     print("Done.")
 

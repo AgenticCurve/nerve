@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple session example - using core only, no server.
+"""Simple channel example - using core only, no server.
 
 This demonstrates using nerve.core directly for basic AI CLI interaction.
 No server, no transport, no events - just pure Python.
@@ -10,27 +10,30 @@ Usage:
 
 import asyncio
 
-from nerve.core import CLIType, Session
+from nerve.core import ParserType, TerminalChannel
 
 
 async def main():
-    print("Creating Claude session...")
+    print("Creating Claude channel...")
 
-    # Create a session directly using core
-    session = await Session.create(
-        cli_type=CLIType.CLAUDE,
+    # Create a terminal channel directly using core
+    channel = await TerminalChannel.create(
+        command="claude",
         cwd=".",  # Current directory
     )
 
-    print(f"Session created: {session.id}")
-    print(f"State: {session.state}")
+    print(f"Channel created: {channel.id}")
+    print(f"State: {channel.state}")
     print()
 
-    # Send a simple message
+    # Send a simple message with Claude parsing
     print("Sending: 'What is 2 + 2?'")
     print("-" * 40)
 
-    response = await session.send("What is 2 + 2? Reply with just the number.")
+    response = await channel.send(
+        "What is 2 + 2? Reply with just the number.",
+        parser=ParserType.CLAUDE,
+    )
 
     print(f"Response ({len(response.sections)} sections):")
     for section in response.sections:
@@ -40,8 +43,8 @@ async def main():
         print(f"\nTokens used: {response.tokens}")
 
     # Clean up
-    await session.close()
-    print("\nSession closed.")
+    await channel.close()
+    print("\nChannel closed.")
 
 
 if __name__ == "__main__":

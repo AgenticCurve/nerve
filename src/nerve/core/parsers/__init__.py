@@ -7,9 +7,10 @@ Classes:
     Parser: Abstract base for parsers.
     ClaudeParser: Parser for Claude Code CLI output.
     GeminiParser: Parser for Gemini CLI output.
+    NoneParser: No-op parser for raw output.
 
 Functions:
-    get_parser: Get parser instance for a CLI type.
+    get_parser: Get parser instance for a parser type.
 
 Example:
     >>> from nerve.core.parsers import ClaudeParser
@@ -29,31 +30,33 @@ Example:
 from nerve.core.parsers.base import Parser
 from nerve.core.parsers.claude import ClaudeParser
 from nerve.core.parsers.gemini import GeminiParser
-from nerve.core.types import CLIType
+from nerve.core.parsers.none import NoneParser
+from nerve.core.types import ParserType
 
 
-def get_parser(cli_type: CLIType) -> Parser:
-    """Get parser instance for a CLI type.
+def get_parser(parser_type: ParserType) -> Parser:
+    """Get parser instance for a parser type.
 
     Args:
-        cli_type: The CLI type to get a parser for.
+        parser_type: The parser type to use.
 
     Returns:
         A parser instance.
 
     Raises:
-        ValueError: If CLI type is not supported.
+        ValueError: If parser type is not supported.
     """
     parsers = {
-        CLIType.CLAUDE: ClaudeParser,
-        CLIType.GEMINI: GeminiParser,
+        ParserType.CLAUDE: ClaudeParser,
+        ParserType.GEMINI: GeminiParser,
+        ParserType.NONE: NoneParser,
     }
 
-    parser_class = parsers.get(cli_type)
+    parser_class = parsers.get(parser_type)
     if parser_class is None:
-        raise ValueError(f"No parser for CLI type: {cli_type}")
+        raise ValueError(f"No parser for type: {parser_type}")
 
     return parser_class()
 
 
-__all__ = ["Parser", "ClaudeParser", "GeminiParser", "get_parser"]
+__all__ = ["Parser", "ClaudeParser", "GeminiParser", "NoneParser", "get_parser"]

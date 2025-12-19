@@ -1,245 +1,203 @@
-"""Session - PTY + Parser combined."""
+"""Session - logical grouping of channels.
+
+A Session is a high-level concept that groups related channels
+together with metadata. For example, a "project" session might include:
+
+- A Claude channel for AI assistance
+- A shell channel for running commands
+- A database channel for queries
+
+This is optional - you can use channels directly without sessions.
+
+Example:
+    >>> session = Session(name="my-project")
+    >>>
+    >>> # Add channels
+    >>> claude = await TerminalChannel.create(command="claude")
+    >>> shell = await TerminalChannel.create(command="bash")
+    >>>
+    >>> session.add("claude", claude)
+    >>> session.add("shell", shell)
+    >>>
+    >>> # Use channels through session
+    >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
+    >>>
+    >>> # Or access directly
+    >>> channel = session.get("shell")
+    >>> await channel.send("ls -la")
+    >>>
+    >>> # Close all
+    >>> await session.close()
+"""
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
-
-from nerve.core.parsers import Parser, get_parser
-from nerve.core.pty import PTYConfig, PTYProcess
-from nerve.core.types import CLIType, ParsedResponse, SessionState
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from nerve.core.session.persistence import SessionMetadata
-
-
-def _get_cli_command(cli_type: CLIType) -> list[str]:
-    """Get command for CLI type."""
-    commands = {
-        CLIType.CLAUDE: ["claude"],
-        CLIType.GEMINI: ["gemini"],
-    }
-    return commands.get(cli_type, ["claude"])
+    from nerve.core.channels import Channel, ChannelInfo
+    from nerve.core.types import ParsedResponse, ParserType
 
 
 @dataclass
 class Session:
-    """AI CLI session - combines PTY process with output parser.
+    """A logical grouping of channels with metadata.
 
-    This is still pure library code - doesn't know about:
-    - Server (can be used standalone)
-    - Events (uses return values and async iterators)
-    - Transport (no network awareness)
+    Sessions provide:
+    - Named access to multiple channels
+    - Shared metadata and tags
+    - Convenience methods for common operations
+    - Lifecycle management (close all channels at once)
 
-    Example:
-        >>> session = await Session.create(CLIType.CLAUDE, cwd="/project")
-        >>>
-        >>> # Send and wait for complete response
-        >>> response = await session.send("explain this")
-        >>> print(response.sections)
-        >>>
-        >>> # Or stream output
-        >>> async for chunk in session.send_stream("explain this"):
-        ...     print(chunk, end="")
-        >>>
-        >>> await session.close()
+    Sessions are optional - you can use channels directly
+    if you don't need grouping.
     """
 
-    id: str
-    cli_type: CLIType
-    pty: PTYProcess
-    parser: Parser
-    state: SessionState = SessionState.STARTING
-    _ready_timeout: float = field(default=60.0, repr=False)
-    _response_timeout: float = field(default=300.0, repr=False)
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    name: str = ""
+    description: str = ""
+    tags: list[str] = field(default_factory=list)
+    created_at: datetime = field(default_factory=datetime.now)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    _channels: dict[str, Channel] = field(default_factory=dict)
 
-    @classmethod
-    async def create(
-        cls,
-        cli_type: CLIType,
-        cwd: str | None = None,
-        session_id: str | None = None,
-        env: dict[str, str] | None = None,
-        ready_timeout: float = 60.0,
-        response_timeout: float = 300.0,
-    ) -> Session:
-        """Create and start a new session.
+    def __post_init__(self):
+        if not self.name:
+            self.name = self.id
+
+    def add(self, name: str, channel: Channel) -> None:
+        """Add a channel to the session.
 
         Args:
-            cli_type: Type of AI CLI (CLAUDE, GEMINI).
-            cwd: Working directory for the CLI.
-            session_id: Optional session ID (auto-generated if not provided).
-            env: Additional environment variables.
-            ready_timeout: Timeout for CLI to become ready.
-            response_timeout: Timeout for responses.
-
-        Returns:
-            A started Session instance.
+            name: Name to reference the channel by.
+            channel: The channel to add.
 
         Raises:
-            TimeoutError: If CLI doesn't become ready.
+            ValueError: If name already exists.
         """
-        session_id = session_id or str(uuid.uuid4())[:8]
-        command = _get_cli_command(cli_type)
-        parser = get_parser(cli_type)
+        if name in self._channels:
+            raise ValueError(f"Channel '{name}' already exists in session")
+        self._channels[name] = channel
 
-        config = PTYConfig(cwd=cwd, env=env or {})
-        pty = PTYProcess(command, config)
-        await pty.start()
-
-        session = cls(
-            id=session_id,
-            cli_type=cli_type,
-            pty=pty,
-            parser=parser,
-            state=SessionState.STARTING,
-            _ready_timeout=ready_timeout,
-            _response_timeout=response_timeout,
-        )
-
-        # Wait for CLI to be ready
-        await session._wait_for_ready(timeout=ready_timeout)
-
-        return session
-
-    @property
-    def buffer(self) -> str:
-        """Current PTY output buffer."""
-        return self.pty.buffer
-
-    @property
-    def is_ready(self) -> bool:
-        """Whether the CLI is ready for input."""
-        return self.state == SessionState.READY
-
-    async def send(self, text: str, timeout: float | None = None) -> ParsedResponse:
-        """Send input and wait for complete response.
+    def get(self, name: str) -> Channel | None:
+        """Get a channel by name.
 
         Args:
-            text: Text to send to the CLI.
-            timeout: Response timeout (uses default if not provided).
+            name: Channel name.
+
+        Returns:
+            The channel, or None if not found.
+        """
+        return self._channels.get(name)
+
+    def remove(self, name: str) -> Channel | None:
+        """Remove a channel from the session.
+
+        Note: This does NOT close the channel.
+
+        Args:
+            name: Channel name.
+
+        Returns:
+            The removed channel, or None if not found.
+        """
+        return self._channels.pop(name, None)
+
+    def list_channels(self) -> list[str]:
+        """List all channel names.
+
+        Returns:
+            List of channel names.
+        """
+        return list(self._channels.keys())
+
+    def get_channel_info(self) -> dict[str, ChannelInfo]:
+        """Get info for all channels.
+
+        Returns:
+            Dict of channel name -> ChannelInfo.
+        """
+        return {
+            name: channel.to_info()
+            for name, channel in self._channels.items()
+            if hasattr(channel, "to_info")
+        }
+
+    async def send(
+        self,
+        channel_name: str,
+        input: str,
+        parser: ParserType | None = None,
+        timeout: float | None = None,
+    ) -> ParsedResponse:
+        """Send input to a named channel.
+
+        Convenience method that combines get() and send().
+
+        Args:
+            channel_name: Name of the channel.
+            input: Input to send.
+            parser: How to parse the response.
+            timeout: Response timeout.
 
         Returns:
             Parsed response.
 
         Raises:
-            TimeoutError: If response times out.
-            RuntimeError: If session is not ready.
+            KeyError: If channel not found.
         """
-        if self.state == SessionState.STOPPED:
-            raise RuntimeError("Session is stopped")
+        channel = self._channels.get(channel_name)
+        if not channel:
+            raise KeyError(f"Channel '{channel_name}' not found in session")
 
-        timeout = timeout or self._response_timeout
+        return await channel.send(input, parser=parser, timeout=timeout)
 
-        await self.pty.write(text + "\n")
-        self.state = SessionState.BUSY
-
-        # Wait for response
-        await self._wait_for_ready(timeout=timeout)
-
-        # Parse and return
-        return self.parser.parse(self.pty.buffer)
-
-    async def send_stream(self, text: str) -> AsyncIterator[str]:
-        """Send input and stream output chunks.
-
-        Yields output as it arrives. Useful for real-time display.
+    async def close(self, channel_name: str | None = None) -> None:
+        """Close channel(s).
 
         Args:
-            text: Text to send to the CLI.
-
-        Yields:
-            Output chunks.
+            channel_name: Specific channel to close, or None for all.
         """
-        if self.state == SessionState.STOPPED:
-            raise RuntimeError("Session is stopped")
-
-        await self.pty.write(text + "\n")
-        self.state = SessionState.BUSY
-
-        async for chunk in self.pty.read_stream():
-            yield chunk
-
-            if self.parser.is_ready(self.pty.buffer):
-                self.state = SessionState.READY
-                break
-
-    async def send_raw(self, text: str) -> None:
-        """Send raw text without waiting for response.
-
-        Useful for sending control characters or partial input.
-
-        Args:
-            text: Raw text to send (no newline added).
-        """
-        await self.pty.write(text)
-
-    async def interrupt(self) -> None:
-        """Send interrupt signal to the CLI.
-
-        Uses Escape for Claude, Ctrl+C for others.
-        """
-        if self.cli_type == CLIType.CLAUDE:
-            await self.pty.write("\x1b")  # Escape
+        if channel_name:
+            channel = self._channels.get(channel_name)
+            if channel:
+                await channel.close()
+                del self._channels[channel_name]
         else:
-            await self.pty.write("\x03")  # Ctrl+C
+            # Close all
+            for channel in self._channels.values():
+                await channel.close()
+            self._channels.clear()
 
-    async def close(self) -> None:
-        """Close the session and stop the PTY process."""
-        await self.pty.stop()
-        self.state = SessionState.STOPPED
-
-    async def _wait_for_ready(self, timeout: float) -> None:
-        """Wait for CLI to be ready for input."""
-        start = asyncio.get_event_loop().time()
-
-        while asyncio.get_event_loop().time() - start < timeout:
-            # Read any pending output
-            try:
-                async for _ in self.pty.read_stream():
-                    break  # Just trigger a read
-            except Exception:
-                pass
-
-            if self.parser.is_ready(self.pty.read_tail()):
-                self.state = SessionState.READY
-                return
-
-            await asyncio.sleep(0.5)
-
-        raise TimeoutError(f"CLI did not become ready within {timeout}s")
-
-    def to_metadata(
-        self,
-        name: str | None = None,
-        description: str = "",
-        tags: list[str] | None = None,
-    ) -> SessionMetadata:
-        """Create serializable metadata from this session.
-
-        Useful for saving session info to persistent storage.
-
-        Args:
-            name: Human-readable name (defaults to session ID).
-            description: What this session is for.
-            tags: Optional tags for organization.
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict.
 
         Returns:
-            SessionMetadata that can be saved to JSON.
+            Dict representation of session.
         """
-        from nerve.core.session.persistence import SessionMetadata
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "tags": self.tags,
+            "created_at": self.created_at.isoformat(),
+            "metadata": self.metadata,
+            "channels": {
+                name: channel.to_info().to_dict()
+                for name, channel in self._channels.items()
+                if hasattr(channel, "to_info")
+            },
+        }
 
-        return SessionMetadata(
-            id=self.id,
-            name=name or self.id,
-            cli_type=self.cli_type,
-            description=description,
-            cwd=self.pty.config.cwd,
-            tags=tags or [],
-        )
+    def __len__(self) -> int:
+        return len(self._channels)
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._channels
 
     def __repr__(self) -> str:
-        return f"Session(id={self.id!r}, cli_type={self.cli_type}, state={self.state})"
+        channels = ", ".join(self._channels.keys())
+        return f"Session(id={self.id!r}, name={self.name!r}, channels=[{channels}])"

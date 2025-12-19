@@ -1,31 +1,36 @@
-"""Session abstraction - combines PTY and Parser.
+"""Session and channel management.
 
-A Session is a high-level interface to an AI CLI instance.
-It manages the PTY process and uses the appropriate parser.
+Sessions are optional logical groupings of channels with metadata.
+Channels are the actual connections (terminal panes, SQL connections, etc.).
 
-Still pure library code - no server awareness, no events.
+Two levels of management:
+- ChannelManager: Manage channels directly (no grouping)
+- SessionManager: Manage sessions (groups of channels)
 
-Classes:
-    Session: Single AI CLI session.
-    SessionManager: Manage multiple sessions.
-    SessionMetadata: Serializable session info for persistence.
-    SessionStore: Save/load sessions from JSON.
-
-Example:
-    >>> from nerve.core.session import Session
-    >>> from nerve.core.types import CLIType
+Example (channels only):
+    >>> from nerve.core.channels import TerminalChannel
+    >>> from nerve.core.session import ChannelManager
     >>>
-    >>> async def main():
-    ...     session = await Session.create(CLIType.CLAUDE, cwd="/project")
-    ...
-    ...     response = await session.send("Explain this codebase")
-    ...     for section in response.sections:
-    ...         print(f"[{section.type}] {section.content[:100]}")
-    ...
-    ...     await session.close()
+    >>> manager = ChannelManager()
+    >>> channel = await manager.create_terminal(command="claude")
+    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
+    >>> await manager.close_all()
+
+Example (with sessions):
+    >>> from nerve.core.channels import TerminalChannel
+    >>> from nerve.core.session import Session, SessionManager
+    >>>
+    >>> manager = SessionManager()
+    >>> session = manager.create_session(name="my-project")
+    >>>
+    >>> claude = await TerminalChannel.create(command="claude")
+    >>> session.add("claude", claude)
+    >>>
+    >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
+    >>> await session.close()
 """
 
-from nerve.core.session.manager import SessionManager
+from nerve.core.session.manager import ChannelManager, SessionManager
 from nerve.core.session.persistence import (
     SessionMetadata,
     SessionStore,
@@ -35,8 +40,12 @@ from nerve.core.session.persistence import (
 from nerve.core.session.session import Session
 
 __all__ = [
+    # Session
     "Session",
+    # Managers
+    "ChannelManager",
     "SessionManager",
+    # Persistence
     "SessionMetadata",
     "SessionStore",
     "get_default_store",

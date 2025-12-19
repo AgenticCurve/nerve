@@ -22,10 +22,10 @@ class NerveMCPServer:
         >>> await mcp.run()  # Start MCP server
 
     Tools:
-        nerve_create_session(cli_type, cwd) -> session_id
-        nerve_send(session_id, text) -> response
-        nerve_list_sessions() -> [session_ids]
-        nerve_close_session(session_id) -> success
+        nerve_create_channel(name, command, cwd) -> channel_id
+        nerve_send(channel_name, text, parser) -> response
+        nerve_list_channels() -> [channel names]
+        nerve_close_channel(channel_name) -> success
     """
 
     engine: NerveEngine
@@ -51,62 +51,70 @@ class NerveMCPServer:
             """List available tools."""
             return [
                 Tool(
-                    name="nerve_create_session",
-                    description="Create a new AI CLI session (Claude, Gemini)",
+                    name="nerve_create_channel",
+                    description="Create a new AI CLI channel",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "cli_type": {
+                            "name": {
                                 "type": "string",
-                                "enum": ["claude", "gemini"],
-                                "description": "Type of AI CLI",
+                                "description": "Channel name (lowercase alphanumeric with dashes, 1-32 chars)",
+                            },
+                            "command": {
+                                "type": "string",
+                                "description": "Command to run (e.g., 'claude', 'gemini')",
                             },
                             "cwd": {
                                 "type": "string",
                                 "description": "Working directory (optional)",
                             },
                         },
-                        "required": ["cli_type"],
+                        "required": ["name"],
                     },
                 ),
                 Tool(
                     name="nerve_send",
-                    description="Send input to an AI CLI session and get response",
+                    description="Send input to an AI CLI channel and get response",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "session_id": {
+                            "channel_name": {
                                 "type": "string",
-                                "description": "Session ID",
+                                "description": "Channel name",
                             },
                             "text": {
                                 "type": "string",
                                 "description": "Text to send",
                             },
+                            "parser": {
+                                "type": "string",
+                                "enum": ["claude", "gemini", "none"],
+                                "description": "Parser for output (claude, gemini, none)",
+                            },
                         },
-                        "required": ["session_id", "text"],
+                        "required": ["channel_name", "text"],
                     },
                 ),
                 Tool(
-                    name="nerve_list_sessions",
-                    description="List active AI CLI sessions",
+                    name="nerve_list_channels",
+                    description="List active AI CLI channels",
                     inputSchema={
                         "type": "object",
                         "properties": {},
                     },
                 ),
                 Tool(
-                    name="nerve_close_session",
-                    description="Close an AI CLI session",
+                    name="nerve_close_channel",
+                    description="Close an AI CLI channel",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "session_id": {
+                            "channel_name": {
                                 "type": "string",
-                                "description": "Session ID to close",
+                                "description": "Channel name to close",
                             },
                         },
-                        "required": ["session_id"],
+                        "required": ["channel_name"],
                     },
                 ),
             ]
@@ -116,12 +124,21 @@ class NerveMCPServer:
             """Handle tool calls."""
             from nerve.server.protocols import Command, CommandType
 
-            if name == "nerve_create_session":
+            if name == "nerve_create_channel":
+                from nerve.core.validation import validate_name
+
+                channel_name = arguments.get("name")
+                try:
+                    validate_name(channel_name, "channel")
+                except ValueError as e:
+                    return [TextContent(type="text", text=f"Error: {e}")]
+
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.CREATE_SESSION,
+                        type=CommandType.CREATE_CHANNEL,
                         params={
-                            "cli_type": arguments.get("cli_type", "claude"),
+                            "channel_id": channel_name,
+                            "command": arguments.get("command"),
                             "cwd": arguments.get("cwd"),
                         },
                     )
@@ -130,7 +147,7 @@ class NerveMCPServer:
                     return [
                         TextContent(
                             type="text",
-                            text=f"Created session: {result.data['session_id']}",
+                            text=f"Created channel: {channel_name}",
                         )
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
@@ -140,8 +157,9 @@ class NerveMCPServer:
                     Command(
                         type=CommandType.SEND_INPUT,
                         params={
-                            "session_id": arguments["session_id"],
+                            "channel_id": arguments["channel_name"],
                             "text": arguments["text"],
+                            "parser": arguments.get("parser", "none"),
                         },
                     )
                 )
@@ -154,32 +172,32 @@ class NerveMCPServer:
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
-            elif name == "nerve_list_sessions":
+            elif name == "nerve_list_channels":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.LIST_SESSIONS,
+                        type=CommandType.LIST_CHANNELS,
                         params={},
                     )
                 )
                 if result.success:
-                    sessions = result.data.get("sessions", [])
+                    channels = result.data.get("channels", [])
                     return [
                         TextContent(
                             type="text",
-                            text=f"Sessions: {', '.join(sessions) or 'none'}",
+                            text=f"Channels: {', '.join(channels) or 'none'}",
                         )
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
-            elif name == "nerve_close_session":
+            elif name == "nerve_close_channel":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.CLOSE_SESSION,
-                        params={"session_id": arguments["session_id"]},
+                        type=CommandType.CLOSE_CHANNEL,
+                        params={"channel_id": arguments["channel_name"]},
                     )
                 )
                 if result.success:
-                    return [TextContent(type="text", text="Session closed")]
+                    return [TextContent(type="text", text="Channel closed")]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

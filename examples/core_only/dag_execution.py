@@ -9,17 +9,17 @@ Usage:
 
 import asyncio
 
-from nerve.core import CLIType, Session
+from nerve.core import ParserType, TerminalChannel
 from nerve.core.dag import DAG, Task
 
 
 async def main():
-    print("Creating sessions...")
+    print("Creating channel...")
 
-    # Create two sessions for multi-agent interaction
-    claude = await Session.create(CLIType.CLAUDE, cwd=".")
+    # Create a channel for DAG tasks
+    claude = await TerminalChannel.create(command="claude", cwd=".")
 
-    print(f"Claude session: {claude.id}")
+    print(f"Claude channel: {claude.id}")
     print()
 
     # Build a DAG
@@ -28,7 +28,8 @@ async def main():
     # Task 1: Ask Claude to generate a haiku
     async def generate_haiku(ctx):
         response = await claude.send(
-            "Write a haiku about programming. Just the haiku, nothing else."
+            "Write a haiku about programming. Just the haiku, nothing else.",
+            parser=ParserType.CLAUDE,
         )
         return response.raw
 
@@ -43,7 +44,10 @@ async def main():
     # Task 2: Ask Claude to critique the haiku
     async def critique_haiku(ctx):
         haiku = ctx["haiku"]
-        response = await claude.send(f"Critique this haiku in one sentence:\n{haiku}")
+        response = await claude.send(
+            f"Critique this haiku in one sentence:\n{haiku}",
+            parser=ParserType.CLAUDE,
+        )
         return response.raw
 
     dag.add_task(
@@ -61,7 +65,8 @@ async def main():
         critique = ctx["critique"]
         response = await claude.send(
             f"Original haiku:\n{haiku}\n\nCritique:\n{critique}\n\n"
-            "Write an improved version. Just the haiku."
+            "Write an improved version. Just the haiku.",
+            parser=ParserType.CLAUDE,
         )
         return response.raw
 

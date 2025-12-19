@@ -23,8 +23,8 @@ def create_standalone() -> tuple[NerveEngine, InProcessTransport]:
         >>> engine, transport = create_standalone()
         >>>
         >>> result = await transport.send_command(Command(
-        ...     type=CommandType.CREATE_SESSION,
-        ...     params={"cli_type": "claude"},
+        ...     type=CommandType.CREATE_CHANNEL,
+        ...     params={"command": "claude"},
         ... ))
     """
     from nerve.server import NerveEngine

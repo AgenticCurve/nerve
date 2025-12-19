@@ -1,31 +1,55 @@
-"""PTY process management.
+"""PTY and terminal backend management.
 
-Pure PTY primitives with no external dependencies or assumptions.
+This module provides backends for managing terminal processes.
+The default is PTYBackend (direct PTY), but WezTermBackend is
+available for integration with WezTerm.
+
+Backends:
+    PTYBackend: Direct pseudo-terminal using pty.fork() (default)
+    WezTermBackend: Uses WezTerm CLI to manage panes
 
 Classes:
-    PTYProcess: Single PTY process lifecycle and I/O.
-    PTYConfig: Configuration for PTY spawning.
-    PTYManager: Manage multiple PTY processes.
+    Backend: Abstract base class for backends
+    BackendConfig: Configuration for backends
+    BackendType: Enum of available backend types
+
+Legacy (deprecated, use backends instead):
+    PTYProcess: Alias for PTYBackend
+    PTYConfig: Alias for BackendConfig
 
 Example:
-    >>> from nerve.core.pty import PTYProcess, PTYConfig
+    >>> from nerve.core.pty import get_backend, BackendType, BackendConfig
     >>>
-    >>> async def main():
-    ...     config = PTYConfig(rows=24, cols=80, cwd="/my/project")
-    ...     pty = PTYProcess(["claude"], config)
-    ...     await pty.start()
-    ...
-    ...     await pty.write("hello\\n")
-    ...
-    ...     async for chunk in pty.read_stream():
-    ...         print(chunk, end="")
-    ...         if "ready" in chunk:
-    ...             break
-    ...
-    ...     await pty.stop()
+    >>> # Use PTY backend (default)
+    >>> backend = get_backend(BackendType.PTY, ["claude"], BackendConfig(cwd="/project"))
+    >>> await backend.start()
+    >>> await backend.write("hello\\n")
+    >>>
+    >>> # Use WezTerm backend
+    >>> backend = get_backend(BackendType.WEZTERM, ["claude"])
+    >>> await backend.start()  # Opens in WezTerm pane
 """
 
+from nerve.core.pty.backend import Backend, BackendConfig, BackendType, get_backend
 from nerve.core.pty.manager import PTYManager
-from nerve.core.pty.process import PTYConfig, PTYProcess
 
-__all__ = ["PTYProcess", "PTYConfig", "PTYManager"]
+# Legacy aliases for backwards compatibility
+from nerve.core.pty.process import PTYConfig, PTYProcess
+from nerve.core.pty.pty_backend import PTYBackend
+from nerve.core.pty.wezterm_backend import WezTermBackend, is_wezterm_available
+
+__all__ = [
+    # New backend API
+    "Backend",
+    "BackendConfig",
+    "BackendType",
+    "get_backend",
+    "PTYBackend",
+    "WezTermBackend",
+    "is_wezterm_available",
+    # Manager
+    "PTYManager",
+    # Legacy (deprecated)
+    "PTYProcess",
+    "PTYConfig",
+]

@@ -25,12 +25,12 @@ async def main():
     print("Engine ready.")
     print()
 
-    # Create a session via command
-    print("Creating session...")
+    # Create a channel via command
+    print("Creating channel...")
     result = await transport.send_command(
         Command(
-            type=CommandType.CREATE_SESSION,
-            params={"cli_type": "claude"},
+            type=CommandType.CREATE_CHANNEL,
+            params={"command": "claude"},
         )
     )
 
@@ -38,8 +38,8 @@ async def main():
         print(f"Error: {result.error}")
         return
 
-    session_id = result.data["session_id"]
-    print(f"Session created: {session_id}")
+    channel_id = result.data["channel_id"]
+    print(f"Channel created: {channel_id}")
 
     # Start listening for events in background
     async def print_events():
@@ -55,8 +55,9 @@ async def main():
         Command(
             type=CommandType.SEND_INPUT,
             params={
-                "session_id": session_id,
+                "channel_id": channel_id,
                 "text": "What is the capital of France? One word answer.",
+                "parser": "claude",
                 "stream": True,
             },
         )
@@ -73,8 +74,8 @@ async def main():
 
     await transport.send_command(
         Command(
-            type=CommandType.CLOSE_SESSION,
-            params={"session_id": session_id},
+            type=CommandType.CLOSE_CHANNEL,
+            params={"channel_id": channel_id},
         )
     )
 

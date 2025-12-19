@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Streaming output example - using core only.
 
-This demonstrates streaming output from an AI CLI session.
+This demonstrates streaming output from a terminal channel.
 
 Usage:
     python examples/core_only/streaming.py
@@ -9,31 +9,34 @@ Usage:
 
 import asyncio
 
-from nerve.core import CLIType, Session
+from nerve.core import ParserType, TerminalChannel
 
 
 async def main():
-    print("Creating Claude session...")
+    print("Creating Claude channel...")
 
-    session = await Session.create(
-        cli_type=CLIType.CLAUDE,
+    channel = await TerminalChannel.create(
+        command="claude",
         cwd=".",
     )
 
-    print(f"Session ready: {session.id}")
+    print(f"Channel ready: {channel.id}")
     print()
     print("Sending prompt and streaming response...")
     print("-" * 40)
 
     # Stream the response
-    async for chunk in session.send_stream("Count from 1 to 5, one number per line."):
+    async for chunk in channel.send_stream(
+        "Count from 1 to 5, one number per line.",
+        parser=ParserType.CLAUDE,
+    ):
         print(chunk, end="", flush=True)
 
     print()
     print("-" * 40)
     print("Streaming complete.")
 
-    await session.close()
+    await channel.close()
 
 
 if __name__ == "__main__":

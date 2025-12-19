@@ -1,65 +1,213 @@
-"""Session manager - manage multiple sessions."""
+"""Managers for channels and sessions.
+
+Two levels of management:
+- ChannelManager: Manages individual channels directly
+- SessionManager: Manages sessions (groups of channels)
+
+Use ChannelManager when you just need channels without grouping.
+Use SessionManager when you need logical groupings with metadata.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
+from nerve.core.channels import ChannelState, TerminalChannel
+from nerve.core.pty import BackendType
 from nerve.core.session.session import Session
-from nerve.core.types import CLIType
+
+if TYPE_CHECKING:
+    from nerve.core.channels import Channel
 
 
 @dataclass
-class SessionManager:
-    """Manage multiple AI CLI sessions.
+class ChannelManager:
+    """Manage individual channels.
 
-    A simple registry for tracking multiple sessions.
-    Still pure library code - no server or event awareness.
+    A simple registry for tracking channels without session grouping.
+    Use this when you just need to manage channels directly.
 
     Example:
-        >>> manager = SessionManager()
+        >>> manager = ChannelManager()
         >>>
-        >>> # Create sessions
-        >>> s1 = await manager.create(CLIType.CLAUDE, cwd="/project1")
-        >>> s2 = await manager.create(CLIType.GEMINI, cwd="/project2")
+        >>> # Create channels (name is required)
+        >>> claude = await manager.create_terminal("claude-main", command="claude")
+        >>> shell = await manager.create_terminal("my-shell", command="bash")
         >>>
-        >>> # Get a session
-        >>> session = manager.get(s1.id)
-        >>> response = await session.send("hello")
+        >>> # Get a channel by name
+        >>> channel = manager.get("claude-main")
+        >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
         >>>
         >>> # Close all
         >>> await manager.close_all()
     """
 
-    _sessions: dict[str, Session] = field(default_factory=dict)
+    _channels: dict[str, Channel] = field(default_factory=dict)
 
-    async def create(
+    async def create_terminal(
         self,
-        cli_type: CLIType,
+        channel_id: str,
+        command: list[str] | str | None = None,
+        backend_type: BackendType = BackendType.PTY,
         cwd: str | None = None,
-        session_id: str | None = None,
+        pane_id: str | None = None,
         **kwargs,
+    ) -> TerminalChannel:
+        """Create a new terminal channel.
+
+        Args:
+            channel_id: Unique channel identifier (required).
+            command: Command to run (e.g., "claude" or ["bash"]).
+            backend_type: Backend to use (PTY or WEZTERM).
+            cwd: Working directory.
+            pane_id: For WezTerm, attach to existing pane.
+            **kwargs: Additional args passed to TerminalChannel.create.
+
+        Returns:
+            The created TerminalChannel.
+
+        Raises:
+            ValueError: If channel_id already exists.
+        """
+        if self._channels.get(channel_id):
+            raise ValueError(f"Channel '{channel_id}' already exists")
+
+        if pane_id:
+            channel = await TerminalChannel.attach(
+                channel_id=channel_id,
+                pane_id=pane_id,
+                **kwargs,
+            )
+        else:
+            channel = await TerminalChannel.create(
+                channel_id=channel_id,
+                command=command,
+                backend_type=backend_type,
+                cwd=cwd,
+                **kwargs,
+            )
+
+        self._channels[channel.id] = channel
+        return channel
+
+    def add(self, channel: Channel) -> None:
+        """Add an existing channel to the manager.
+
+        Args:
+            channel: The channel to add.
+        """
+        self._channels[channel.id] = channel
+
+    def get(self, channel_id: str) -> Channel | None:
+        """Get a channel by ID.
+
+        Args:
+            channel_id: The channel ID.
+
+        Returns:
+            The Channel, or None if not found.
+        """
+        return self._channels.get(channel_id)
+
+    def list(self) -> list[str]:
+        """List all channel IDs.
+
+        Returns:
+            List of channel IDs.
+        """
+        return list(self._channels.keys())
+
+    def list_open(self) -> list[str]:
+        """List IDs of open channels.
+
+        Returns:
+            List of open channel IDs.
+        """
+        return [
+            cid
+            for cid, channel in self._channels.items()
+            if channel.state != ChannelState.CLOSED
+        ]
+
+    async def close(self, channel_id: str) -> bool:
+        """Close a channel.
+
+        Args:
+            channel_id: The channel ID.
+
+        Returns:
+            True if closed, False if not found.
+        """
+        channel = self._channels.get(channel_id)
+        if channel:
+            await channel.close()
+            del self._channels[channel_id]
+            return True
+        return False
+
+    async def close_all(self) -> None:
+        """Close all channels."""
+        for channel in self._channels.values():
+            await channel.close()
+        self._channels.clear()
+
+
+@dataclass
+class SessionManager:
+    """Manage sessions (groups of channels).
+
+    Use this when you need logical groupings of channels with metadata.
+
+    Example:
+        >>> manager = SessionManager()
+        >>>
+        >>> # Create a session
+        >>> session = manager.create_session(name="my-project")
+        >>>
+        >>> # Add channels to it
+        >>> claude = await TerminalChannel.create(command="claude")
+        >>> session.add("claude", claude)
+        >>>
+        >>> # Or use the channel manager
+        >>> shell = await manager.channels.create_terminal(command="bash")
+        >>> session.add("shell", shell)
+        >>>
+        >>> # Close session (closes all its channels)
+        >>> await manager.close_session(session.id)
+    """
+
+    _sessions: dict[str, Session] = field(default_factory=dict)
+    channels: ChannelManager = field(default_factory=ChannelManager)
+
+    def create_session(
+        self,
+        name: str | None = None,
+        session_id: str | None = None,
+        description: str = "",
+        tags: list[str] | None = None,
     ) -> Session:
         """Create a new session.
 
         Args:
-            cli_type: Type of AI CLI.
-            cwd: Working directory.
+            name: Session name (defaults to ID).
             session_id: Optional session ID.
-            **kwargs: Additional args passed to Session.create.
+            description: Session description.
+            tags: Optional tags.
 
         Returns:
             The created Session.
         """
-        session = await Session.create(
-            cli_type=cli_type,
-            cwd=cwd,
-            session_id=session_id,
-            **kwargs,
+        session = Session(
+            id=session_id or "",
+            name=name or "",
+            description=description,
+            tags=tags or [],
         )
         self._sessions[session.id] = session
         return session
 
-    def get(self, session_id: str) -> Session | None:
+    def get_session(self, session_id: str) -> Session | None:
         """Get a session by ID.
 
         Args:
@@ -70,7 +218,21 @@ class SessionManager:
         """
         return self._sessions.get(session_id)
 
-    def list(self) -> list[str]:
+    def find_by_name(self, name: str) -> Session | None:
+        """Find a session by name.
+
+        Args:
+            name: Session name.
+
+        Returns:
+            The Session, or None if not found.
+        """
+        for session in self._sessions.values():
+            if session.name == name:
+                return session
+        return None
+
+    def list_sessions(self) -> list[str]:
         """List all session IDs.
 
         Returns:
@@ -78,20 +240,8 @@ class SessionManager:
         """
         return list(self._sessions.keys())
 
-    def list_active(self) -> list[str]:
-        """List IDs of active (not stopped) sessions.
-
-        Returns:
-            List of active session IDs.
-        """
-        from nerve.core.types import SessionState
-
-        return [
-            sid for sid, session in self._sessions.items() if session.state != SessionState.STOPPED
-        ]
-
-    async def close(self, session_id: str) -> bool:
-        """Close a session.
+    async def close_session(self, session_id: str) -> bool:
+        """Close a session and all its channels.
 
         Args:
             session_id: The session ID.
@@ -107,7 +257,9 @@ class SessionManager:
         return False
 
     async def close_all(self) -> None:
-        """Close all sessions."""
+        """Close all sessions and standalone channels."""
         for session in self._sessions.values():
             await session.close()
         self._sessions.clear()
+
+        await self.channels.close_all()

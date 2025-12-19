@@ -31,8 +31,8 @@ class InProcessTransport:
         >>>
         >>> # Send command directly through transport
         >>> result = await transport.send_command(Command(
-        ...     type=CommandType.CREATE_SESSION,
-        ...     params={"cli_type": "claude"},
+        ...     type=CommandType.CREATE_CHANNEL,
+        ...     params={"command": "claude"},
         ... ))
         >>>
         >>> # Consume events

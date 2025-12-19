@@ -1,6 +1,6 @@
 """NerveEngine - Wraps core with event emission.
 
-The engine uses core primitives (Session, DAG, etc.) and emits
+The engine uses core primitives (Channels, DAG, etc.) and emits
 events for state changes. It's the bridge between pure core
 and the event-driven server world.
 """
@@ -11,7 +11,11 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from nerve.core import DAG, CLIType, Session, SessionManager, Task
+from nerve.core import DAG, ChannelManager, Task, TerminalChannel
+from nerve.core.channels import ChannelState
+from nerve.core.parsers import get_parser
+from nerve.core.pty import BackendType
+from nerve.core.types import ParserType
 from nerve.server.protocols import (
     Command,
     CommandResult,
@@ -27,7 +31,7 @@ class NerveEngine:
     """Main nerve engine - wraps core with event emission.
 
     The engine:
-    - Uses core.Session, core.DAG, etc. for actual work
+    - Uses core.ChannelManager, core.DAG, etc. for actual work
     - Emits events through EventSink for state changes
     - Handles commands from transport layer
 
@@ -40,16 +44,22 @@ class NerveEngine:
         >>> engine = NerveEngine(event_sink=sink)
         >>>
         >>> result = await engine.execute(Command(
-        ...     type=CommandType.CREATE_SESSION,
-        ...     params={"cli_type": "claude", "cwd": "/project"},
+        ...     type=CommandType.CREATE_CHANNEL,
+        ...     params={"channel_id": "my-claude", "command": "claude"},
         ... ))
         >>>
-        >>> session_id = result.data["session_id"]
+        >>> channel_id = result.data["channel_id"]  # "my-claude"
     """
 
     event_sink: EventSink
-    _session_manager: SessionManager = field(default_factory=SessionManager)
+    _channel_manager: ChannelManager = field(default_factory=ChannelManager)
     _running_dags: dict[str, asyncio.Task] = field(default_factory=dict)
+    _shutdown_requested: bool = field(default=False, repr=False)
+
+    @property
+    def shutdown_requested(self) -> bool:
+        """Whether shutdown has been requested."""
+        return self._shutdown_requested
 
     async def execute(self, command: Command) -> CommandResult:
         """Execute a command.
@@ -63,15 +73,22 @@ class NerveEngine:
             CommandResult with success/failure and data.
         """
         handlers = {
-            CommandType.CREATE_SESSION: self._create_session,
-            CommandType.CLOSE_SESSION: self._close_session,
-            CommandType.LIST_SESSIONS: self._list_sessions,
-            CommandType.GET_SESSION: self._get_session,
+            # Channel commands
+            CommandType.CREATE_CHANNEL: self._create_channel,
+            CommandType.CLOSE_CHANNEL: self._close_channel,
+            CommandType.LIST_CHANNELS: self._list_channels,
+            CommandType.GET_CHANNEL: self._get_channel,
+            CommandType.RUN_COMMAND: self._run_command,
             CommandType.SEND_INPUT: self._send_input,
             CommandType.SEND_INTERRUPT: self._send_interrupt,
+            CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
+            # DAG commands
             CommandType.EXECUTE_DAG: self._execute_dag,
             CommandType.CANCEL_DAG: self._cancel_dag,
+            # Server control
+            CommandType.SHUTDOWN: self._shutdown,
+            CommandType.PING: self._ping,
         }
 
         handler = handlers.get(command.type)
@@ -100,104 +117,166 @@ class NerveEngine:
         self,
         event_type: EventType,
         data: dict[str, Any] | None = None,
-        session_id: str | None = None,
+        channel_id: str | None = None,
     ) -> None:
         """Emit an event through the sink."""
         event = Event(
             type=event_type,
             data=data or {},
-            session_id=session_id,
+            channel_id=channel_id,
         )
         await self.event_sink.emit(event)
 
     # =========================================================================
-    # Session Commands
+    # Channel Commands
     # =========================================================================
 
-    async def _create_session(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Create a new session."""
-        cli_type = CLIType(params.get("cli_type", "claude"))
-        cwd = params.get("cwd")
-        session_id = params.get("session_id")
+    async def _create_channel(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Create a new channel.
 
-        session = await self._session_manager.create(
-            cli_type=cli_type,
+        Requires channel_id (name) in params. Names must be unique.
+        """
+        channel_id = params.get("channel_id")
+        if not channel_id:
+            raise ValueError("Channel name is required")
+
+        command = params.get("command")  # e.g., "claude" or ["claude", "--flag"]
+        cwd = params.get("cwd")
+        backend_str = params.get("backend", "pty")
+        backend_type = BackendType.WEZTERM if backend_str == "wezterm" else BackendType.PTY
+        pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
+
+        # ChannelManager.create_terminal enforces uniqueness
+        channel = await self._channel_manager.create_terminal(
+            channel_id=channel_id,
+            command=command,
+            backend_type=backend_type,
             cwd=cwd,
-            session_id=session_id,
+            pane_id=pane_id,
         )
 
         await self._emit(
-            EventType.SESSION_CREATED,
-            data={"cli_type": cli_type.value, "cwd": cwd},
-            session_id=session.id,
+            EventType.CHANNEL_CREATED,
+            data={
+                "command": command,
+                "cwd": cwd,
+                "backend": backend_str,
+                "pane_id": channel.pane_id,
+            },
+            channel_id=channel.id,
         )
 
-        # Start monitoring the session
-        asyncio.create_task(self._monitor_session(session))
+        # Start monitoring the channel
+        asyncio.create_task(self._monitor_channel(channel))
 
-        return {"session_id": session.id}
+        return {"channel_id": channel.id}
 
-    async def _close_session(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Close a session."""
-        session_id = params["session_id"]
+    async def _close_channel(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Close a channel."""
+        channel_id = params.get("channel_id")
 
-        closed = await self._session_manager.close(session_id)
+        closed = await self._channel_manager.close(channel_id)
         if not closed:
-            raise ValueError(f"Session not found: {session_id}")
+            raise ValueError(f"Channel not found: {channel_id}")
 
-        await self._emit(EventType.SESSION_CLOSED, session_id=session_id)
+        await self._emit(EventType.CHANNEL_CLOSED, channel_id=channel_id)
 
         return {"closed": True}
 
-    async def _list_sessions(self, params: dict[str, Any]) -> dict[str, Any]:
-        """List all sessions."""
-        session_ids = self._session_manager.list()
-        return {"sessions": session_ids}
-
-    async def _get_session(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get session info."""
-        session_id = params["session_id"]
-        session = self._session_manager.get(session_id)
-
-        if not session:
-            raise ValueError(f"Session not found: {session_id}")
+    async def _list_channels(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List all channels."""
+        channel_ids = self._channel_manager.list()
+        channels_info = []
+        for cid in channel_ids:
+            channel = self._channel_manager.get(cid)
+            if channel:
+                info = {
+                    "id": cid,
+                    "type": channel.channel_type.value,
+                    "state": channel.state.name,
+                }
+                if hasattr(channel, "backend_type"):
+                    info["backend"] = channel.backend_type.value
+                if hasattr(channel, "pane_id"):
+                    info["pane_id"] = channel.pane_id
+                channels_info.append(info)
 
         return {
-            "session_id": session.id,
-            "cli_type": session.cli_type.value,
-            "state": session.state.name,
+            "channels": channel_ids,
+            "channels_info": channels_info,
         }
+
+    async def _get_channel(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Get channel info."""
+        channel_id = params.get("channel_id")
+        channel = self._channel_manager.get(channel_id)
+
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
+
+        result = {
+            "channel_id": channel.id,
+            "type": channel.channel_type.value,
+            "state": channel.state.name,
+        }
+        if hasattr(channel, "backend_type"):
+            result["backend"] = channel.backend_type.value
+        if hasattr(channel, "pane_id"):
+            result["pane_id"] = channel.pane_id
+
+        return result
 
     # =========================================================================
     # Interaction Commands
     # =========================================================================
 
+    async def _run_command(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Run a command in a channel (fire and forget).
+
+        This starts a program that takes over the terminal (like claude, python, etc.)
+        without waiting for a response. Use SEND_INPUT to interact with it after.
+        """
+        channel_id = params.get("channel_id")
+        command = params["command"]
+
+        channel = self._channel_manager.get(channel_id)
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
+
+        await channel.run(command)
+
+        return {"started": True, "command": command}
+
     async def _send_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Send input to a session."""
-        session_id = params["session_id"]
+        """Send input to a channel."""
+        channel_id = params.get("channel_id")
         text = params["text"]
+        parser_str = params.get("parser", "none")
+        parser_type = ParserType(parser_str)
         stream = params.get("stream", False)
+        submit = params.get("submit")  # Custom submit sequence (optional)
 
-        session = self._session_manager.get(session_id)
-        if not session:
-            raise ValueError(f"Session not found: {session_id}")
+        channel = self._channel_manager.get(channel_id)
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
 
-        await self._emit(EventType.SESSION_BUSY, session_id=session_id)
+        await self._emit(EventType.CHANNEL_BUSY, channel_id=channel_id)
 
         if stream:
             # Stream output chunks as events
-            async for chunk in session.send_stream(text):
+            async for chunk in channel.send_stream(text, parser=parser_type):
                 await self._emit(
                     EventType.OUTPUT_CHUNK,
                     data={"chunk": chunk},
-                    session_id=session_id,
+                    channel_id=channel_id,
                 )
 
             # Parse final response
-            response = session.parser.parse(session.buffer)
+            parser = get_parser(parser_type)
+            response = parser.parse(channel.buffer)
         else:
             # Wait for complete response
-            response = await session.send(text)
+            response = await channel.send(text, parser=parser_type, submit=submit)
 
         await self._emit(
             EventType.OUTPUT_PARSED,
@@ -209,38 +288,51 @@ class NerveEngine:
                 ],
                 "tokens": response.tokens,
             },
-            session_id=session_id,
+            channel_id=channel_id,
         )
 
-        await self._emit(EventType.SESSION_READY, session_id=session_id)
+        await self._emit(EventType.CHANNEL_READY, channel_id=channel_id)
 
         return {"response": response.raw}
 
     async def _send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Send interrupt to a session."""
-        session_id = params["session_id"]
+        """Send interrupt to a channel."""
+        channel_id = params.get("channel_id")
 
-        session = self._session_manager.get(session_id)
-        if not session:
-            raise ValueError(f"Session not found: {session_id}")
+        channel = self._channel_manager.get(channel_id)
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
 
-        await session.interrupt()
+        await channel.interrupt()
 
         return {"interrupted": True}
 
+    async def _write_data(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Write raw data to a channel (no waiting)."""
+        channel_id = params.get("channel_id")
+        data = params["data"]
+
+        channel = self._channel_manager.get(channel_id)
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
+
+        await channel.write(data)
+
+        return {"written": len(data)}
+
     async def _get_buffer(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get session buffer."""
-        session_id = params["session_id"]
+        """Get channel buffer."""
+        channel_id = params.get("channel_id")
         lines = params.get("lines")
 
-        session = self._session_manager.get(session_id)
-        if not session:
-            raise ValueError(f"Session not found: {session_id}")
+        channel = self._channel_manager.get(channel_id)
+        if not channel:
+            raise ValueError(f"Channel not found: {channel_id}")
 
         if lines:
-            buffer = session.pty.read_tail(lines)
+            buffer = channel.read_tail(lines)
         else:
-            buffer = session.buffer
+            buffer = await channel.read()
 
         return {"buffer": buffer}
 
@@ -258,18 +350,19 @@ class NerveEngine:
 
         for task_data in tasks_data:
             task_id = task_data["id"]
-            session_id = task_data.get("session_id")
+            channel_id = task_data.get("channel_id")
             text = task_data.get("text", "")
+            parser_str = task_data.get("parser", "none")
             depends_on = task_data.get("depends_on", [])
 
-            async def make_executor(sid: str, txt: str):
+            async def make_executor(cid: str, txt: str, parser: str):
                 async def execute(ctx: dict[str, Any]) -> Any:
                     # Substitute variables
                     formatted = txt.format(**ctx)
-                    session = self._session_manager.get(sid)
-                    if not session:
-                        raise ValueError(f"Session not found: {sid}")
-                    response = await session.send(formatted)
+                    channel = self._channel_manager.get(cid)
+                    if not channel:
+                        raise ValueError(f"Channel not found: {cid}")
+                    response = await channel.send(formatted, parser=ParserType(parser))
                     return response.raw
 
                 return execute
@@ -277,7 +370,7 @@ class NerveEngine:
             dag.add_task(
                 Task(
                     id=task_id,
-                    execute=await make_executor(session_id, text),
+                    execute=await make_executor(channel_id, text, parser_str),
                     depends_on=depends_on,
                 )
             )
@@ -325,26 +418,54 @@ class NerveEngine:
         return {"cancelled": False, "error": "DAG not found"}
 
     # =========================================================================
+    # Server Control Commands
+    # =========================================================================
+
+    async def _shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Shutdown the server."""
+        # Close all channels first
+        await self._channel_manager.close_all()
+
+        # Cancel all running DAGs
+        for _dag_id, task in self._running_dags.items():
+            task.cancel()
+        self._running_dags.clear()
+
+        # Emit shutdown event
+        await self._emit(EventType.SERVER_SHUTDOWN)
+
+        # Set shutdown flag
+        self._shutdown_requested = True
+
+        return {"shutdown": True}
+
+    async def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Ping the server to check if it's alive."""
+        return {
+            "pong": True,
+            "channels": len(self._channel_manager.list()),
+            "dags": len(self._running_dags),
+        }
+
+    # =========================================================================
     # Internal
     # =========================================================================
 
-    async def _monitor_session(self, session: Session) -> None:
-        """Monitor session for state changes.
+    async def _monitor_channel(self, channel: TerminalChannel) -> None:
+        """Monitor channel for state changes.
 
         This runs in the background and emits events when
-        the session state changes.
+        the channel state changes.
         """
-        from nerve.core.types import SessionState
+        last_state = channel.state
 
-        last_state = session.state
-
-        while session.state != SessionState.STOPPED:
+        while channel.state != ChannelState.CLOSED:
             await asyncio.sleep(0.5)
 
-            if session.state != last_state:
-                if session.state == SessionState.READY:
-                    await self._emit(EventType.SESSION_READY, session_id=session.id)
-                elif session.state == SessionState.BUSY:
-                    await self._emit(EventType.SESSION_BUSY, session_id=session.id)
+            if channel.state != last_state:
+                if channel.state == ChannelState.OPEN:
+                    await self._emit(EventType.CHANNEL_READY, channel_id=channel.id)
+                elif channel.state == ChannelState.BUSY:
+                    await self._emit(EventType.CHANNEL_BUSY, channel_id=channel.id)
 
-                last_state = session.state
+                last_state = channel.state

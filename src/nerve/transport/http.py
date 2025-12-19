@@ -46,7 +46,7 @@ class HTTPServer:
             {
                 "type": "event",
                 "event_type": event.type.name,
-                "session_id": event.session_id,
+                "channel_id": event.channel_id,
                 "data": event.data,
                 "timestamp": event.timestamp,
             }
@@ -173,8 +173,8 @@ class HTTPClient:
         >>> await client.connect()
         >>>
         >>> result = await client.send_command(Command(
-        ...     type=CommandType.CREATE_SESSION,
-        ...     params={"cli_type": "claude"},
+        ...     type=CommandType.CREATE_CHANNEL,
+        ...     params={"command": "claude"},
         ... ))
     """
 
@@ -253,7 +253,7 @@ class HTTPClient:
             if isinstance(item, dict) and item.get("type") == "event":
                 yield Event(
                     type=EventType[item["event_type"]],
-                    session_id=item.get("session_id"),
+                    channel_id=item.get("channel_id"),
                     data=item.get("data", {}),
                     timestamp=item.get("timestamp", 0),
                 )

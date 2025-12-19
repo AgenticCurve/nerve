@@ -47,7 +47,7 @@ class UnixSocketServer:
             {
                 "type": "event",
                 "event_type": event.type.name,
-                "session_id": event.session_id,
+                "channel_id": event.channel_id,
                 "data": event.data,
                 "timestamp": event.timestamp,
             }
@@ -86,8 +86,13 @@ class UnixSocketServer:
             path=self.socket_path,
         )
 
+        # Serve until shutdown requested
         async with self._server:
-            await self._server.serve_forever()
+            while self._running and not engine.shutdown_requested:
+                await asyncio.sleep(0.5)
+
+        # Cleanup
+        await self.stop()
 
     async def stop(self) -> None:
         """Stop the server."""
@@ -176,8 +181,8 @@ class UnixSocketClient:
         >>> await client.connect()
         >>>
         >>> result = await client.send_command(Command(
-        ...     type=CommandType.CREATE_SESSION,
-        ...     params={"cli_type": "claude"},
+        ...     type=CommandType.CREATE_CHANNEL,
+        ...     params={"command": "claude"},
         ... ))
         >>>
         >>> async for event in client.events():
@@ -250,7 +255,7 @@ class UnixSocketClient:
             if isinstance(item, dict) and item.get("type") == "event":
                 yield Event(
                     type=EventType[item["event_type"]],
-                    session_id=item.get("session_id"),
+                    channel_id=item.get("channel_id"),
                     data=item.get("data", {}),
                     timestamp=item.get("timestamp", 0),
                 )

@@ -14,11 +14,11 @@ from typing import Any, Protocol
 class EventType(Enum):
     """Types of events emitted by the server."""
 
-    # Session lifecycle
-    SESSION_CREATED = auto()
-    SESSION_READY = auto()
-    SESSION_BUSY = auto()
-    SESSION_CLOSED = auto()
+    # Channel lifecycle
+    CHANNEL_CREATED = auto()
+    CHANNEL_READY = auto()
+    CHANNEL_BUSY = auto()
+    CHANNEL_CLOSED = auto()
 
     # Output
     OUTPUT_CHUNK = auto()  # Raw output chunk
@@ -34,19 +34,24 @@ class EventType(Enum):
     # Errors
     ERROR = auto()
 
+    # Server lifecycle
+    SERVER_SHUTDOWN = auto()
+
 
 class CommandType(Enum):
     """Types of commands accepted by the server."""
 
-    # Session management
-    CREATE_SESSION = auto()
-    CLOSE_SESSION = auto()
-    LIST_SESSIONS = auto()
-    GET_SESSION = auto()
+    # Channel management
+    CREATE_CHANNEL = auto()
+    CLOSE_CHANNEL = auto()
+    LIST_CHANNELS = auto()
+    GET_CHANNEL = auto()
 
     # Interaction
-    SEND_INPUT = auto()
+    RUN_COMMAND = auto()  # Fire and forget - start a program
+    SEND_INPUT = auto()  # Send and wait for response
     SEND_INTERRUPT = auto()
+    WRITE_DATA = auto()  # Raw write (no waiting)
 
     # DAG
     EXECUTE_DAG = auto()
@@ -55,6 +60,10 @@ class CommandType(Enum):
     # Query
     GET_BUFFER = auto()
 
+    # Server control
+    SHUTDOWN = auto()
+    PING = auto()
+
 
 @dataclass(frozen=True)
 class Event:
@@ -62,14 +71,14 @@ class Event:
 
     Attributes:
         type: The event type.
-        session_id: Associated session ID (if applicable).
+        channel_id: Associated channel ID (if applicable).
         data: Event payload.
         timestamp: When the event occurred.
     """
 
     type: EventType
     data: dict[str, Any] = field(default_factory=dict)
-    session_id: str | None = None
+    channel_id: str | None = None
     timestamp: float = field(default_factory=time.time)
 
 

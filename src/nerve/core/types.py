@@ -9,12 +9,12 @@ from enum import Enum, auto
 from typing import Any
 
 
-class CLIType(Enum):
-    """Supported AI CLI types."""
+class ParserType(Enum):
+    """Supported parser types for CLI output."""
 
     CLAUDE = "claude"
     GEMINI = "gemini"
-    CUSTOM = "custom"
+    NONE = "none"  # No parsing, raw output only
 
 
 class SessionState(Enum):

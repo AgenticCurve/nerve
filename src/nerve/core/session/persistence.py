@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nerve.core.types import CLIType
+from nerve.core.types import ParserType
 
 
 @dataclass
@@ -32,7 +32,8 @@ class SessionMetadata:
         id: Unique session identifier.
         name: Human-readable session name.
         description: What this session is for.
-        cli_type: Type of AI CLI (CLAUDE, GEMINI).
+        parser_type: Parser type for output (CLAUDE, GEMINI, NONE).
+        command: Command that was run.
         cwd: Working directory for the session.
         tags: Optional tags for organization.
         created_at: When the session was created.
@@ -41,7 +42,8 @@ class SessionMetadata:
 
     id: str
     name: str
-    cli_type: CLIType
+    parser_type: ParserType
+    command: str = ""
     description: str = ""
     cwd: str | None = None
     tags: list[str] = field(default_factory=list)
@@ -54,7 +56,8 @@ class SessionMetadata:
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "provider": self.cli_type.value,
+            "parser": self.parser_type.value,
+            "command": self.command,
             "cwd": self.cwd,
             "tags": self.tags,
             "createdAt": self.created_at.isoformat(),
@@ -64,9 +67,12 @@ class SessionMetadata:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SessionMetadata:
         """Create from JSON dict."""
-        # Handle provider -> cli_type mapping
-        provider = data.get("provider", "claude")
-        cli_type = CLIType.CLAUDE if provider == "claude" else CLIType.GEMINI
+        # Handle parser type
+        parser_str = data.get("parser", data.get("provider", "none"))
+        try:
+            parser_type = ParserType(parser_str)
+        except ValueError:
+            parser_type = ParserType.NONE
 
         # Parse datetime
         created_at = datetime.now()
@@ -80,7 +86,8 @@ class SessionMetadata:
             id=data.get("id", ""),
             name=data.get("name", ""),
             description=data.get("description", ""),
-            cli_type=cli_type,
+            parser_type=parser_type,
+            command=data.get("command", ""),
             cwd=data.get("cwd"),
             tags=data.get("tags", []),
             created_at=created_at,
@@ -99,7 +106,8 @@ class SessionStore:
         >>> store.add(SessionMetadata(
         ...     id="abc123",
         ...     name="my-project",
-        ...     cli_type=CLIType.CLAUDE,
+        ...     parser_type=ParserType.CLAUDE,
+        ...     command="claude",
         ...     cwd="/path/to/project",
         ... ))
         >>> store.save()

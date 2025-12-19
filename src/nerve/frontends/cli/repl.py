@@ -19,11 +19,11 @@ from typing import Any
 
 @dataclass
 class REPLState:
-    """State for the REPL session."""
+    """State for the REPL."""
 
     namespace: dict[str, Any] = field(default_factory=dict)
     history: list[str] = field(default_factory=list)
-    sessions: dict[str, Any] = field(default_factory=dict)
+    channels: dict[str, Any] = field(default_factory=dict)
 
 
 def print_help():
@@ -31,24 +31,24 @@ def print_help():
     print("""
 DAG Definition Syntax:
 ----------------------
-  from nerve.core import Session, CLIType
+  from nerve.core import TerminalChannel, ParserType
   from nerve.core.dag import DAG, Task
 
-  # Create sessions
-  claude = await Session.create(CLIType.CLAUDE)
-  gemini = await Session.create(CLIType.GEMINI)
+  # Create channels
+  claude = await TerminalChannel.create(command="claude")
+  gemini = await TerminalChannel.create(command="gemini")
 
-  # Define tasks
+  # Define tasks (parser specified per-send)
   dag = DAG()
 
   dag.add_task(Task(
       id="ask",
-      execute=lambda ctx: claude.send("Hello!"),
+      execute=lambda ctx: claude.send("Hello!", parser=ParserType.CLAUDE),
   ))
 
   dag.add_task(Task(
       id="respond",
-      execute=lambda ctx: gemini.send(f"Reply to: {ctx['ask'].raw}"),
+      execute=lambda ctx: gemini.send(f"Reply to: {ctx['ask'].raw}", parser=ParserType.GEMINI),
       depends_on=["ask"],
   ))
 
@@ -61,8 +61,8 @@ DAG Definition Syntax:
 Commands:
 ---------
   help      - Show this help
-  sessions  - List active sessions
-  clear     - Clear namespace and sessions
+  channels  - List active channels
+  clear     - Clear namespace and channels
   show      - Show current DAG
   validate  - Validate current DAG
   dry       - Dry run (show execution order)
@@ -71,16 +71,17 @@ Commands:
 """)
 
 
-def print_sessions(state: REPLState):
-    """Print active sessions."""
-    if not state.sessions:
-        print("No active sessions")
+def print_channels(state: REPLState):
+    """Print active channels."""
+    if not state.channels:
+        print("No active channels")
         return
 
-    print("\nActive Sessions:")
+    print("\nActive Channels:")
     print("-" * 40)
-    for sid, session in state.sessions.items():
-        print(f"  {sid}: {session.cli_type.value} ({session.state.name})")
+    for name, channel in state.channels.items():
+        state_name = channel.state.name if hasattr(channel, "state") else "?"
+        print(f"  {name}: {state_name}")
     print("-" * 40)
 
 
@@ -101,8 +102,16 @@ def print_dag(dag):
     print("-" * 40)
 
 
-async def run_interactive(state: REPLState | None = None):
-    """Run interactive DAG definition mode."""
+async def run_interactive(
+    state: REPLState | None = None,
+    backend_type: Any = None,
+):
+    """Run interactive DAG definition mode.
+
+    Args:
+        state: Optional REPL state to resume from.
+        backend_type: Backend type for channels (BackendType.PTY or BackendType.WEZTERM).
+    """
     if state is None:
         state = REPLState()
 
@@ -126,38 +135,37 @@ async def run_interactive(state: REPLState | None = None):
     except ImportError:
         pass
 
+    # Lazy import to avoid circular deps
+    from nerve.core import BackendType, ParserType, TerminalChannel
+    from nerve.core.dag import DAG, Task
+
+    # Default to PTY if not specified
+    if backend_type is None:
+        backend_type = BackendType.PTY
+
     # Initialize namespace with nerve imports
     state.namespace = {
         "asyncio": asyncio,
-        "DAG": None,
-        "Task": None,
-        "Session": None,
-        "CLIType": None,
-        "sessions": state.sessions,
+        "DAG": DAG,
+        "Task": Task,
+        "TerminalChannel": TerminalChannel,
+        "ParserType": ParserType,
+        "BackendType": BackendType,
+        "BACKEND": backend_type,  # Default backend for channels
+        "channels": state.channels,  # Channel tracking dict
         "_state": state,
     }
-
-    # Lazy import to avoid circular deps
-    from nerve.core import CLIType, Session
-    from nerve.core.dag import DAG, Task
-
-    state.namespace.update(
-        {
-            "DAG": DAG,
-            "Task": Task,
-            "Session": Session,
-            "CLIType": CLIType,
-        }
-    )
 
     # Track current DAG
     current_dag: DAG | None = None
 
+    backend_name = "WezTerm" if backend_type == BackendType.WEZTERM else "PTY"
     print("=" * 50)
-    print("Nerve DAG REPL - Interactive Mode")
+    print(f"Nerve DAG REPL - Interactive Mode ({backend_name})")
     print("=" * 50)
     print("\nType 'help' for syntax guide.")
-    print("Commands: help, sessions, clear, show, validate, dry, run, exit")
+    print(f"Default backend: {backend_name} (use BACKEND variable)")
+    print("Commands: help, channels, clear, show, validate, dry, run, exit")
     print("-" * 50)
 
     buffer = ""
@@ -187,14 +195,14 @@ async def run_interactive(state: REPLState | None = None):
             if cmd == "help":
                 print_help()
                 continue
-            elif cmd == "sessions":
-                print_sessions(state)
+            elif cmd == "channels":
+                print_channels(state)
                 continue
             elif cmd == "clear":
-                state.sessions.clear()
-                state.namespace["sessions"] = state.sessions
+                state.channels.clear()
+                state.namespace["channels"] = state.channels
                 current_dag = None
-                print("Cleared sessions and DAG")
+                print("Cleared channels and DAG")
                 continue
             elif cmd == "show":
                 dag = state.namespace.get("dag") or current_dag
@@ -281,11 +289,11 @@ async def run_interactive(state: REPLState | None = None):
                 else:
                     exec(code, state.namespace)
 
-                # Track sessions created
+                # Track channels created
                 for name, value in state.namespace.items():
-                    if hasattr(value, "cli_type") and hasattr(value, "state"):
-                        if name not in ("Session", "CLIType"):
-                            state.sessions[name] = value
+                    if hasattr(value, "channel_type") and hasattr(value, "state"):
+                        if name not in ("TerminalChannel", "ParserType"):
+                            state.channels[name] = value
 
                 # Track DAG
                 if "dag" in state.namespace:
@@ -301,21 +309,38 @@ async def run_interactive(state: REPLState | None = None):
             buffer = ""
 
 
-async def run_from_file(filepath: str, dry_run: bool = False):
-    """Load and run DAG from a Python file."""
-    from nerve.core import CLIType, Session
+async def run_from_file(
+    filepath: str,
+    dry_run: bool = False,
+    backend_type: Any = None,
+):
+    """Load and run DAG from a Python file.
+
+    Args:
+        filepath: Path to Python file containing DAG definition.
+        dry_run: If True, only show execution order.
+        backend_type: Backend type for channels (BackendType.PTY or BackendType.WEZTERM).
+    """
+    from nerve.core import BackendType, ParserType, TerminalChannel
     from nerve.core.dag import DAG, Task
+
+    # Default to PTY if not specified
+    if backend_type is None:
+        backend_type = BackendType.PTY
 
     namespace = {
         "asyncio": asyncio,
         "DAG": DAG,
         "Task": Task,
-        "Session": Session,
-        "CLIType": CLIType,
+        "TerminalChannel": TerminalChannel,
+        "ParserType": ParserType,
+        "BackendType": BackendType,
+        "BACKEND": backend_type,  # Default backend for this file
         "__name__": "__nerve_repl__",
     }
 
-    print(f"Loading: {filepath}")
+    backend_name = "WezTerm" if backend_type == BackendType.WEZTERM else "PTY"
+    print(f"Loading: {filepath} (backend: {backend_name})")
     print("=" * 50)
 
     try:

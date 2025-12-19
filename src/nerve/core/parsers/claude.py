@@ -37,10 +37,10 @@ class ClaudeParser(Parser):
     def is_ready(self, content: str) -> bool:
         """Check if Claude is ready for input.
 
-        Claude is ready when:
-        - No "(esc to interrupt)" in recent output (not processing)
-        - Has "-- INSERT --" status line
-        - Has empty ">" prompt
+        Scan from bottom:
+        1. Find the LAST "-- INSERT --" or "? for shortcuts" (current status)
+        2. Check if "esc to interrupt" appears AFTER that status line
+        3. If no "esc to interrupt" after status → ready
 
         Args:
             content: Terminal output to check.
@@ -49,29 +49,28 @@ class ClaudeParser(Parser):
             True if Claude is waiting for input.
         """
         lines = content.strip().split("\n")
-        if len(lines) < 4:
+        if len(lines) < 3:
             return False
 
-        # Check last ~15 lines for processing indicator
-        tail = lines[-15:]
+        # Scan from bottom to find the LAST status line
+        status_line_idx = -1
+        for i in range(len(lines) - 1, max(0, len(lines) - 50), -1):
+            line_lower = lines[i].lower()
+            if "-- insert --" in line_lower or "? for shortcuts" in line_lower:
+                status_line_idx = i
+                break
 
-        # If we see "esc to interrupt", Claude is still processing
-        for line in tail:
-            if "esc to interrupt" in line.lower() or "esc to cancel" in line.lower():
-                return False
+        if status_line_idx == -1:
+            return False  # No status line found
 
-        # Check for INSERT mode indicator
-        has_insert = any("-- INSERT --" in line for line in tail)
-        if not has_insert:
-            return False
+        # Only check AFTER the status line for "esc to interrupt"
+        # (old "esc to interrupt" before status line is historical)
+        for i in range(status_line_idx, len(lines)):
+            line_lower = lines[i].lower()
+            if "esc to interrupt" in line_lower or "esc to cancel" in line_lower:
+                return False  # Still processing
 
-        # Check for prompt
-        for line in tail:
-            stripped = line.strip()
-            if stripped == ">" or stripped.startswith("> "):
-                return True
-
-        return False
+        return True  # No "esc to interrupt" after status, we're ready
 
     def parse(self, content: str) -> ParsedResponse:
         """Parse Claude output into structured response.
@@ -191,7 +190,8 @@ class ClaudeParser(Parser):
     def _extract_tokens(self, content: str) -> int | None:
         """Extract token count from status line."""
         for line in reversed(content.split("\n")):
-            if "-- INSERT --" in line and "tokens" in line:
+            # Look for token count in status lines (INSERT mode or shortcuts hint)
+            if ("-- INSERT --" in line or "? for shortcuts" in line) and "tokens" in line:
                 match = re.search(r"(\d+)\s*tokens", line)
                 if match:
                     return int(match.group(1))

@@ -27,23 +27,23 @@ import json
 import sys
 
 from nerve.core.parsers import get_parser
-from nerve.core.types import CLIType, ParsedResponse
+from nerve.core.types import ParsedResponse, ParserType
 
 
 def extract_response(
     content: str,
-    cli_type: CLIType = CLIType.CLAUDE,
+    parser_type: ParserType = ParserType.CLAUDE,
 ) -> ParsedResponse:
     """Extract structured response from CLI output.
 
     Args:
         content: Raw text content from CLI output.
-        cli_type: Type of AI CLI (CLAUDE or GEMINI).
+        parser_type: Parser type (CLAUDE, GEMINI, or NONE).
 
     Returns:
         ParsedResponse with sections and metadata.
     """
-    parser = get_parser(cli_type)
+    parser = get_parser(parser_type)
     return parser.parse(content)
 
 
@@ -220,8 +220,8 @@ Examples:
         return 1
 
     # Parse
-    cli_type = CLIType.CLAUDE if args.type == "claude" else CLIType.GEMINI
-    response = extract_response(content, cli_type)
+    parser_type = ParserType.CLAUDE if args.type == "claude" else ParserType.GEMINI
+    response = extract_response(content, parser_type)
 
     # Output
     if args.json:

@@ -10,7 +10,7 @@ Usage:
 
 import asyncio
 
-from nerve.core import CLIType, Session
+from nerve.core import ParserType, TerminalChannel
 
 ROUNDS = 3
 
@@ -19,9 +19,9 @@ async def main():
     print("Setting up debate between two Claude instances...")
     print()
 
-    # Create two sessions
-    advocate_python = await Session.create(CLIType.CLAUDE, session_id="python-advocate")
-    advocate_js = await Session.create(CLIType.CLAUDE, session_id="js-advocate")
+    # Create two channels
+    advocate_python = await TerminalChannel.create(command="claude", channel_id="python-advocate")
+    advocate_js = await TerminalChannel.create(command="claude", channel_id="js-advocate")
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")
@@ -37,13 +37,13 @@ async def main():
 
         # Python advocate's turn
         prompt = f"[Round {round_num}] You're arguing FOR Python. Opponent said: {message}. Keep it under 100 words."
-        response = await advocate_python.send(prompt)
+        response = await advocate_python.send(prompt, parser=ParserType.CLAUDE)
         message = response.raw[:500]
         print(f"[PYTHON]: {message[:300]}...")
 
         # JavaScript advocate's turn
         prompt = f"[Round {round_num}] You're arguing FOR JavaScript. Opponent said: {message}. Keep it under 100 words."
-        response = await advocate_js.send(prompt)
+        response = await advocate_js.send(prompt, parser=ParserType.CLAUDE)
         message = response.raw[:500]
         print(f"[JAVASCRIPT]: {message[:300]}...")
 
