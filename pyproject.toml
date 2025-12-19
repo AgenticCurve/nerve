@@ -1,0 +1,78 @@
+[project]
+name = "nerve"
+dynamic = ["version"]
+description = "Programmatic control layer for AI CLI agents (Claude Code, Gemini CLI)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+keywords = ["ai", "cli", "automation", "claude", "gemini", "agent", "orchestration"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+server = [
+    "aiohttp>=3.9.0",
+]
+cli = [
+    "rich-click>=1.7.0",
+]
+mcp = [
+    "mcp>=1.0.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "mypy>=1.8.0",
+    "ruff>=0.2.0",
+]
+all = ["nerve[server,cli,mcp,dev]"]
+
+[project.scripts]
+nerve = "nerve.frontends.cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/nerve/__version__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nerve"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = [
+    "E501",   # Line too long (handled by formatter, allow in strings)
+    "SIM102", # Nested if (sometimes clearer)
+    "SIM103", # Return condition directly (sometimes clearer)
+    "SIM105", # contextlib.suppress (try/except more explicit)
+    "SIM108", # Ternary operator (if/else sometimes clearer)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/*" = ["E501"]  # Allow long lines in examples

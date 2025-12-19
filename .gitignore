@@ -1,0 +1,4 @@
+.am/
+__pycache__/
+.hide
+.rustignore

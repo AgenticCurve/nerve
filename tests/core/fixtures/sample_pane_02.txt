@@ -1,0 +1,36 @@
+⏺ Search(pattern: "--debug", path: "/Users/pb/bilby/projects/mlops/packages/bilby_mlops/src/cli/airflow/trigger/entity.py", output_mode: "content")
+  ⎿  Found 6 lines                                                                                    
+     918:    "--debug",
+     970:    bml airflow dags trigger entity-batchfill-v2 --year 2025 --chunk-id 21 --limit 10 --debug
+     1295:    "--debug",
+     1351:        --year 2025 --chunk-id 21 --limit 10 --debug
+     1734:    "--debug",
+     1773:        --year 2025 --chunk-id 58 --debug
+
+∴ Thinking…
+
+  Yes, the --debug flag is available in the CLI for the entity triggers. Perfect.
+
+⏺ Yes, --debug flag is available in CLI:
+
+  # Entity ZH batchfill v2 with debug (keeps instances)
+  bml --env staging airflow dags trigger entity-zh-batchfill-v2 \
+      --year 2021 --chunk-id 00 --sort-by-length --debug
+
+  # Entity ZH unified with debug
+  bml --env staging airflow dags trigger entity-zh-unified \
+      --chunk-id 15 --year 2024 --debug
+
+  When --debug is set:
+  - CPU instances are NOT deleted after preprocessing
+  - GPU instances are NOT deleted after inference
+  - You can SSH in and inspect logs, check GPU utilization, etc.
+
+  Remember to manually delete instances after debugging:
+  gcloud compute instances delete <instance-name> --zone=<zone>
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> sync the dags to staging (tab to accept)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  -- INSERT -- ⏵⏵ bypass permissions on · uv run python -c "… (running)                                                                                                          102451 tokens
+                                                                                                                                                 globalVersion: 2.0.69 · latestVersion: 2.0.71

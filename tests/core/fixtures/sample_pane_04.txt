@@ -1,0 +1,144 @@
+⏺ Let me think through potential gotchas:
+
+  1. Instance name length - GCE limit is 63 chars
+    - Old: entity-zh-preprocess-20251215-32-00-00 (38 chars)
+    - New: entity-zh-preprocess-20251215-084932 (36 chars)
+    - ✅ Actually shorter
+  2. Currently running DAGs - Your 36 triggered runs use the OLD naming (stored in XCom). They'll cleanup correctly because they stored the actual instance name, not regenerating it.
+    - ✅ Safe
+  3. Scheduled/triggered run_id formats - Different formats exist:
+    - manual__2025-12-15T08:49:32+00:00
+    - scheduled__2025-12-15T03:00:00+00:00
+    - Both have T\d{2}:\d{2}:\d{2} pattern
+    - ✅ Regex handles both
+  4. Fallback case - If run_id doesn't match pattern (edge case), fallback extracts last 6 digits
+    - ✅ Covered
+  5. Import inside function - Added import re inside function (slightly unusual but fine for stdlib)
+    - ✅ Works
+
+  One thing to consider: sync timing. If you sync DAGs while runs are queued, the queued runs will use the NEW code when they start. But since each run stores its own instance name in XCom after creation, this is fine.
+
+  No other gotchas I can think of. You're good!
+
+> Withint entity-zh dag, do we have --debug mode orn not? In debug mode, it shouldn't delete the machines 
+
+∴ Thinking…
+
+  The user is asking about a debug mode in the entity-zh DAG that would prevent deletion of machines. Let me search for this functionality.
+
+⏺ Search(pattern: "debug|delete.*instance|cleanup.*gpu", path: "/Users/pb/bilby/projects/mlops/services/airflow/dags", glob: "*entity_zh*.py", output_mode: "content")
+  ⎿  Found 22 lines                                                                                                                            
+     services/airflow/dags/entity_zh_batchfill_v2.py:23:      "debug": false         # optional, skip instance deletion if true
+     services/airflow/dags/entity_zh_batchfill_v2.py:34:        -> run_inference -> verify_inference_results -> cleanup_gpu_instance
+     services/airflow/dags/entity_zh_batchfill_v2.py:60:    cleanup_gpu_instance,
+     services/airflow/dags/entity_zh_batchfill_v2.py:275:    cleanup_gpu_task = PythonOperator(
+     services/airflow/dags/entity_zh_batchfill_v2.py:276:        task_id="cleanup_gpu_instance",
+     services/airflow/dags/entity_zh_batchfill_v2.py:277:        python_callable=cleanup_gpu_instance,
+     services/airflow/dags/entity_zh_batchfill_v2.py:307:        >> cleanup_gpu_task
+     services/airflow/dags/entity_zh_unified.py:24:      "debug": false         # optional, skip instance deletion if true
+     services/airflow/dags/entity_zh_unified.py:29:    -> upload_startup_logs -> run_unified_pipeline -> verify_results -> cleanup_gpu_instance
+     services/airflow/dags/entity_zh_unified.py:45:from shared.delete_gpu_task import delete_instance_safe
+     services/airflow/dags/entity_zh_unified.py:406:def cleanup_gpu_instance(**context: Any) -> Dict[str, Any]:
+     services/airflow/dags/entity_zh_unified.py:418:    # Check debug mode
+     services/airflow/dags/entity_zh_unified.py:419:    if params.get("debug", False):
+     services/airflow/dags/entity_zh_unified.py:423:        return {"status": "skipped_debug", "instance": instance_name, "zone": zone}
+     services/airflow/dags/entity_zh_unified.py:427:    return delete_instance_safe(
+     services/airflow/dags/entity_zh_unified.py:487:        task_id="cleanup_gpu_instance",
+     services/airflow/dags/entity_zh_unified.py:488:        python_callable=cleanup_gpu_instance,
+     services/airflow/dags/entity_zh_daily.py:18:        -> delete_gpu_instance (cleanup)
+     services/airflow/dags/entity_zh_daily.py:32:from shared.delete_gpu_task import delete_instance_safe
+     services/airflow/dags/entity_zh_daily.py:463:def delete_gpu_instance_for_partition(partition_config: Dict, **context) -> Dict:
+     services/airflow/dags/entity_zh_daily.py:487:    return delete_instance_safe(
+     services/airflow/dags/entity_zh_daily.py:528:    delete_tasks = delete_gpu_instance_for_partition.expand(
+
+∴ Thinking…
+
+  I can see that there IS a debug mode:
+
+  1. entity_zh_unified.py lines 418-423 shows debug mode checking:
+  if params.get("debug", False):
+      print(f"🐛 DEBUG MODE: Skipping instance deletion for {instance_name}")
+      print(f"   Instance kept running in {zone} for manual inspection")
+      return {"status": "skipped_debug", "instance": instance_name, "zone": zone}
+
+  2. entity_zh_batchfill_v2.py line 23 shows it's documented in the config: "debug": false # optional, skip instance deletion if true
+
+  Let me check if the batchfill_v2 also has the debug mode implemented in its cleanup function.
+
+⏺ Yes, debug mode exists! Let me check if it's fully implemented in batchfill_v2:
+
+⏺ Search(pattern: "debug|cleanup_gpu_instance", path: "/Users/pb/bilby/projects/mlops/services/airflow/dags/shared/batchfill_v2_base.py", output_mode: "content")
+  ⎿  Found 5 lines                                                                          
+     474:    if params.get("debug", False):
+     478:        return {"status": "skipped_debug", "instance": instance_name, "zone": zone}
+     767:def cleanup_gpu_instance(**context: Any) -> Dict[str, str]:
+     781:    if params.get("debug", False):
+     785:        return {"status": "skipped_debug", "instance": instance_name, "zone": zone}
+
+∴ Thinking…
+
+  Debug mode is implemented in both:
+  - entity_zh_unified.py - lines 418-423
+  - batchfill_v2_base.py - lines 474-478 (CPU cleanup) and 781-785 (GPU cleanup)
+
+  So if you pass "debug": true in the DAG config, it will skip deletion of both CPU and GPU instances.
+
+  Let me check how to trigger it via CLI.
+
+⏺ Yes, debug mode is fully implemented:
+
+  entity_zh_unified.py (line 419):
+  if params.get("debug", False):
+      print(f"🐛 DEBUG MODE: Skipping instance deletion for {instance_name}")
+      return {"status": "skipped_debug", ...}
+
+  batchfill_v2_base.py (lines 474, 781):
+  - CPU cleanup: skips if debug=True
+  - GPU cleanup: skips if debug=True
+
+  To use it via CLI:
+  # For unified
+  bml --env staging airflow dags trigger entity-zh-unified \
+      --chunk-id 15 --year 2024 --debug
+
+  # For batchfill-v2  
+  bml --env staging airflow dags trigger entity-zh-batchfill-v2 \
+      --year 2021 --chunk-id 00 --debug
+
+  Let me verify the CLI has the --debug flag:
+
+⏺ Search(pattern: "--debug", path: "/Users/pb/bilby/projects/mlops/packages/bilby_mlops/src/cli/airflow/trigger/entity.py", output_mode: "content")
+  ⎿  Found 6 lines                                                                                    
+     918:    "--debug",
+     970:    bml airflow dags trigger entity-batchfill-v2 --year 2025 --chunk-id 21 --limit 10 --debug
+     1295:    "--debug",
+     1351:        --year 2025 --chunk-id 21 --limit 10 --debug
+     1734:    "--debug",
+     1773:        --year 2025 --chunk-id 58 --debug
+
+∴ Thinking…
+
+  Yes, the --debug flag is available in the CLI for the entity triggers. Perfect.
+
+⏺ Yes, --debug flag is available in CLI:
+
+  # Entity ZH batchfill v2 with debug (keeps instances)
+  bml --env staging airflow dags trigger entity-zh-batchfill-v2 \
+      --year 2021 --chunk-id 00 --sort-by-length --debug
+
+  # Entity ZH unified with debug
+  bml --env staging airflow dags trigger entity-zh-unified \
+      --chunk-id 15 --year 2024 --debug
+
+  When --debug is set:
+  - CPU instances are NOT deleted after preprocessing
+  - GPU instances are NOT deleted after inference
+  - You can SSH in and inspect logs, check GPU utilization, etc.
+
+  Remember to manually delete instances after debugging:
+  gcloud compute instances delete <instance-name> --zone=<zone>
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+> sync the dags to staging (tab to accept)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  -- INSERT -- ⏵⏵ bypass permissions on · uv run python -c "… (running)                                                                                                          102451 tokens
