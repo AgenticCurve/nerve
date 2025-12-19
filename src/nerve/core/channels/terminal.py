@@ -261,11 +261,11 @@ class TerminalChannel:
         if self.state == ChannelState.CLOSED:
             raise RuntimeError("Channel is closed")
 
-        # Track if user provided custom submit
-        use_claude_submit = (parser == ParserType.CLAUDE and submit is None)
+        # Track if this is Claude parser without custom submit
+        is_claude = (parser == ParserType.CLAUDE and submit is None)
 
         # Default submit sequence for non-Claude parsers
-        if submit is None and not use_claude_submit:
+        if submit is None and not is_claude:
             submit = "\n"
 
         timeout = timeout or self._response_timeout
@@ -274,24 +274,30 @@ class TerminalChannel:
         # Mark buffer position before sending (to check only NEW output)
         buffer_start = len(self.backend.buffer)
 
-        # For Claude, enter INSERT mode first (press 'i')
-        # After a response, Claude exits to normal mode
-        if use_claude_submit:
-            await self.backend.write("i")
-            await asyncio.sleep(0.2)
-
-        # Write input
-        await self.backend.write(input)
-
-        # For Claude parser, send Escape and Enter separately with delays
-        # (Claude TUI needs time to process each keystroke)
-        if use_claude_submit:
-            await asyncio.sleep(0.5)  # Wait for input to be processed
-            await self.backend.write("\x1b")  # Escape to exit INSERT mode
-            await asyncio.sleep(0.5)  # Wait for mode change
-            await self.backend.write("\r")  # Enter to submit
+        # Different submit handling based on backend type
+        if is_claude:
+            if self.backend_type == BackendType.WEZTERM:
+                # WezTerm + Claude: Just send text + Enter
+                # No INSERT mode handling needed - WezTerm sends directly
+                await self.backend.write(input)
+                await asyncio.sleep(0.1)
+                await self.backend.write("\r")  # Enter to submit
+            else:
+                # PTY + Claude: Need to handle INSERT mode
+                # 1. Press 'i' to enter INSERT mode (Claude exits to normal after response)
+                # 2. Type input
+                # 3. Press Escape to exit INSERT mode
+                # 4. Press Enter to submit
+                await self.backend.write("i")
+                await asyncio.sleep(0.2)
+                await self.backend.write(input)
+                await asyncio.sleep(0.5)
+                await self.backend.write("\x1b")  # Escape
+                await asyncio.sleep(0.5)
+                await self.backend.write("\r")  # Enter
         else:
-            # For other parsers, send submit sequence after a small delay
+            # Non-Claude: write input + submit sequence
+            await self.backend.write(input)
             await asyncio.sleep(0.1)
             await self.backend.write(submit)
 
