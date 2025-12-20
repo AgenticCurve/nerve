@@ -37,10 +37,12 @@ class ClaudeParser(Parser):
     def is_ready(self, content: str) -> bool:
         """Check if Claude is ready for input.
 
-        Scan from bottom:
-        1. Find the LAST "-- INSERT --" or "? for shortcuts" (current status)
-        2. Check if "esc to interrupt" appears AFTER that status line
-        3. If no "esc to interrupt" after status → ready
+        Two conditions must be met:
+        1. Status line shows "-- INSERT --" or "? for shortcuts"
+        2. NO "esc to interrupt" or "esc to cancel" anywhere in the bottom portion
+
+        Claude shows "esc to interrupt" in both the content area (e.g., "Considering...")
+        and potentially in older status lines, so we check the entire visible area.
 
         Args:
             content: Terminal output to check.
@@ -52,25 +54,27 @@ class ClaudeParser(Parser):
         if len(lines) < 3:
             return False
 
-        # Scan from bottom to find the LAST status line
-        status_line_idx = -1
-        for i in range(len(lines) - 1, max(0, len(lines) - 50), -1):
-            line_lower = lines[i].lower()
+        # Check bottom 50 lines for status and processing indicators
+        check_lines = lines[-50:] if len(lines) > 50 else lines
+
+        # Must have a status line
+        has_status = False
+        for line in check_lines:
+            line_lower = line.lower()
             if "-- insert --" in line_lower or "? for shortcuts" in line_lower:
-                status_line_idx = i
+                has_status = True
                 break
 
-        if status_line_idx == -1:
-            return False  # No status line found
+        if not has_status:
+            return False
 
-        # Only check AFTER the status line for "esc to interrupt"
-        # (old "esc to interrupt" before status line is historical)
-        for i in range(status_line_idx, len(lines)):
-            line_lower = lines[i].lower()
+        # Must NOT have any "esc to interrupt" or "esc to cancel" in the visible area
+        for line in check_lines:
+            line_lower = line.lower()
             if "esc to interrupt" in line_lower or "esc to cancel" in line_lower:
                 return False  # Still processing
 
-        return True  # No "esc to interrupt" after status, we're ready
+        return True
 
     def parse(self, content: str) -> ParsedResponse:
         """Parse Claude output into structured response.

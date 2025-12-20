@@ -28,7 +28,7 @@ class NoneParser(Parser):
 
         For NoneParser, we consider it ready if:
         - Content ends with a common prompt pattern (>, $, %, #)
-        - Or content ends with a newline (simple heuristic)
+        - Handles prompts with or without trailing space
 
         Args:
             content: Terminal output to check.
@@ -43,15 +43,27 @@ class NoneParser(Parser):
         if not lines:
             return False
 
-        last_line = lines[-1].strip()
+        # Strip ANSI escape codes from last line
+        last_line = self._strip_ansi(lines[-1]).strip()
 
-        # Common prompt patterns
+        # Common prompt patterns (with or without trailing space)
         prompt_patterns = [">", ">>>", "$", "%", "#", "❯"]
         for pattern in prompt_patterns:
-            if last_line == pattern or last_line.endswith(pattern + " "):
+            # Exact match
+            if last_line == pattern:
+                return True
+            # Ends with pattern (with or without trailing space)
+            if last_line.endswith(pattern) or last_line.endswith(pattern + " "):
                 return True
 
         return False
+
+    @staticmethod
+    def _strip_ansi(text: str) -> str:
+        """Strip ANSI escape codes from text."""
+        import re
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        return ansi_escape.sub('', text)
 
     def parse(self, content: str) -> ParsedResponse:
         """Return content as-is in a single text section.

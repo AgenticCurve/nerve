@@ -13,8 +13,8 @@ Example:
     >>> session = Session(name="my-project")
     >>>
     >>> # Add channels
-    >>> claude = await TerminalChannel.create(command="claude")
-    >>> shell = await TerminalChannel.create(command="bash")
+    >>> claude = await PTYChannel.create("claude", command="claude")
+    >>> shell = await PTYChannel.create("shell", command="bash")
     >>>
     >>> session.add("claude", claude)
     >>> session.add("shell", shell)

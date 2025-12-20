@@ -11,10 +11,11 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from nerve.core import DAG, ChannelManager, Task, TerminalChannel
+from nerve.core import DAG, ChannelManager, Task
 from nerve.core.channels import ChannelState
+from nerve.core.channels.pty import PTYChannel
+from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.parsers import get_parser
-from nerve.core.pty import BackendType
 from nerve.core.types import ParserType
 from nerve.server.protocols import (
     Command,
@@ -142,15 +143,14 @@ class NerveEngine:
 
         command = params.get("command")  # e.g., "claude" or ["claude", "--flag"]
         cwd = params.get("cwd")
-        backend_str = params.get("backend", "pty")
-        backend_type = BackendType.WEZTERM if backend_str == "wezterm" else BackendType.PTY
+        backend = params.get("backend", "pty")  # "pty" or "wezterm"
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
 
         # ChannelManager.create_terminal enforces uniqueness
         channel = await self._channel_manager.create_terminal(
             channel_id=channel_id,
             command=command,
-            backend_type=backend_type,
+            backend=backend,
             cwd=cwd,
             pane_id=pane_id,
         )
@@ -160,8 +160,8 @@ class NerveEngine:
             data={
                 "command": command,
                 "cwd": cwd,
-                "backend": backend_str,
-                "pane_id": channel.pane_id,
+                "backend": backend,
+                "pane_id": getattr(channel, "pane_id", None),
             },
             channel_id=channel.id,
         )
@@ -196,7 +196,8 @@ class NerveEngine:
                     "state": channel.state.name,
                 }
                 if hasattr(channel, "backend_type"):
-                    info["backend"] = channel.backend_type.value
+                    bt = channel.backend_type
+                    info["backend"] = bt.value if hasattr(bt, "value") else bt
                 if hasattr(channel, "command"):
                     info["command"] = channel.command
                 if hasattr(channel, "pane_id"):
@@ -295,7 +296,18 @@ class NerveEngine:
 
         await self._emit(EventType.CHANNEL_READY, channel_id=channel_id)
 
-        return {"response": response.raw}
+        return {
+            "response": {
+                "raw": response.raw,
+                "sections": [
+                    {"type": s.type, "content": s.content, "metadata": s.metadata}
+                    for s in response.sections
+                ],
+                "tokens": response.tokens,
+                "is_complete": response.is_complete,
+                "is_ready": response.is_ready,
+            }
+        }
 
     async def _send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         """Send interrupt to a channel."""
@@ -461,7 +473,7 @@ class NerveEngine:
     # Internal
     # =========================================================================
 
-    async def _monitor_channel(self, channel: TerminalChannel) -> None:
+    async def _monitor_channel(self, channel: PTYChannel | WezTermChannel) -> None:
         """Monitor channel for state changes.
 
         This runs in the background and emits events when

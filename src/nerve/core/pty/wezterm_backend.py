@@ -5,11 +5,15 @@ in WezTerm panes. Useful when you want to:
 - See the terminal output visually in WezTerm
 - Use WezTerm's features (splits, tabs, etc.)
 - Debug what's happening in the terminal
+
+Key difference from PTY: WezTerm maintains pane content internally,
+so we query it directly instead of maintaining a separate buffer.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 from collections.abc import AsyncIterator
 
@@ -22,6 +26,10 @@ class WezTermBackend(Backend):
     Manages a process running in a WezTerm pane. Uses wezterm CLI
     commands for all operations.
 
+    Unlike PTY backend, WezTerm maintains pane content internally.
+    The `buffer` property queries WezTerm directly for fresh content
+    rather than maintaining a cached copy.
+
     Requirements:
         - WezTerm must be running
         - wezterm CLI must be available in PATH
@@ -31,13 +39,13 @@ class WezTermBackend(Backend):
         >>> backend = WezTermBackend(["claude"], BackendConfig(cwd="/project"))
         >>> await backend.start()  # Creates new pane in WezTerm
         >>> await backend.write("hello\\n")
-        >>> content = backend.read_buffer()
+        >>> content = backend.buffer  # Queries WezTerm directly
         >>> await backend.stop()  # Kills the pane
         >>>
         >>> # Attach to existing pane
         >>> backend = WezTermBackend([], pane_id="4")
         >>> await backend.attach("4")
-        >>> content = backend.read_buffer()
+        >>> content = backend.buffer
     """
 
     def __init__(
@@ -56,9 +64,7 @@ class WezTermBackend(Backend):
         self._command = command
         self._config = config or BackendConfig()
         self._pane_id: str | None = pane_id
-        self._buffer: str = ""
         self._running = pane_id is not None  # Already running if attaching
-        self._last_line_count: int = 0
         self._attached = pane_id is not None  # Track if we attached vs spawned
 
     @property
@@ -73,8 +79,14 @@ class WezTermBackend(Backend):
 
     @property
     def buffer(self) -> str:
-        """Current accumulated output buffer."""
-        return self._buffer
+        """Current pane content - always fresh from WezTerm.
+
+        Unlike PTY backend which maintains a cached buffer, WezTerm
+        backend queries the pane content directly each time.
+        """
+        if not self._pane_id:
+            return ""
+        return self._get_pane_text_sync()
 
     @property
     def config(self) -> BackendConfig:
@@ -112,8 +124,6 @@ class WezTermBackend(Backend):
             # spawn outputs the pane ID
             self._pane_id = stdout.decode().strip()
             self._running = True
-            self._buffer = ""
-            self._last_line_count = 0
 
         except FileNotFoundError as err:
             raise RuntimeError(
@@ -138,7 +148,7 @@ class WezTermBackend(Backend):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await result.communicate()
+            _, stderr = await result.communicate()
 
             if result.returncode != 0:
                 raise RuntimeError(f"Pane {pane_id} not found: {stderr.decode()}")
@@ -146,7 +156,6 @@ class WezTermBackend(Backend):
             self._pane_id = pane_id
             self._running = True
             self._attached = True
-            self._buffer = stdout.decode("utf-8", errors="replace")
 
         except FileNotFoundError as err:
             raise RuntimeError(
@@ -194,6 +203,9 @@ class WezTermBackend(Backend):
         Since WezTerm CLI doesn't support true streaming, this polls
         get-text and yields new content as it appears.
 
+        Note: For WezTerm, this is mainly useful for compatibility.
+        Direct buffer access via the `buffer` property is preferred.
+
         Args:
             chunk_size: Not used (kept for interface compatibility).
 
@@ -206,19 +218,19 @@ class WezTermBackend(Backend):
         if not self._pane_id:
             raise RuntimeError("WezTerm pane not started")
 
+        last_content = ""
         while self._running:
             try:
-                new_content = await self._get_pane_text()
+                new_content = self._get_pane_text_sync()
 
-                # Find new content by comparing with buffer
-                if len(new_content) > len(self._buffer):
-                    chunk = new_content[len(self._buffer) :]
-                    self._buffer = new_content
+                # Find new content by comparing with last seen
+                if len(new_content) > len(last_content):
+                    chunk = new_content[len(last_content):]
+                    last_content = new_content
                     yield chunk
-                elif new_content != self._buffer:
+                elif new_content != last_content:
                     # Content changed but didn't grow (scrollback limit?)
-                    # Just update buffer
-                    self._buffer = new_content
+                    last_content = new_content
 
                 await asyncio.sleep(0.1)  # Poll interval
 
@@ -226,8 +238,8 @@ class WezTermBackend(Backend):
                 # Pane might be gone
                 break
 
-    async def _get_pane_text(self, start_line: int | None = None) -> str:
-        """Get text content from the pane.
+    def _get_pane_text_sync(self, start_line: int | None = None) -> str:
+        """Synchronously get text content from the pane.
 
         Args:
             start_line: Starting line (negative for scrollback).
@@ -235,64 +247,75 @@ class WezTermBackend(Backend):
         Returns:
             Pane text content.
         """
+        if not self._pane_id:
+            return ""
+
         cmd = ["wezterm", "cli", "get-text", "--pane-id", self._pane_id]
 
         if start_line is not None:
             cmd.extend(["--start-line", str(start_line)])
 
-        result = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
         )
-        stdout, _ = await result.communicate()
 
-        return stdout.decode("utf-8", errors="replace")
+        return result.stdout if result.returncode == 0 else ""
 
-    def read_buffer(self, clear: bool = False) -> str:
-        """Read the accumulated output buffer.
-
-        Note: For WezTerm, this returns the cached buffer. Call
-        _sync_buffer() first if you need fresh content.
+    def get_tail(self, lines: int = 20) -> str:
+        """Get the last N lines from the pane - fresh from WezTerm.
 
         Args:
-            clear: If True, clear the buffer after reading.
+            lines: Number of lines to fetch.
 
         Returns:
-            The buffer contents.
+            Last N lines of pane content.
         """
-        content = self._buffer
-        if clear:
-            self._buffer = ""
-        return content
+        # Use negative start-line to get from scrollback
+        content = self._get_pane_text_sync()
+        all_lines = content.split("\n")
+        return "\n".join(all_lines[-lines:])
+
+    def read_buffer(self, clear: bool = False) -> str:
+        """Read pane content.
+
+        Note: For WezTerm, `clear` has no effect since we query
+        WezTerm directly and don't maintain a local buffer.
+
+        Args:
+            clear: Ignored for WezTerm backend.
+
+        Returns:
+            Current pane content.
+        """
+        return self.buffer
 
     def read_tail(self, lines: int = 20) -> str:
-        """Read the last N lines of the buffer.
+        """Read the last N lines from the pane.
 
         Args:
             lines: Number of lines to return.
 
         Returns:
-            Last N lines of output.
+            Last N lines of pane content.
         """
-        all_lines = self._buffer.split("\n")
-        return "\n".join(all_lines[-lines:])
+        return self.get_tail(lines)
 
     def clear_buffer(self) -> None:
-        """Clear the output buffer."""
-        self._buffer = ""
+        """No-op for WezTerm - pane content is managed by WezTerm."""
+        pass
 
     async def sync_buffer(self) -> str:
-        """Sync buffer with current pane content.
+        """Get fresh pane content.
 
-        Fetches latest content from WezTerm and updates the buffer.
+        For WezTerm, this is equivalent to accessing the buffer property
+        since we always query fresh content. Kept for interface compatibility.
 
         Returns:
-            The updated buffer content.
+            Current pane content.
         """
-        if self._pane_id:
-            self._buffer = await self._get_pane_text()
-        return self._buffer
+        return self.buffer
 
     async def stop(self) -> None:
         """Stop the backend.
@@ -310,9 +333,10 @@ class WezTermBackend(Backend):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await result.communicate()
+                _, stderr = await result.communicate()
                 if result.returncode != 0:
                     import logging
+
                     logging.getLogger(__name__).warning(
                         "Failed to kill WezTerm pane %s: %s",
                         self._pane_id,
@@ -320,6 +344,7 @@ class WezTermBackend(Backend):
                     )
             except Exception as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "Error killing WezTerm pane %s: %s", self._pane_id, e
                 )
@@ -358,8 +383,6 @@ class WezTermBackend(Backend):
         stdout, _ = await result.communicate()
 
         if result.returncode == 0:
-            import json
-
             try:
                 panes = json.loads(stdout.decode())
                 for pane in panes:
@@ -377,8 +400,6 @@ def list_wezterm_panes() -> list[dict]:
     Returns:
         List of pane info dicts.
     """
-    import json
-
     try:
         result = subprocess.run(
             ["wezterm", "cli", "list", "--format", "json"],

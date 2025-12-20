@@ -8,22 +8,22 @@ Two levels of management:
 - SessionManager: Manage sessions (groups of channels)
 
 Example (channels only):
-    >>> from nerve.core.channels import TerminalChannel
+    >>> from nerve.core.channels import PTYChannel
     >>> from nerve.core.session import ChannelManager
     >>>
     >>> manager = ChannelManager()
-    >>> channel = await manager.create_terminal(command="claude")
+    >>> channel = await manager.create_terminal("my-claude", command="claude")
     >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     >>> await manager.close_all()
 
 Example (with sessions):
-    >>> from nerve.core.channels import TerminalChannel
+    >>> from nerve.core.channels import PTYChannel
     >>> from nerve.core.session import Session, SessionManager
     >>>
     >>> manager = SessionManager()
     >>> session = manager.create_session(name="my-project")
     >>>
-    >>> claude = await TerminalChannel.create(command="claude")
+    >>> claude = await PTYChannel.create("claude", command="claude")
     >>> session.add("claude", claude)
     >>>
     >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)

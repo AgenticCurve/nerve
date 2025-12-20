@@ -13,8 +13,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from nerve.core.channels import ChannelState, TerminalChannel
-from nerve.core.pty import BackendType
+from nerve.core.channels import ChannelState
+from nerve.core.channels.pty import PTYChannel
+from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.session.session import Session
 
 if TYPE_CHECKING:
@@ -49,23 +50,23 @@ class ChannelManager:
         self,
         channel_id: str,
         command: list[str] | str | None = None,
-        backend_type: BackendType = BackendType.PTY,
+        backend: str = "pty",
         cwd: str | None = None,
         pane_id: str | None = None,
         **kwargs,
-    ) -> TerminalChannel:
+    ) -> PTYChannel | WezTermChannel:
         """Create a new terminal channel.
 
         Args:
             channel_id: Unique channel identifier (required).
             command: Command to run (e.g., "claude" or ["bash"]).
-            backend_type: Backend to use (PTY or WEZTERM).
+            backend: Backend type ("pty" or "wezterm").
             cwd: Working directory.
             pane_id: For WezTerm, attach to existing pane.
-            **kwargs: Additional args passed to TerminalChannel.create.
+            **kwargs: Additional args passed to channel create.
 
         Returns:
-            The created TerminalChannel.
+            The created channel (PTYChannel or WezTermChannel).
 
         Raises:
             ValueError: If channel_id already exists.
@@ -73,17 +74,30 @@ class ChannelManager:
         if self._channels.get(channel_id):
             raise ValueError(f"Channel '{channel_id}' already exists")
 
-        if pane_id:
-            channel = await TerminalChannel.attach(
-                channel_id=channel_id,
-                pane_id=pane_id,
-                **kwargs,
-            )
+        # Determine which channel type to use
+        use_wezterm = backend == "wezterm" or pane_id is not None
+
+        if use_wezterm:
+            if pane_id:
+                # Attach to existing WezTerm pane
+                channel = await WezTermChannel.attach(
+                    channel_id=channel_id,
+                    pane_id=pane_id,
+                    **kwargs,
+                )
+            else:
+                # Spawn new WezTerm pane
+                channel = await WezTermChannel.create(
+                    channel_id=channel_id,
+                    command=command,
+                    cwd=cwd,
+                    **kwargs,
+                )
         else:
-            channel = await TerminalChannel.create(
+            # Use PTY
+            channel = await PTYChannel.create(
                 channel_id=channel_id,
                 command=command,
-                backend_type=backend_type,
                 cwd=cwd,
                 **kwargs,
             )
@@ -166,11 +180,11 @@ class SessionManager:
         >>> session = manager.create_session(name="my-project")
         >>>
         >>> # Add channels to it
-        >>> claude = await TerminalChannel.create(command="claude")
+        >>> claude = await PTYChannel.create("claude", command="claude")
         >>> session.add("claude", claude)
         >>>
         >>> # Or use the channel manager
-        >>> shell = await manager.channels.create_terminal(command="bash")
+        >>> shell = await manager.channels.create_terminal("shell", command="bash")
         >>> session.add("shell", shell)
         >>>
         >>> # Close session (closes all its channels)

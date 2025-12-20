@@ -14,31 +14,29 @@ Key Concepts:
     Parser:     How to interpret output (specified per-command, not per-channel)
     Session:    Optional grouping of channels with metadata
 
-Quick Start (direct channel usage):
-    >>> from nerve import TerminalChannel, ParserType
+Quick Start (PTY channel - you own the process):
+    >>> from nerve import PTYChannel, ParserType
     >>>
-    >>> channel = await TerminalChannel.create(command="claude")
+    >>> channel = await PTYChannel.create("my-claude", command="claude")
     >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     >>> print(response.sections)
     >>> await channel.close()
 
-With WezTerm backend:
-    >>> from nerve import TerminalChannel, ParserType, BackendType
+WezTerm channel (spawn new pane):
+    >>> from nerve import WezTermChannel, ParserType
     >>>
-    >>> channel = await TerminalChannel.create(
-    ...     command="claude",
-    ...     backend_type=BackendType.WEZTERM,
-    ... )
+    >>> channel = await WezTermChannel.create("claude", command="claude")
+    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     >>> # Channel runs in a visible WezTerm pane
 
 Attach to existing WezTerm pane:
-    >>> channel = await TerminalChannel.attach(pane_id="4")
+    >>> channel = await WezTermChannel.attach("claude-pane", pane_id="4")
 
 With session grouping:
-    >>> from nerve import Session, TerminalChannel, ParserType
+    >>> from nerve import Session, PTYChannel, ParserType
     >>>
     >>> session = Session(name="my-project")
-    >>> claude = await TerminalChannel.create(command="claude")
+    >>> claude = await PTYChannel.create("claude", command="claude")
     >>> session.add("claude", claude)
     >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
 
@@ -59,11 +57,12 @@ from nerve.core import (
     ChannelType,
     ParsedResponse,
     ParserType,
+    PTYChannel,
     Section,
     Session,
     SessionManager,
     SessionState,
-    TerminalChannel,
+    WezTermChannel,
 )
 
 __all__ = [
@@ -72,7 +71,8 @@ __all__ = [
     "Channel",
     "ChannelState",
     "ChannelType",
-    "TerminalChannel",
+    "PTYChannel",
+    "WezTermChannel",
     # Session
     "Session",
     "SessionManager",

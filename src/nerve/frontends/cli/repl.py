@@ -31,12 +31,15 @@ def print_help():
     print("""
 DAG Definition Syntax:
 ----------------------
-  from nerve.core import TerminalChannel, ParserType
+  from nerve.core import PTYChannel, WezTermChannel, ParserType
   from nerve.core.dag import DAG, Task
 
-  # Create channels
-  claude = await TerminalChannel.create(command="claude")
-  gemini = await TerminalChannel.create(command="gemini")
+  # Create channels (PTY - you own the process)
+  claude = await PTYChannel.create("claude", command="claude")
+  gemini = await PTYChannel.create("gemini", command="gemini")
+
+  # Or use WezTerm (visible panes)
+  claude = await WezTermChannel.create("claude", command="claude")
 
   # Define tasks (parser specified per-send)
   dag = DAG()
@@ -104,13 +107,11 @@ def print_dag(dag):
 
 async def run_interactive(
     state: REPLState | None = None,
-    backend_type: Any = None,
 ):
     """Run interactive DAG definition mode.
 
     Args:
         state: Optional REPL state to resume from.
-        backend_type: Backend type for channels (BackendType.PTY or BackendType.WEZTERM).
     """
     if state is None:
         state = REPLState()
@@ -136,22 +137,18 @@ async def run_interactive(
         pass
 
     # Lazy import to avoid circular deps
-    from nerve.core import BackendType, ParserType, TerminalChannel
+    from nerve.core import BackendType, ParserType, PTYChannel, WezTermChannel
     from nerve.core.dag import DAG, Task
-
-    # Default to PTY if not specified
-    if backend_type is None:
-        backend_type = BackendType.PTY
 
     # Initialize namespace with nerve imports
     state.namespace = {
         "asyncio": asyncio,
         "DAG": DAG,
         "Task": Task,
-        "TerminalChannel": TerminalChannel,
+        "PTYChannel": PTYChannel,
+        "WezTermChannel": WezTermChannel,
         "ParserType": ParserType,
         "BackendType": BackendType,
-        "BACKEND": backend_type,  # Default backend for channels
         "channels": state.channels,  # Channel tracking dict
         "_state": state,
     }
@@ -159,12 +156,11 @@ async def run_interactive(
     # Track current DAG
     current_dag: DAG | None = None
 
-    backend_name = "WezTerm" if backend_type == BackendType.WEZTERM else "PTY"
     print("=" * 50)
-    print(f"Nerve DAG REPL - Interactive Mode ({backend_name})")
+    print("Nerve DAG REPL - Interactive Mode")
     print("=" * 50)
     print("\nType 'help' for syntax guide.")
-    print(f"Default backend: {backend_name} (use BACKEND variable)")
+    print("Use PTYChannel or WezTermChannel to create channels")
     print("Commands: help, channels, clear, show, validate, dry, run, exit")
     print("-" * 50)
 
@@ -292,7 +288,7 @@ async def run_interactive(
                 # Track channels created
                 for name, value in state.namespace.items():
                     if hasattr(value, "channel_type") and hasattr(value, "state"):
-                        if name not in ("TerminalChannel", "ParserType"):
+                        if name not in ("PTYChannel", "WezTermChannel", "ParserType"):
                             state.channels[name] = value
 
                 # Track DAG
@@ -312,35 +308,28 @@ async def run_interactive(
 async def run_from_file(
     filepath: str,
     dry_run: bool = False,
-    backend_type: Any = None,
 ):
     """Load and run DAG from a Python file.
 
     Args:
         filepath: Path to Python file containing DAG definition.
         dry_run: If True, only show execution order.
-        backend_type: Backend type for channels (BackendType.PTY or BackendType.WEZTERM).
     """
-    from nerve.core import BackendType, ParserType, TerminalChannel
+    from nerve.core import BackendType, ParserType, PTYChannel, WezTermChannel
     from nerve.core.dag import DAG, Task
-
-    # Default to PTY if not specified
-    if backend_type is None:
-        backend_type = BackendType.PTY
 
     namespace = {
         "asyncio": asyncio,
         "DAG": DAG,
         "Task": Task,
-        "TerminalChannel": TerminalChannel,
+        "PTYChannel": PTYChannel,
+        "WezTermChannel": WezTermChannel,
         "ParserType": ParserType,
         "BackendType": BackendType,
-        "BACKEND": backend_type,  # Default backend for this file
         "__name__": "__nerve_repl__",
     }
 
-    backend_name = "WezTerm" if backend_type == BackendType.WEZTERM else "PTY"
-    print(f"Loading: {filepath} (backend: {backend_name})")
+    print(f"Loading: {filepath}")
     print("=" * 50)
 
     try:

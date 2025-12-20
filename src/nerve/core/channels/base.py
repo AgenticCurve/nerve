@@ -52,8 +52,7 @@ class Channel(Protocol):
         write(data)          Low-level raw write
 
     Example:
-        >>> channel = await TerminalChannel.create("my-channel")
-        >>> await channel.run("claude")
+        >>> channel = await PTYChannel.create("my-channel", command="claude")
         >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
         >>> print(response.raw)
         >>> await channel.close()

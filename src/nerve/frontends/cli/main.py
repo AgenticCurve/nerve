@@ -877,7 +877,7 @@ def _run_cli() -> None:
                     click.echo(f"{'ID':<12} {'COMMAND':<15} {'BACKEND':<10} {'STATE'}")
                     click.echo("-" * 50)
                     for info in channels_info:
-                        cmd = info.get("command", "?")[:14]
+                        cmd = (info.get("command") or "-")[:14]
                         click.echo(
                             f"{info['id']:<12} {cmd:<15} "
                             f"{info['backend']:<10} {info['state']}"

@@ -3,7 +3,8 @@
 A Channel represents something you can send input to and get output from.
 This abstraction unifies different backends:
 
-- Terminal channels: PTY processes, WezTerm panes
+- PTYChannel: Direct pseudo-terminal process management
+- WezTermChannel: WezTerm pane interaction via CLI
 - SQL channels: Database connections (future)
 - HTTP channels: REST endpoints (future)
 
@@ -12,18 +13,16 @@ You specify how to parse output per-command, allowing flexible
 interaction with the same channel.
 
 Example:
-    >>> from nerve.core.channels import TerminalChannel
+    >>> from nerve.core.channels import PTYChannel, WezTermChannel
     >>> from nerve.core.types import ParserType
     >>>
-    >>> # Create a terminal channel
-    >>> channel = await TerminalChannel.create(command="claude")
-    >>>
-    >>> # Send with Claude parsing
+    >>> # Create a PTY channel (you own the process)
+    >>> channel = await PTYChannel.create("my-shell", command="claude")
     >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     >>>
-    >>> # Same channel, different parsing
-    >>> await channel.send("exit")
-    >>> response = await channel.send("echo hi", parser=ParserType.NONE)
+    >>> # Or attach to WezTerm pane (WezTerm owns the pane)
+    >>> channel = await WezTermChannel.attach("claude-pane", pane_id="4")
+    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     >>>
     >>> await channel.close()
 
@@ -33,7 +32,8 @@ Classes:
     ChannelType: Supported channel types.
     ChannelConfig: Base configuration.
     ChannelInfo: Serializable channel info.
-    TerminalChannel: Terminal-based channel (PTY, WezTerm).
+    PTYChannel: PTY-based terminal channel.
+    WezTermChannel: WezTerm-based terminal channel.
 """
 
 from nerve.core.channels.base import (
@@ -43,7 +43,8 @@ from nerve.core.channels.base import (
     ChannelState,
     ChannelType,
 )
-from nerve.core.channels.terminal import TerminalChannel, TerminalConfig
+from nerve.core.channels.pty import PTYChannel, PTYConfig
+from nerve.core.channels.wezterm import WezTermChannel, WezTermConfig
 
 __all__ = [
     # Protocol and types
@@ -53,6 +54,8 @@ __all__ = [
     "ChannelConfig",
     "ChannelInfo",
     # Implementations
-    "TerminalChannel",
-    "TerminalConfig",
+    "PTYChannel",
+    "PTYConfig",
+    "WezTermChannel",
+    "WezTermConfig",
 ]

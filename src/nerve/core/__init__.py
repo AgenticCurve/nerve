@@ -12,7 +12,7 @@ It's just pure Python primitives that can be used anywhere:
 - As building blocks for servers
 
 Architecture:
-    channels/   Channel abstraction (terminal, SQL, HTTP)
+    channels/   Channel abstraction (PTY, WezTerm, SQL, HTTP)
     pty/        PTY/WezTerm backends for terminal channels
     parsers/    Output parsers (Claude, Gemini, None)
     session/    Session grouping and management
@@ -24,31 +24,32 @@ Key Concepts:
     Parser:     How to interpret output (specified per-command, not per-channel)
     Session:    Optional grouping of channels with metadata
 
-Example (direct channel usage):
-    >>> from nerve.core import TerminalChannel, ParserType
+Example (PTY channel - you own the process):
+    >>> from nerve.core import PTYChannel, ParserType
     >>>
     >>> async def main():
-    ...     # Create a terminal channel
-    ...     channel = await TerminalChannel.create(command="claude")
-    ...
-    ...     # Send with Claude parsing
+    ...     channel = await PTYChannel.create("my-claude", command="claude")
     ...     response = await channel.send("Hello!", parser=ParserType.CLAUDE)
     ...     print(response.sections)
-    ...
-    ...     # Same channel, different command
-    ...     await channel.send("exit")
-    ...     response = await channel.send("echo hi", parser=ParserType.NONE)
-    ...
+    ...     await channel.close()
+
+Example (WezTerm channel - attach to existing pane):
+    >>> from nerve.core import WezTermChannel, ParserType
+    >>>
+    >>> async def main():
+    ...     channel = await WezTermChannel.attach("claude-pane", pane_id="4")
+    ...     response = await channel.send("Hello!", parser=ParserType.CLAUDE)
+    ...     print(response.sections)
     ...     await channel.close()
 
 Example (with session grouping):
-    >>> from nerve.core import Session, TerminalChannel, ParserType
+    >>> from nerve.core import Session, PTYChannel, ParserType
     >>>
     >>> async def main():
     ...     session = Session(name="my-project")
     ...
-    ...     claude = await TerminalChannel.create(command="claude")
-    ...     shell = await TerminalChannel.create(command="bash")
+    ...     claude = await PTYChannel.create("claude", command="claude")
+    ...     shell = await PTYChannel.create("shell", command="bash")
     ...
     ...     session.add("claude", claude)
     ...     session.add("shell", shell)
@@ -63,8 +64,10 @@ from nerve.core.channels import (
     ChannelInfo,
     ChannelState,
     ChannelType,
-    TerminalChannel,
-    TerminalConfig,
+    PTYChannel,
+    PTYConfig,
+    WezTermChannel,
+    WezTermConfig,
 )
 from nerve.core.dag import DAG, Task, TaskStatus
 from nerve.core.parsers import ClaudeParser, GeminiParser, NoneParser, get_parser
@@ -103,8 +106,11 @@ __all__ = [
     "ChannelType",
     "ChannelConfig",
     "ChannelInfo",
-    "TerminalChannel",
-    "TerminalConfig",
+    # Channel types
+    "PTYChannel",
+    "PTYConfig",
+    "WezTermChannel",
+    "WezTermConfig",
     # Types
     "ParserType",
     "SessionState",
