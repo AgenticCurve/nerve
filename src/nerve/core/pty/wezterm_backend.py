@@ -96,18 +96,41 @@ class WezTermBackend(Backend):
     async def start(self) -> None:
         """Spawn the command in a new WezTerm pane.
 
-        Creates a new pane (split) in the current WezTerm window
-        running the specified command.
+        Creates a new pane (split) in the current WezTerm window.
+        If no command specified, spawns with default shell.
+        If WezTerm is not running, starts it first.
 
         Raises:
             RuntimeError: If WezTerm is not available or spawn fails.
         """
-        cmd = ["wezterm", "cli", "spawn", "--"]
-        cmd.extend(self._command)
+        # Ensure WezTerm is running first
+        if not await ensure_wezterm_running():
+            raise RuntimeError(
+                "Failed to start WezTerm. Please start WezTerm manually."
+            )
+
+        cmd = ["wezterm", "cli", "spawn"]
+
+        # If not running from within WezTerm, we need to specify where to spawn
+        import os
+        if not os.environ.get("WEZTERM_PANE"):
+            # Check if there are existing panes we can spawn into
+            existing_panes = list_wezterm_panes()
+            if existing_panes:
+                # Use the first existing pane's window
+                first_pane_id = str(existing_panes[0].get("pane_id", ""))
+                if first_pane_id:
+                    cmd.extend(["--pane-id", first_pane_id])
+            else:
+                # No existing panes, create a new window
+                cmd.append("--new-window")
 
         if self._config.cwd:
-            # Insert --cwd before the --
-            cmd = ["wezterm", "cli", "spawn", "--cwd", self._config.cwd, "--"]
+            cmd.extend(["--cwd", self._config.cwd])
+
+        # Only add command if provided
+        if self._command:
+            cmd.append("--")
             cmd.extend(self._command)
 
         try:
@@ -238,11 +261,12 @@ class WezTermBackend(Backend):
                 # Pane might be gone
                 break
 
-    def _get_pane_text_sync(self, start_line: int | None = None) -> str:
+    def _get_pane_text_sync(self, start_line: int | None = -50000) -> str:
         """Synchronously get text content from the pane.
 
         Args:
             start_line: Starting line (negative for scrollback).
+                        Default is -50000 to include scrollback buffer.
 
         Returns:
             Pane text content.
@@ -415,10 +439,10 @@ def list_wezterm_panes() -> list[dict]:
 
 
 def is_wezterm_available() -> bool:
-    """Check if WezTerm CLI is available.
+    """Check if WezTerm CLI is available and WezTerm is running.
 
     Returns:
-        True if wezterm CLI is available and working.
+        True if wezterm CLI is available and WezTerm is running.
     """
     try:
         result = subprocess.run(
@@ -429,3 +453,67 @@ def is_wezterm_available() -> bool:
         return result.returncode == 0
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
+
+
+def is_wezterm_installed() -> bool:
+    """Check if WezTerm is installed (CLI exists).
+
+    Returns:
+        True if wezterm CLI is found in PATH.
+    """
+    try:
+        result = subprocess.run(
+            ["which", "wezterm"],
+            capture_output=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+async def ensure_wezterm_running(timeout: float = 10.0) -> bool:
+    """Ensure WezTerm is running, starting it if necessary.
+
+    Args:
+        timeout: Max time to wait for WezTerm to start.
+
+    Returns:
+        True if WezTerm is running after this call.
+
+    Raises:
+        RuntimeError: If WezTerm is not installed.
+    """
+    # Already running?
+    if is_wezterm_available():
+        return True
+
+    # Check if installed
+    if not is_wezterm_installed():
+        raise RuntimeError(
+            "WezTerm is not installed. Install it from https://wezfurlong.org/wezterm/"
+        )
+
+    # Start WezTerm in the background
+    import asyncio
+
+    try:
+        # Start WezTerm GUI - it will daemonize itself
+        process = await asyncio.create_subprocess_exec(
+            "wezterm", "start", "--",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        # Don't wait for it - it daemonizes
+
+        # Wait for WezTerm to be ready
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            await asyncio.sleep(0.5)
+            if is_wezterm_available():
+                return True
+
+        return False
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to start WezTerm: {e}") from e

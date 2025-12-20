@@ -37,12 +37,8 @@ class ClaudeParser(Parser):
     def is_ready(self, content: str) -> bool:
         """Check if Claude is ready for input.
 
-        Two conditions must be met:
-        1. Status line shows "-- INSERT --" or "? for shortcuts"
-        2. NO "esc to interrupt" or "esc to cancel" anywhere in the bottom portion
-
-        Claude shows "esc to interrupt" in both the content area (e.g., "Considering...")
-        and potentially in older status lines, so we check the entire visible area.
+        Simple logic: if "esc to interrupt" is NOT in the last 50 lines,
+        Claude is done processing.
 
         Args:
             content: Terminal output to check.
@@ -54,25 +50,14 @@ class ClaudeParser(Parser):
         if len(lines) < 3:
             return False
 
-        # Check bottom 50 lines for status and processing indicators
+        # Check bottom 50 lines
         check_lines = lines[-50:] if len(lines) > 50 else lines
 
-        # Must have a status line
-        has_status = False
-        for line in check_lines:
-            line_lower = line.lower()
-            if "-- insert --" in line_lower or "? for shortcuts" in line_lower:
-                has_status = True
-                break
-
-        if not has_status:
-            return False
-
-        # Must NOT have any "esc to interrupt" or "esc to cancel" in the visible area
+        # If "esc to interrupt" or "esc to cancel" is present, still processing
         for line in check_lines:
             line_lower = line.lower()
             if "esc to interrupt" in line_lower or "esc to cancel" in line_lower:
-                return False  # Still processing
+                return False
 
         return True
 
@@ -98,18 +83,36 @@ class ClaudeParser(Parser):
         )
 
     def _extract_response(self, content: str) -> str:
-        """Extract response between last user prompt and current prompt."""
+        """Extract response between last user prompt and current prompt.
+
+        Handles two cases:
+        1. Normal: line starting with "> " followed by actual content
+        2. Auto-compacted: "Conversation compacted" separator line
+        """
         lines = content.split("\n")
 
+        # First, check for compaction separator (takes precedence)
+        compaction_idx = -1
+        for i, line in enumerate(lines):
+            if "Conversation compacted" in line or "conversation compacted" in line:
+                compaction_idx = i
+
         # Find last user prompt ("> " followed by actual text, not suggestions)
-        start_idx = -1
+        last_prompt_idx = -1
         for i, line in enumerate(lines):
             if line.startswith("> ") and len(line.strip()) > 1:
                 if "(tab to accept)" not in line:
-                    start_idx = i
+                    last_prompt_idx = i
 
-        if start_idx == -1:
-            # Try to find response markers directly
+        # Determine start point
+        if compaction_idx > last_prompt_idx:
+            # Compaction happened after last prompt - use compaction as start
+            start_idx = compaction_idx
+        elif last_prompt_idx != -1:
+            # Normal case - use last prompt
+            start_idx = last_prompt_idx
+        else:
+            # Fallback: if content starts with Claude response markers, use beginning
             for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith("∴") or stripped.startswith("⏺"):
@@ -126,17 +129,105 @@ class ClaudeParser(Parser):
                     stripped = lines[j].strip()
                     if stripped == ">" or stripped == "> ":
                         end_idx = j
+                        # Also skip dash line before prompt if present
+                        if j > start_idx and self._is_dash_line(lines[j - 1].strip()):
+                            end_idx = j - 1
                         break
                     if stripped.startswith(">") and "(tab to accept)" in stripped:
                         end_idx = j
+                        # Also skip dash line before prompt if present
+                        if j > start_idx and self._is_dash_line(lines[j - 1].strip()):
+                            end_idx = j - 1
                         break
                 break
 
         response_lines = lines[start_idx + 1 : end_idx]
+
+        # Strip trailing prompt/status area (dash line followed by ">")
+        response_lines = self._strip_trailing_prompt(response_lines)
+
         return "\n".join(response_lines)
 
+    def _strip_trailing_prompt(self, lines: list[str]) -> list[str]:
+        """Strip trailing prompt/status area from response.
+
+        Strips these patterns from the end:
+        1. Dash line followed by ">" (prompt separator)
+        2. Rating prompt ("How is Claude doing this session?")
+
+        Args:
+            lines: Response lines to process.
+
+        Returns:
+            Lines with trailing prompt area removed.
+        """
+        if len(lines) < 2:
+            return lines
+
+        # First, strip rating prompt if present at the end
+        lines = self._strip_rating_prompt(lines)
+
+        # Then, strip dash line + ">" pattern
+        for i in range(len(lines) - 1, 0, -1):
+            line = lines[i].strip()
+            prev_line = lines[i - 1].strip()
+
+            # Check if current line starts with ">" and previous is all dashes
+            if line.startswith(">") and self._is_dash_line(prev_line):
+                # Found the pattern - return everything before the dash line
+                return lines[: i - 1]
+
+        return lines
+
+    def _strip_rating_prompt(self, lines: list[str]) -> list[str]:
+        """Strip Claude rating prompt from end of response.
+
+        Removes lines like:
+        ● How is Claude doing this session? (optional)
+          1: Bad    2: Fine   3: Good   0: Dismiss
+
+        Args:
+            lines: Response lines to process.
+
+        Returns:
+            Lines with rating prompt removed.
+        """
+        if len(lines) < 2:
+            return lines
+
+        # Search from the end for the rating prompt marker
+        for i in range(len(lines) - 1, max(0, len(lines) - 10), -1):
+            line = lines[i].strip()
+            if "How is Claude doing this session" in line:
+                # Found rating prompt - return everything before it
+                return lines[:i]
+
+        return lines
+
+    def _is_dash_line(self, line: str) -> bool:
+        """Check if a line is primarily horizontal dashes.
+
+        Args:
+            line: Line to check.
+
+        Returns:
+            True if line is mostly dash characters (─).
+        """
+        if not line:
+            return False
+        # Count dash characters (box drawing horizontal line)
+        dash_count = line.count("─")
+        # Consider it a dash line if > 50% are dashes and at least 10 dashes
+        return dash_count >= 10 and dash_count / len(line) > 0.5
+
     def _parse_sections(self, response: str) -> list[Section]:
-        """Parse response text into sections."""
+        """Parse response text into sections.
+
+        Handles:
+        - Thinking blocks (∴ Thinking...)
+        - Tool calls (⏺ ToolName(...) with ⎿ results)
+        - Text responses (⏺ followed by text)
+        """
         sections: list[Section] = []
         lines = response.split("\n")
         i = 0
@@ -146,11 +237,13 @@ class ClaudeParser(Parser):
             stripped = line.strip()
 
             # Thinking section
-            if stripped.startswith("∴"):
+            if "∴ Thinking" in line or stripped.startswith("∴"):
                 content_lines: list[str] = []
                 i += 1
+                # Collect indented content until next section marker
                 while i < len(lines):
-                    if lines[i].strip().startswith(("⏺", "∴")):
+                    next_stripped = lines[i].strip()
+                    if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
                         break
                     content_lines.append(lines[i])
                     i += 1
@@ -166,25 +259,74 @@ class ClaudeParser(Parser):
             if stripped.startswith("⏺"):
                 tool_match = re.match(r"^⏺\s+(\w+)\((.*)$", stripped)
                 if tool_match:
-                    # Tool call
+                    # Tool call - collect full args and result
                     tool_name = tool_match.group(1)
+                    args_start = tool_match.group(2)
+
+                    # Collect full args (may span multiple lines)
+                    args_lines = [args_start]
+                    i += 1
+                    while i < len(lines) and not lines[i].strip().startswith("⎿"):
+                        next_stripped = lines[i].strip()
+                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                            break
+                        args_lines.append(lines[i])
+                        i += 1
+
+                    # Clean up args - remove trailing )
+                    args_text = "\n".join(args_lines).strip()
+                    if args_text.endswith(")"):
+                        args_text = args_text[:-1]
+
+                    # Collect result (starts with ⎿)
+                    result_lines: list[str] = []
+                    while i < len(lines):
+                        result_line = lines[i]
+                        result_stripped = result_line.strip()
+                        if result_stripped.startswith("⎿"):
+                            # First result line - remove the ⎿ prefix
+                            result_lines.append(result_stripped[1:].strip())
+                            i += 1
+                        elif result_stripped.startswith("⏺") or result_stripped.startswith("∴"):
+                            break
+                        elif result_lines:  # Continue collecting result
+                            result_lines.append(result_line)
+                            i += 1
+                        else:
+                            i += 1
+                            break
+
                     sections.append(
                         Section(
                             type="tool_call",
-                            content=stripped,
-                            metadata={"tool": tool_name},
+                            content="\n".join(result_lines).strip(),
+                            metadata={
+                                "tool": tool_name,
+                                "args": args_text.strip(),
+                            },
                         )
                     )
                 else:
-                    # Text response
-                    text_content = stripped[1:].strip()
-                    sections.append(
-                        Section(
-                            type="text",
-                            content=text_content,
+                    # Text response - collect continuation lines
+                    text_content = stripped[1:].strip()  # Remove ⏺
+                    content_lines = [text_content] if text_content else []
+                    i += 1
+                    # Collect until next section marker
+                    while i < len(lines):
+                        next_stripped = lines[i].strip()
+                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                            break
+                        if next_stripped:
+                            content_lines.append(lines[i])
+                        i += 1
+
+                    if content_lines:
+                        sections.append(
+                            Section(
+                                type="text",
+                                content="\n".join(content_lines).strip(),
+                            )
                         )
-                    )
-                i += 1
                 continue
 
             i += 1

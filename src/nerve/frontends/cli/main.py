@@ -185,19 +185,33 @@ def _run_cli() -> None:
             with open(tcp_file, "w") as f:
                 f.write(f"{host}:{port}")
 
-        # Handle SIGTERM for graceful shutdown (important for WezTerm cleanup)
-        def handle_sigterm(signum, frame):
-            click.echo("\nReceived SIGTERM, shutting down...")
-            engine._shutdown_requested = True
-
-        sig.signal(sig.SIGTERM, handle_sigterm)
-
         async def run():
+            loop = asyncio.get_running_loop()
+            shutdown_event = asyncio.Event()
+            shutdown_count = [0]  # Use list for nonlocal in closure
+
+            def handle_shutdown(sig_name: str):
+                shutdown_count[0] += 1
+                if shutdown_count[0] == 1:
+                    click.echo(f"\nReceived {sig_name}, shutting down gracefully...")
+                    click.echo("(Cleaning up channels, press Ctrl+C again to force quit)")
+                    engine._shutdown_requested = True
+                    shutdown_event.set()
+                else:
+                    click.echo("\nForce quitting...")
+                    os._exit(1)  # Immediate exit
+
+            # Use asyncio signal handlers for proper event loop integration
+            loop.add_signal_handler(sig.SIGTERM, lambda: handle_shutdown("SIGTERM"))
+            loop.add_signal_handler(sig.SIGINT, lambda: handle_shutdown("SIGINT"))
+
             try:
                 await transport.serve(engine)
             finally:
                 # Clean up all channels before exiting
+                click.echo("Cleaning up channels...")
                 await engine._channel_manager.close_all()
+                click.echo("Cleanup complete.")
                 # Clean up tracking files on exit
                 if os.path.exists(pid_file):
                     os.unlink(pid_file)
@@ -205,6 +219,9 @@ def _run_cli() -> None:
                     os.unlink(http_file)
                 if transport_type == "tcp" and os.path.exists(tcp_file):
                     os.unlink(tcp_file)
+                # Remove signal handlers
+                loop.remove_signal_handler(sig.SIGTERM)
+                loop.remove_signal_handler(sig.SIGINT)
 
         asyncio.run(run())
 
@@ -767,9 +784,9 @@ def _run_cli() -> None:
     @click.option(
         "--backend",
         "-b",
-        type=click.Choice(["pty", "wezterm"]),
+        type=click.Choice(["pty", "wezterm", "claude-wezterm"]),
         default="pty",
-        help="Backend (pty or wezterm)",
+        help="Backend (pty, wezterm, or claude-wezterm)",
     )
     @click.option("--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)")
     def channel_create(
@@ -1015,21 +1032,20 @@ def _run_cli() -> None:
     @click.argument("channel_name")
     @click.argument("text")
     @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
-    @click.option("--stream", is_flag=True, help="Stream output in real-time")
     @click.option(
         "--parser",
         "-p",
         type=click.Choice(["claude", "gemini", "none"]),
-        default="none",
-        help="Parser for output (claude, gemini, none)",
+        default=None,
+        help="Parser for output. Default: auto-detect from channel type.",
     )
     @click.option(
         "--submit",
         default=None,
         help="Submit sequence (e.g., '\\n', '\\r', '\\x1b\\r'). Default: auto based on parser.",
     )
-    def channel_send(channel_name: str, text: str, server_name: str, stream: bool, parser: str, submit: str | None):
-        """Send input to a channel.
+    def channel_send(channel_name: str, text: str, server_name: str, parser: str | None, submit: str | None):
+        """Send input to a channel and get JSON response.
 
         **Arguments:**
 
@@ -1039,10 +1055,12 @@ def _run_cli() -> None:
 
         **Examples:**
 
-            nerve server channel send my-claude "Explain this code" --server myproject --parser claude
+            nerve server channel send my-claude "Explain this code" --server myproject
 
-            nerve server channel send my-claude "Hello" --server myproject --stream
+            nerve server channel send my-shell "ls" --server myproject --parser none
         """
+        import json
+
         from nerve.server.protocols import Command, CommandType
 
         ClientClass, connection_arg = get_server_client(server_name)
@@ -1051,22 +1069,13 @@ def _run_cli() -> None:
             client = ClientClass(connection_arg)
             await client.connect()
 
-            if stream:
-
-                async def print_events():
-                    async for event in client.events():
-                        if event.channel_id == channel_name:
-                            if event.type.name == "OUTPUT_CHUNK":
-                                click.echo(event.data.get("chunk", ""), nl=False)
-
-                event_task = asyncio.create_task(print_events())
-
             params = {
                 "channel_id": channel_name,
                 "text": text,
-                "stream": stream,
-                "parser": parser,
             }
+            # Only include parser if explicitly set (let channel use its default)
+            if parser is not None:
+                params["parser"] = parser
             # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
             if submit:
                 params["submit"] = submit.encode().decode("unicode_escape")
@@ -1078,13 +1087,13 @@ def _run_cli() -> None:
                 )
             )
 
-            if stream:
-                await asyncio.sleep(0.5)
-                event_task.cancel()
-                click.echo()
-
             if not result.success:
-                click.echo(f"Error: {result.error}", err=True)
+                # Output error as JSON
+                click.echo(json.dumps({"error": result.error}, indent=2))
+            elif result.data:
+                # Output response as JSON
+                response = result.data.get("response", {})
+                click.echo(json.dumps(response, indent=2))
 
             await client.disconnect()
 
@@ -1425,24 +1434,25 @@ def _run_cli() -> None:
             nerve wezterm spawn --cwd /path/to/project
         """
         from nerve.core.pty import BackendConfig
-        from nerve.core.pty.wezterm_backend import WezTermBackend, is_wezterm_available
-
-        if not is_wezterm_available():
-            click.echo("WezTerm is not running or wezterm CLI is not available.", err=True)
-            sys.exit(1)
+        from nerve.core.pty.wezterm_backend import WezTermBackend
 
         command = cmd.split() if " " in cmd else [cmd]
         config = BackendConfig(cwd=cwd)
 
         async def run():
             backend = WezTermBackend(command, config)
+            # start() will auto-launch WezTerm if not running
             await backend.start()
             return backend.pane_id
 
-        pane_id = asyncio.run(run())
-        click.echo(f"Created pane: {pane_id}")
-        if name:
-            click.echo(f"Name: {name}")
+        try:
+            pane_id = asyncio.run(run())
+            click.echo(f"Created pane: {pane_id}")
+            if name:
+                click.echo(f"Name: {name}")
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
 
     @wezterm.command("send")
     @click.argument("pane_id")

@@ -17,15 +17,12 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = []
-
-[project.optional-dependencies]
-server = [
+dependencies = [
     "aiohttp>=3.9.0",
-]
-cli = [
     "rich-click>=1.7.0",
 ]
+
+[project.optional-dependencies]
 mcp = [
     "mcp>=1.0.0",
 ]
@@ -35,7 +32,7 @@ dev = [
     "mypy>=1.8.0",
     "ruff>=0.2.0",
 ]
-all = ["nerve[server,cli,mcp,dev]"]
+all = ["nerve[mcp,dev]"]
 
 [project.scripts]
 nerve = "nerve.frontends.cli.main:main"

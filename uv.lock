@@ -705,19 +705,18 @@ wheels = [
 [[package]]
 name = "nerve"
 source = { editable = "." }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "rich-click" },
+]
 
 [package.optional-dependencies]
 all = [
-    { name = "aiohttp" },
     { name = "mcp" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "rich-click" },
     { name = "ruff" },
-]
-cli = [
-    { name = "rich-click" },
 ]
 dev = [
     { name = "mypy" },
@@ -728,14 +727,10 @@ dev = [
 mcp = [
     { name = "mcp" },
 ]
-server = [
-    { name = "aiohttp" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", marker = "extra == 'all'", specifier = ">=3.9.0" },
-    { name = "aiohttp", marker = "extra == 'server'", specifier = ">=3.9.0" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.0.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0.0" },
     { name = "mypy", marker = "extra == 'all'", specifier = ">=1.8.0" },
@@ -744,12 +739,11 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'all'", specifier = ">=0.23.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
-    { name = "rich-click", marker = "extra == 'all'", specifier = ">=1.7.0" },
-    { name = "rich-click", marker = "extra == 'cli'", specifier = ">=1.7.0" },
+    { name = "rich-click", specifier = ">=1.7.0" },
     { name = "ruff", marker = "extra == 'all'", specifier = ">=0.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.0" },
 ]
-provides-extras = ["all", "cli", "dev", "mcp", "server"]
+provides-extras = ["all", "dev", "mcp"]
 
 [[package]]
 name = "packaging"

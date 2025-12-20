@@ -13,6 +13,7 @@ from typing import Any
 
 from nerve.core import DAG, ChannelManager, Task
 from nerve.core.channels import ChannelState
+from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
 from nerve.core.channels.pty import PTYChannel
 from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.parsers import get_parser
@@ -254,8 +255,7 @@ class NerveEngine:
         """Send input to a channel."""
         channel_id = params.get("channel_id")
         text = params["text"]
-        parser_str = params.get("parser", "none")
-        parser_type = ParserType(parser_str)
+        parser_str = params.get("parser")  # None means use channel's default
         stream = params.get("stream", False)
         submit = params.get("submit")  # Custom submit sequence (optional)
 
@@ -263,11 +263,15 @@ class NerveEngine:
         if not channel:
             raise ValueError(f"Channel not found: {channel_id}")
 
+        # Convert parser string to ParserType, or None to use channel's default
+        parser_type = ParserType(parser_str) if parser_str else None
+
         await self._emit(EventType.CHANNEL_BUSY, channel_id=channel_id)
 
         if stream:
             # Stream output chunks as events
-            async for chunk in channel.send_stream(text, parser=parser_type):
+            actual_parser = parser_type or ParserType.NONE
+            async for chunk in channel.send_stream(text, parser=actual_parser):
                 await self._emit(
                     EventType.OUTPUT_CHUNK,
                     data={"chunk": chunk},
@@ -275,10 +279,10 @@ class NerveEngine:
                 )
 
             # Parse final response
-            parser = get_parser(parser_type)
+            parser = get_parser(actual_parser)
             response = parser.parse(channel.buffer)
         else:
-            # Wait for complete response
+            # Wait for complete response (channel uses its default parser if None)
             response = await channel.send(text, parser=parser_type, submit=submit)
 
         await self._emit(
@@ -473,7 +477,7 @@ class NerveEngine:
     # Internal
     # =========================================================================
 
-    async def _monitor_channel(self, channel: PTYChannel | WezTermChannel) -> None:
+    async def _monitor_channel(self, channel: PTYChannel | WezTermChannel | ClaudeOnWezTermChannel) -> None:
         """Monitor channel for state changes.
 
         This runs in the background and emits events when

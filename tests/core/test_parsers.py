@@ -57,16 +57,16 @@ class TestClaudeParserRealWorld:
     the parser against production output patterns.
     """
 
-    def test_sample_02_not_ready_due_to_running_command(self, sample_pane_02):
-        """Test sample_pane_02 is NOT ready - has running command in status.
+    def test_sample_02_is_ready(self, sample_pane_02):
+        """Test sample_pane_02 is ready (no 'esc to interrupt' present).
 
-        This sample has "(running)" in status line indicating a background
-        command is still executing, so Claude is not ready for new input.
+        The new is_ready logic only checks for 'esc to interrupt' in the
+        last 50 lines. If not present, Claude is ready for new input.
         """
         parser = ClaudeParser()
-        # Contains "(running)" in status line
-        assert "(running)" in sample_pane_02
-        assert parser.is_ready(sample_pane_02) is False
+        # Does not contain "esc to interrupt"
+        assert "esc to interrupt" not in sample_pane_02.lower()
+        assert parser.is_ready(sample_pane_02) is True
 
     def test_sample_02_token_count(self, sample_pane_02):
         """Test sample_pane_02 token count extraction."""
@@ -146,16 +146,16 @@ class TestClaudeParserRealWorld:
         # Either in raw or in text sections, should mention the count
         assert "20983267" in response.raw or "20,983,267" in response.raw
 
-    def test_sample_04_not_ready_due_to_running_command(self, sample_pane_04):
-        """Test sample_pane_04 is NOT ready - has running command in status.
+    def test_sample_04_is_ready(self, sample_pane_04):
+        """Test sample_pane_04 is ready (no 'esc to interrupt' present).
 
-        This sample has "(running)" in status line indicating a background
-        command is still executing, so Claude is not ready for new input.
+        The new is_ready logic only checks for 'esc to interrupt' in the
+        last 50 lines. If not present, Claude is ready for new input.
         """
         parser = ClaudeParser()
-        # Contains "(running)" in status line
-        assert "(running)" in sample_pane_04
-        assert parser.is_ready(sample_pane_04) is False
+        # Does not contain "esc to interrupt"
+        assert "esc to interrupt" not in sample_pane_04.lower()
+        assert parser.is_ready(sample_pane_04) is True
 
     def test_sample_04_token_count(self, sample_pane_04):
         """Test sample_pane_04 token count extraction."""
@@ -376,15 +376,38 @@ class TestClaudeParserEdgeCases:
         # Should extract response after "Actual user question", not after suggestion
         assert "Some response" in response.raw
 
-    def test_compacted_conversation_marker(self, sample_pane_03):
-        """Test parser handles conversation compaction marker."""
+    def test_compacted_conversation_marker(self):
+        """Test parser extracts response after compaction marker."""
         parser = ClaudeParser()
-        # sample_pane_03 contains "Conversation compacted" marker
-        assert "Conversation compacted" in sample_pane_03
+        # Simulate compacted conversation where the last user prompt is BEFORE
+        # the compaction marker, but the response is AFTER
+        content = """
+> Old prompt that was compacted away
 
-        # Parser should still work correctly
-        response = parser.parse(sample_pane_03)
+──── Conversation compacted ────────────────────────────────
+
+∴ Thinking…
+  Working on the new request after compaction.
+
+⏺ The answer to your question is 42.
+
+───────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────
+  -- INSERT --                                    5000 tokens
+"""
+        # Parser should extract response after compaction, not before
+        response = parser.parse(content)
         assert response.is_ready is True
+        assert "42" in response.raw
+        assert "Old prompt" not in response.raw
+
+        # Should have thinking and text sections
+        thinking = [s for s in response.sections if s.type == "thinking"]
+        text = [s for s in response.sections if s.type == "text"]
+        assert len(thinking) >= 1
+        assert len(text) >= 1
+        assert "42" in text[0].content
 
     def test_rating_prompt_handling(self, sample_pane_03):
         """Test parser handles session rating prompt."""
@@ -406,6 +429,33 @@ class TestClaudeParserSectionMetadata:
 
         tool_sections = [s for s in response.sections if s.type == "tool_call"]
         assert all(s.tool is not None for s in tool_sections)
+
+    def test_tool_call_has_args(self, sample_claude_output_with_tool):
+        """Test tool call sections have args in metadata."""
+        parser = ClaudeParser()
+        response = parser.parse(sample_claude_output_with_tool)
+
+        tool_sections = [s for s in response.sections if s.type == "tool_call"]
+        assert len(tool_sections) >= 1
+
+        # First tool should be Read with file_path arg
+        read_tool = tool_sections[0]
+        assert read_tool.tool == "Read"
+        assert "args" in read_tool.metadata
+        assert 'file_path="main.py"' in read_tool.metadata["args"]
+
+    def test_tool_call_content_is_result(self, sample_claude_output_with_tool):
+        """Test tool call content is the result (from ⎿ lines)."""
+        parser = ClaudeParser()
+        response = parser.parse(sample_claude_output_with_tool)
+
+        tool_sections = [s for s in response.sections if s.type == "tool_call"]
+        assert len(tool_sections) >= 1
+
+        # The Read tool result should contain the file contents
+        read_tool = tool_sections[0]
+        assert "def main():" in read_tool.content
+        assert 'print("Hello, World!")' in read_tool.content
 
     def test_thinking_has_content(self, sample_claude_output):
         """Test thinking sections have content."""

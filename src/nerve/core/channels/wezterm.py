@@ -98,8 +98,8 @@ class WezTermChannel:
 
         # Normalize command
         if command is None:
-            command_list = ["bash"]
-            command_str = "bash"
+            command_list = []  # Empty = use default shell
+            command_str = None
         elif isinstance(command, str):
             command_str = command
             command_list = command.split()
@@ -185,7 +185,7 @@ class WezTermChannel:
     async def send(
         self,
         input: str,
-        parser: ParserType = ParserType.NONE,
+        parser: ParserType | None = None,
         timeout: float | None = None,
         submit: str | None = None,
     ) -> ParsedResponse:
@@ -193,7 +193,7 @@ class WezTermChannel:
 
         Args:
             input: Text to send.
-            parser: How to parse the response (CLAUDE, GEMINI, NONE).
+            parser: How to parse the response (CLAUDE, GEMINI, NONE). None defaults to NONE.
             timeout: Response timeout in seconds.
             submit: Submit sequence.
 
@@ -207,13 +207,16 @@ class WezTermChannel:
         if self.state == ChannelState.CLOSED:
             raise RuntimeError("Channel is closed")
 
-        is_claude = parser == ParserType.CLAUDE and submit is None
+        # Default to NONE parser if not specified
+        actual_parser = parser if parser is not None else ParserType.NONE
+
+        is_claude = actual_parser == ParserType.CLAUDE and submit is None
 
         if submit is None and not is_claude:
             submit = "\n"
 
         timeout = timeout or self._response_timeout
-        parser_instance = get_parser(parser)
+        parser_instance = get_parser(actual_parser)
 
         # Send input
         if is_claude:
@@ -229,7 +232,7 @@ class WezTermChannel:
         self.state = ChannelState.BUSY
 
         # Wait for response
-        await self._wait_for_ready(timeout=timeout, parser_type=parser)
+        await self._wait_for_ready(timeout=timeout, parser_type=actual_parser)
 
         # Extra delay to ensure pane content is fully updated
         await asyncio.sleep(0.5)
@@ -302,7 +305,9 @@ class WezTermChannel:
         Args:
             command: Program/command to start.
         """
-        await self.backend.write(command + "\n")
+        await self.backend.write(command)
+        await asyncio.sleep(0.1)
+        await self.backend.write("\r")
 
     async def interrupt(self) -> None:
         """Send interrupt signal (Ctrl+C)."""
@@ -341,10 +346,6 @@ class WezTermChannel:
         parser = get_parser(parser_type)
         start = asyncio.get_event_loop().time()
 
-        # For Claude, wait for processing to start first
-        if parser_type == ParserType.CLAUDE:
-            await self._wait_for_processing_start(timeout=10.0)
-
         # Wait for ready with consecutive checks
         ready_count = 0
         consecutive_required = 2
@@ -356,34 +357,15 @@ class WezTermChannel:
             if parser.is_ready(check_content):
                 ready_count += 1
                 if ready_count >= consecutive_required:
-                    await asyncio.sleep(0.5)  # Post-ready delay
+                    await asyncio.sleep(0.3)  # Brief post-ready delay
                     self.state = ChannelState.OPEN
                     return
             else:
                 ready_count = 0
 
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.5)  # Poll every 0.5 seconds
 
         raise TimeoutError(f"Terminal did not become ready within {timeout}s")
-
-    async def _wait_for_processing_start(self, timeout: float = 10.0) -> bool:
-        """Wait for Claude to start processing."""
-        start = asyncio.get_event_loop().time()
-
-        while asyncio.get_event_loop().time() - start < timeout:
-            check_content = self.backend.buffer
-
-            if self._is_processing(check_content):
-                return True
-
-            await asyncio.sleep(0.1)
-
-        return False
-
-    def _is_processing(self, content: str) -> bool:
-        """Check if Claude is currently processing."""
-        content_lower = content.lower()
-        return "esc to interrupt" in content_lower or "esc to cancel" in content_lower
 
     def to_info(self) -> ChannelInfo:
         """Get serializable channel info."""

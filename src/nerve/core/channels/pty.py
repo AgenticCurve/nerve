@@ -151,7 +151,7 @@ class PTYChannel:
     async def send(
         self,
         input: str,
-        parser: ParserType = ParserType.NONE,
+        parser: ParserType | None = None,
         timeout: float | None = None,
         submit: str | None = None,
     ) -> ParsedResponse:
@@ -159,7 +159,7 @@ class PTYChannel:
 
         Args:
             input: Text to send.
-            parser: How to parse the response (CLAUDE, GEMINI, NONE).
+            parser: How to parse the response (CLAUDE, GEMINI, NONE). None defaults to NONE.
             timeout: Response timeout in seconds.
             submit: Submit sequence (default handles Claude specially).
 
@@ -173,13 +173,16 @@ class PTYChannel:
         if self.state == ChannelState.CLOSED:
             raise RuntimeError("Channel is closed")
 
-        is_claude = parser == ParserType.CLAUDE and submit is None
+        # Default to NONE parser if not specified
+        actual_parser = parser if parser is not None else ParserType.NONE
+
+        is_claude = actual_parser == ParserType.CLAUDE and submit is None
 
         if submit is None and not is_claude:
             submit = "\n"
 
         timeout = timeout or self._response_timeout
-        parser_instance = get_parser(parser)
+        parser_instance = get_parser(actual_parser)
 
         # Mark buffer position before sending
         buffer_start = len(self.backend.buffer)
@@ -204,7 +207,7 @@ class PTYChannel:
         # Wait for response
         await self._wait_for_ready(
             timeout=timeout,
-            parser_type=parser,
+            parser_type=actual_parser,
             buffer_start=buffer_start,
         )
 

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nerve.core.channels import ChannelState
+from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
 from nerve.core.channels.pty import PTYChannel
 from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.session.session import Session
@@ -54,19 +55,19 @@ class ChannelManager:
         cwd: str | None = None,
         pane_id: str | None = None,
         **kwargs,
-    ) -> PTYChannel | WezTermChannel:
+    ) -> PTYChannel | WezTermChannel | ClaudeOnWezTermChannel:
         """Create a new terminal channel.
 
         Args:
             channel_id: Unique channel identifier (required).
             command: Command to run (e.g., "claude" or ["bash"]).
-            backend: Backend type ("pty" or "wezterm").
+            backend: Backend type ("pty", "wezterm", or "claude-wezterm").
             cwd: Working directory.
             pane_id: For WezTerm, attach to existing pane.
             **kwargs: Additional args passed to channel create.
 
         Returns:
-            The created channel (PTYChannel or WezTermChannel).
+            The created channel.
 
         Raises:
             ValueError: If channel_id already exists.
@@ -74,10 +75,19 @@ class ChannelManager:
         if self._channels.get(channel_id):
             raise ValueError(f"Channel '{channel_id}' already exists")
 
-        # Determine which channel type to use
-        use_wezterm = backend == "wezterm" or pane_id is not None
+        channel: PTYChannel | WezTermChannel | ClaudeOnWezTermChannel
 
-        if use_wezterm:
+        if backend == "claude-wezterm":
+            # ClaudeOnWezTerm - requires "claude" in command
+            if not command:
+                raise ValueError("command is required for claude-wezterm backend")
+            channel = await ClaudeOnWezTermChannel.create(
+                channel_id=channel_id,
+                command=command if isinstance(command, str) else " ".join(command),
+                cwd=cwd,
+                **kwargs,
+            )
+        elif backend == "wezterm" or pane_id is not None:
             if pane_id:
                 # Attach to existing WezTerm pane
                 channel = await WezTermChannel.attach(

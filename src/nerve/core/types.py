@@ -62,7 +62,12 @@ class Section:
 
     @property
     def result(self) -> str | None:
-        """Get tool result for tool_call sections."""
+        """Get tool result for tool_call sections.
+
+        For tool_call sections, the result is stored in content.
+        """
+        if self.type == "tool_call":
+            return self.content if self.content else None
         return self.metadata.get("result")
 
 
