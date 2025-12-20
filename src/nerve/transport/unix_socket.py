@@ -242,7 +242,7 @@ class UnixSocketClient:
         if self._writer:
             self._writer.close()
 
-    async def send_command(self, command: Command, timeout: float = 60.0) -> CommandResult:
+    async def send_command(self, command: Command, timeout: float = 300.0) -> CommandResult:
         """Send a command and wait for result.
 
         Args:
