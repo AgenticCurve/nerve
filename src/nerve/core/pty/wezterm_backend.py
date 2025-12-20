@@ -310,9 +310,19 @@ class WezTermBackend(Backend):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await result.communicate()
-            except Exception:
-                pass  # Best effort
+                stdout, stderr = await result.communicate()
+                if result.returncode != 0:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Failed to kill WezTerm pane %s: %s",
+                        self._pane_id,
+                        stderr.decode() if stderr else "unknown error",
+                    )
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Error killing WezTerm pane %s: %s", self._pane_id, e
+                )
 
         self._running = False
         self._pane_id = None

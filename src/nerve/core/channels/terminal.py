@@ -91,6 +91,7 @@ class TerminalChannel:
     id: str
     backend: Backend
     backend_type: BackendType
+    command: str | None = None  # Command that was used to create the channel
     pane_id: str | None = None  # For WezTerm
     state: ChannelState = ChannelState.CONNECTING
     channel_type: ChannelType = field(default=ChannelType.TERMINAL, init=False)
@@ -130,14 +131,19 @@ class TerminalChannel:
         if not channel_id:
             raise ValueError("channel_id is required")
 
-        # Normalize command
+        # Normalize command and store original for display
         if command is None:
-            command = ["bash"]
+            command_list = ["bash"]
+            command_str = "bash"
         elif isinstance(command, str):
-            command = command.split()
+            command_str = command
+            command_list = command.split()
+        else:
+            command_list = command
+            command_str = " ".join(command)
 
         config = BackendConfig(cwd=cwd, env=env or {})
-        backend = get_backend(backend_type, command, config)
+        backend = get_backend(backend_type, command_list, config)
 
         await backend.start()
 
@@ -145,6 +151,7 @@ class TerminalChannel:
             id=channel_id,
             backend=backend,
             backend_type=backend_type,
+            command=command_str,
             pane_id=getattr(backend, "pane_id", None),
             state=ChannelState.OPEN,  # Mark as open immediately
             _ready_timeout=ready_timeout,

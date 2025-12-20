@@ -185,13 +185,13 @@ class PTYBackend(Backend):
         """
         self._set_winsize(rows, cols)
 
-    async def stop(self, timeout: float = 5.0) -> None:
+    async def stop(self, timeout: float = 1.0) -> None:
         """Stop the PTY process.
 
-        Sends SIGTERM first, waits for graceful exit, then SIGKILL if needed.
+        Sends SIGTERM first, waits briefly for graceful exit, then SIGKILL.
 
         Args:
-            timeout: Seconds to wait for graceful exit before SIGKILL.
+            timeout: Seconds to wait for graceful exit before SIGKILL (default 1s).
         """
         import signal
 
@@ -200,7 +200,7 @@ class PTYBackend(Backend):
                 # First try SIGTERM for graceful shutdown
                 os.kill(self._pid, signal.SIGTERM)
 
-                # Wait for process to exit gracefully
+                # Wait briefly for process to exit gracefully
                 for _ in range(int(timeout * 10)):
                     try:
                         pid, _ = os.waitpid(self._pid, os.WNOHANG)

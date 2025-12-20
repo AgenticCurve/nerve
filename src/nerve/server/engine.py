@@ -197,6 +197,8 @@ class NerveEngine:
                 }
                 if hasattr(channel, "backend_type"):
                     info["backend"] = channel.backend_type.value
+                if hasattr(channel, "command"):
+                    info["command"] = channel.command
                 if hasattr(channel, "pane_id"):
                     info["pane_id"] = channel.pane_id
                 channels_info.append(info)
@@ -422,22 +424,30 @@ class NerveEngine:
     # =========================================================================
 
     async def _shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Shutdown the server."""
-        # Close all channels first
-        await self._channel_manager.close_all()
+        """Shutdown the server.
 
+        Returns immediately after initiating shutdown. Cleanup happens async.
+        """
+        # Set shutdown flag first so serve loop will exit
+        self._shutdown_requested = True
+
+        # Emit shutdown event
+        await self._emit(EventType.SERVER_SHUTDOWN)
+
+        # Schedule cleanup in background (don't await)
+        asyncio.create_task(self._cleanup_on_shutdown())
+
+        return {"shutdown": True}
+
+    async def _cleanup_on_shutdown(self) -> None:
+        """Background cleanup during shutdown."""
         # Cancel all running DAGs
         for _dag_id, task in self._running_dags.items():
             task.cancel()
         self._running_dags.clear()
 
-        # Emit shutdown event
-        await self._emit(EventType.SERVER_SHUTDOWN)
-
-        # Set shutdown flag
-        self._shutdown_requested = True
-
-        return {"shutdown": True}
+        # Close all channels (this can take time)
+        await self._channel_manager.close_all()
 
     async def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
         """Ping the server to check if it's alive."""

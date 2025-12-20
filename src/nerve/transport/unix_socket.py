@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,6 +17,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nerve.server import NerveEngine
     from nerve.server.protocols import Command, CommandResult, Event
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -84,6 +87,7 @@ class UnixSocketServer:
         self._server = await asyncio.start_unix_server(
             self._handle_client,
             path=self.socket_path,
+            limit=16 * 1024 * 1024,  # 16MB limit for large buffer responses
         )
 
         # Serve until shutdown requested
@@ -119,11 +123,14 @@ class UnixSocketServer:
     ) -> None:
         """Handle a client connection."""
         self._clients.append(writer)
+        client_addr = writer.get_extra_info("peername") or "unknown"
+        logger.debug("Client connected: %s", client_addr)
 
         try:
             while self._running:
                 line = await reader.readline()
                 if not line:
+                    logger.debug("Client disconnected: %s", client_addr)
                     break
 
                 try:
@@ -131,13 +138,19 @@ class UnixSocketServer:
                     response = await self._handle_message(message)
                     writer.write((json.dumps(response) + "\n").encode())
                     await writer.drain()
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.warning("Invalid JSON from client %s: %s", client_addr, e)
                     error = {"type": "error", "error": "Invalid JSON"}
                     writer.write((json.dumps(error) + "\n").encode())
                     await writer.drain()
 
-        except Exception:
-            pass
+        except asyncio.CancelledError:
+            logger.debug("Client handler cancelled: %s", client_addr)
+            raise
+        except ConnectionResetError:
+            logger.debug("Client connection reset: %s", client_addr)
+        except Exception as e:
+            logger.error("Error handling client %s: %s", client_addr, e, exc_info=True)
         finally:
             if writer in self._clients:
                 self._clients.remove(writer)
@@ -195,10 +208,16 @@ class UnixSocketClient:
     _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
     _connected: bool = False
     _reader_task: asyncio.Task | None = None
+    _last_error: Exception | None = field(default=None, repr=False)
+    _error_count: int = field(default=0, repr=False)
 
     async def connect(self) -> None:
         """Connect to the server."""
-        self._reader, self._writer = await asyncio.open_unix_connection(self.socket_path)
+        # Use larger limit for reading (16MB) to handle large buffer responses
+        self._reader, self._writer = await asyncio.open_unix_connection(
+            self.socket_path,
+            limit=16 * 1024 * 1024,  # 16MB limit
+        )
         self._connected = True
 
         # Start background reader
@@ -218,8 +237,20 @@ class UnixSocketClient:
         if self._writer:
             self._writer.close()
 
-    async def send_command(self, command: Command) -> CommandResult:
-        """Send a command and wait for result."""
+    async def send_command(self, command: Command, timeout: float = 60.0) -> CommandResult:
+        """Send a command and wait for result.
+
+        Args:
+            command: The command to send.
+            timeout: Timeout in seconds (default 60s).
+
+        Returns:
+            Command result from the server.
+
+        Raises:
+            RuntimeError: If not connected.
+            TimeoutError: If response not received within timeout.
+        """
         from nerve.server.protocols import CommandResult
 
         if not self._writer or not self._connected:
@@ -235,16 +266,22 @@ class UnixSocketClient:
         self._writer.write((json.dumps(message) + "\n").encode())
         await self._writer.drain()
 
-        # Wait for result (from queue, put there by reader)
-        while True:
-            response = await self._event_queue.get()
-            if isinstance(response, dict) and response.get("type") == "result":
-                return CommandResult(
-                    success=response["success"],
-                    data=response.get("data"),
-                    error=response.get("error"),
-                    request_id=response.get("request_id"),
+        # Wait for result (from queue, put there by reader) with timeout
+        try:
+            while True:
+                response = await asyncio.wait_for(
+                    self._event_queue.get(),
+                    timeout=timeout,
                 )
+                if isinstance(response, dict) and response.get("type") == "result":
+                    return CommandResult(
+                        success=response["success"],
+                        data=response.get("data"),
+                        error=response.get("error"),
+                        request_id=response.get("request_id"),
+                    )
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Command timed out after {timeout}s")
 
     async def events(self) -> AsyncIterator[Event]:
         """Subscribe to events."""
@@ -261,7 +298,11 @@ class UnixSocketClient:
                 )
 
     async def _read_loop(self) -> None:
-        """Background loop to read from socket."""
+        """Background loop to read from socket.
+
+        Reads JSON messages from the socket and puts them in the event queue.
+        Errors are logged and tracked in _last_error and _error_count.
+        """
         if not self._reader:
             return
 
@@ -269,14 +310,39 @@ class UnixSocketClient:
             while self._connected:
                 line = await self._reader.readline()
                 if not line:
+                    logger.debug("Socket closed by server (empty read)")
                     break
 
                 try:
                     message = json.loads(line.decode())
                     await self._event_queue.put(message)
-                except json.JSONDecodeError:
-                    pass
-        except Exception:
-            pass
+                except json.JSONDecodeError as e:
+                    self._error_count += 1
+                    self._last_error = e
+                    logger.warning(
+                        "Failed to parse JSON from server: %s (line: %s...)",
+                        e,
+                        line[:100] if len(line) > 100 else line,
+                    )
+        except asyncio.CancelledError:
+            logger.debug("Read loop cancelled")
+            raise
+        except ConnectionResetError as e:
+            self._last_error = e
+            logger.debug("Connection reset by server")
+        except Exception as e:
+            self._error_count += 1
+            self._last_error = e
+            logger.error("Unexpected error in read loop: %s", e, exc_info=True)
         finally:
             self._connected = False
+
+    @property
+    def last_error(self) -> Exception | None:
+        """Last error encountered in the read loop."""
+        return self._last_error
+
+    @property
+    def error_count(self) -> int:
+        """Number of errors encountered in the read loop."""
+        return self._error_count

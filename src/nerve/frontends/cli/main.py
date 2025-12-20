@@ -113,6 +113,7 @@ def _run_cli() -> None:
             sys.exit(1)
 
         socket = f"/tmp/nerve-{name}.sock"
+        pid_file = f"/tmp/nerve-{name}.pid"
         click.echo(f"Starting nerve daemon '{name}'...")
 
         from nerve.server import NerveEngine
@@ -130,15 +131,40 @@ def _run_cli() -> None:
 
         engine = NerveEngine(event_sink=transport)
 
+        # Create new process group so we can kill all children on force stop
+        import os
+        import signal as sig
+        os.setpgrp()
+
+        # Write PID file (PID == PGID since we're the group leader)
+        with open(pid_file, "w") as f:
+            f.write(str(os.getpid()))
+
+        # Handle SIGTERM for graceful shutdown (important for WezTerm cleanup)
+        def handle_sigterm(signum, frame):
+            click.echo("\nReceived SIGTERM, shutting down...")
+            engine._shutdown_requested = True
+
+        sig.signal(sig.SIGTERM, handle_sigterm)
+
         async def run():
-            await transport.serve(engine)
+            try:
+                await transport.serve(engine)
+            finally:
+                # Clean up all channels before exiting
+                await engine._channel_manager.close_all()
+                # Clean up PID file on exit
+                if os.path.exists(pid_file):
+                    os.unlink(pid_file)
 
         asyncio.run(run())
 
     @server.command()
     @click.argument("name", required=False)
     @click.option("--all", "stop_all", is_flag=True, help="Stop all nerve servers")
-    def stop(name: str | None, stop_all: bool):
+    @click.option("--force", "-f", is_flag=True, help="Force kill (SIGKILL) without graceful shutdown")
+    @click.option("--timeout", "-t", default=5.0, help="Graceful shutdown timeout in seconds (default: 5)")
+    def stop(name: str | None, stop_all: bool, force: bool, timeout: float):
         """Stop the nerve daemon.
 
         Sends a shutdown command to the running daemon, which will:
@@ -146,69 +172,209 @@ def _run_cli() -> None:
         - Cancel all running DAGs
         - Cleanup and exit
 
+        If graceful shutdown times out, automatically falls back to force kill.
+
         **Examples:**
 
             nerve server stop myproject
 
+            nerve server stop myproject --force
+
+            nerve server stop myproject --timeout 10
+
             nerve server stop --all
         """
-        if not name and not stop_all:
-            click.echo("Error: Provide server NAME or use --all", err=True)
-            sys.exit(1)
-
-        socket = f"/tmp/nerve-{name}.sock" if name else ""
+        import os
+        import signal
         from glob import glob
 
         from nerve.server.protocols import Command, CommandType
         from nerve.transport import UnixSocketClient
 
-        async def stop_server(sock_path: str) -> bool:
-            """Stop a single server. Returns True if successful."""
+        if not name and not stop_all:
+            click.echo("Error: Provide server NAME or use --all", err=True)
+            sys.exit(1)
+
+        def get_server_name_from_socket(sock_path: str) -> str:
+            """Extract server name from socket path."""
+            # /tmp/nerve-myproject.sock -> myproject
+            import re
+            match = re.match(r"/tmp/nerve-(.+)\.sock", sock_path)
+            return match.group(1) if match else ""
+
+        def get_descendants(pid: int) -> list[int]:
+            """Get all descendant PIDs of a process (children, grandchildren, etc.)."""
+            import subprocess
+            descendants = []
+            try:
+                # Use pgrep to find direct children
+                result = subprocess.run(
+                    ["pgrep", "-P", str(pid)],
+                    capture_output=True,
+                    text=True,
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.strip().split("\n"):
+                        if line:
+                            child_pid = int(line)
+                            descendants.append(child_pid)
+                            # Recursively get grandchildren
+                            descendants.extend(get_descendants(child_pid))
+            except Exception:
+                pass
+            return descendants
+
+        def wait_for_process_exit(pid: int, timeout: float = 5.0) -> bool:
+            """Wait for a process to exit. Returns True if exited, False if still running."""
+            import time
+            start = time.time()
+            while time.time() - start < timeout:
+                try:
+                    os.kill(pid, 0)  # Check if process exists
+                    time.sleep(0.1)
+                except ProcessLookupError:
+                    return True  # Process exited
+            return False  # Still running after timeout
+
+        def force_kill_server(server_name: str) -> bool:
+            """Force kill a server and all its channel processes.
+
+            For PTY channels: kills child processes directly.
+            For WezTerm channels: sends SIGTERM first to let server clean up panes,
+            then SIGKILL if needed.
+            """
+            pid_file = f"/tmp/nerve-{server_name}.pid"
+            socket_file = f"/tmp/nerve-{server_name}.sock"
+
+            if os.path.exists(pid_file):
+                try:
+                    with open(pid_file) as f:
+                        server_pid = int(f.read().strip())
+
+                    # First, send SIGTERM to let server clean up gracefully
+                    # This is important for WezTerm panes which aren't child processes
+                    try:
+                        os.kill(server_pid, signal.SIGTERM)
+                        # Wait for process to exit (allows channel cleanup)
+                        if wait_for_process_exit(server_pid, timeout=5.0):
+                            click.echo(f"  Server {server_pid} exited gracefully")
+                            # Clean up files
+                            if os.path.exists(pid_file):
+                                os.unlink(pid_file)
+                            if os.path.exists(socket_file):
+                                os.unlink(socket_file)
+                            return True
+                    except ProcessLookupError:
+                        # Already dead
+                        click.echo(f"  Server {server_pid} already stopped")
+                        if os.path.exists(pid_file):
+                            os.unlink(pid_file)
+                        if os.path.exists(socket_file):
+                            os.unlink(socket_file)
+                        return True
+
+                    # Server didn't exit from SIGTERM, need to force kill
+                    click.echo(f"  Server didn't respond to SIGTERM, force killing...")
+
+                    # Find all descendant processes (PTY channels)
+                    descendants = get_descendants(server_pid)
+
+                    # Kill descendants first (PTY channels), then the server
+                    killed_count = 0
+                    for child_pid in descendants:
+                        try:
+                            os.kill(child_pid, signal.SIGKILL)
+                            killed_count += 1
+                        except ProcessLookupError:
+                            pass  # Already dead
+
+                    # Force kill the server process
+                    try:
+                        os.kill(server_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # Already dead
+
+                    if killed_count > 0:
+                        click.echo(f"  Killed server {server_pid} and {killed_count} channel process(es)")
+                    else:
+                        click.echo(f"  Killed server {server_pid}")
+
+                    # Clean up files
+                    if os.path.exists(pid_file):
+                        os.unlink(pid_file)
+                    if os.path.exists(socket_file):
+                        os.unlink(socket_file)
+                    return True
+                except (ValueError, ProcessLookupError, PermissionError) as e:
+                    click.echo(f"  Could not kill process: {e}", err=True)
+                    # Still try to clean up stale files
+                    if os.path.exists(pid_file):
+                        os.unlink(pid_file)
+                    if os.path.exists(socket_file):
+                        os.unlink(socket_file)
+                    return False
+            else:
+                # No PID file, just clean up socket if it exists
+                if os.path.exists(socket_file):
+                    os.unlink(socket_file)
+                    click.echo(f"  Cleaned up stale socket")
+                return False
+
+        async def graceful_stop_server(sock_path: str, timeout_secs: float) -> bool:
+            """Try graceful shutdown. Returns True if successful."""
             try:
                 client = UnixSocketClient(sock_path)
                 await client.connect()
-                result = await client.send_command(Command(type=CommandType.SHUTDOWN, params={}))
+                result = await client.send_command(
+                    Command(type=CommandType.SHUTDOWN, params={}),
+                    timeout=timeout_secs,
+                )
                 await client.disconnect()
                 return result.success
             except (ConnectionRefusedError, FileNotFoundError, OSError):
                 return False
+            except TimeoutError:
+                return False
+
+        async def stop_server(server_name: str, force_mode: bool, timeout_secs: float) -> bool:
+            """Stop a server - gracefully first, then force if needed."""
+            sock_path = f"/tmp/nerve-{server_name}.sock"
+
+            if force_mode:
+                click.echo(f"  Force stopping '{server_name}'...")
+                return force_kill_server(server_name)
+
+            # Try graceful shutdown first
+            click.echo(f"  Stopping '{server_name}' (timeout: {timeout_secs}s)...")
+            if await graceful_stop_server(sock_path, timeout_secs):
+                # Wait briefly for server to clean up files
+                await asyncio.sleep(0.5)
+                click.echo(f"  Gracefully stopped '{server_name}'")
+                return True
+
+            # Graceful failed, try force kill
+            click.echo(f"  Graceful shutdown failed, force killing...")
+            if force_kill_server(server_name):
+                return True
+
+            click.echo(f"  Could not stop '{server_name}'", err=True)
+            return False
 
         async def run():
             if stop_all:
                 # Find all nerve sockets
-                sockets = glob("/tmp/nerve*.sock")
+                sockets = glob("/tmp/nerve-*.sock")
                 if not sockets:
                     click.echo("No nerve servers found")
                     return
 
                 click.echo(f"Found {len(sockets)} server(s)")
                 for sock_path in sockets:
-                    if await stop_server(sock_path):
-                        click.echo(f"  Stopped: {sock_path}")
-                    else:
-                        click.echo(f"  Failed/not running: {sock_path}")
+                    server_name = get_server_name_from_socket(sock_path)
+                    if server_name:
+                        await stop_server(server_name, force, timeout)
             else:
-                try:
-                    client = UnixSocketClient(socket)
-                    await client.connect()
-
-                    click.echo("Sending shutdown command...")
-                    result = await client.send_command(
-                        Command(type=CommandType.SHUTDOWN, params={})
-                    )
-
-                    if result.success:
-                        click.echo("Server shutdown initiated.")
-                    else:
-                        click.echo(f"Error: {result.error}", err=True)
-
-                    await client.disconnect()
-                except ConnectionRefusedError:
-                    click.echo(f"No server running on {socket}", err=True)
-                    sys.exit(1)
-                except FileNotFoundError:
-                    click.echo(f"Socket not found: {socket}", err=True)
-                    sys.exit(1)
+                await stop_server(name, force, timeout)
 
         asyncio.run(run())
 
