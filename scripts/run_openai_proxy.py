@@ -33,7 +33,7 @@ async def main():
 
     model = os.environ.get("OPENAI_MODEL", "gpt-4o")
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    debug_dir = os.environ.get("NERVE_DEBUG_DIR", "/tmp/nerve-proxy-debug")
+    debug_dir = os.environ.get("NERVE_DEBUG_DIR", ".nerve")  # Stores in .nerve/logs/{session}/
 
     config = AnthropicProxyConfig(
         host="127.0.0.1",
@@ -44,7 +44,7 @@ async def main():
         debug_dir=debug_dir,
     )
 
-    print(f"Debug files will be saved to: {debug_dir}")
+    print(f"Debug logs will be saved to: {debug_dir}/logs/{{session_id}}/")
     server = AnthropicProxyServer(config=config)
     await server.serve()
 
