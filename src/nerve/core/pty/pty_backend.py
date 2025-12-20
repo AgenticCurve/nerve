@@ -17,6 +17,9 @@ from collections.abc import AsyncIterator
 
 from nerve.core.pty.backend import Backend, BackendConfig
 
+# Maximum buffer size (2MB) - prevents unbounded growth for TUI apps
+MAX_BUFFER_SIZE = 2 * 1024 * 1024
+
 
 class PTYBackend(Backend):
     """Direct PTY backend using pty.fork().
@@ -138,6 +141,12 @@ class PTYBackend(Backend):
                 if data:
                     chunk = data.decode("utf-8", errors="replace")
                     self._buffer += chunk
+
+                    # Rolling buffer: keep only last 2MB to prevent unbounded growth
+                    # This is important for TUI apps that redraw frequently
+                    if len(self._buffer) > MAX_BUFFER_SIZE:
+                        self._buffer = self._buffer[-MAX_BUFFER_SIZE:]
+
                     yield chunk
 
             except BlockingIOError:
