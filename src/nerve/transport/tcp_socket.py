@@ -1,7 +1,7 @@
-"""Unix domain socket transport.
+"""TCP socket transport.
 
-Provides client-server communication over Unix domain sockets.
-Efficient for local IPC with persistent daemon processes.
+Provides client-server communication over TCP sockets.
+Same JSON-line protocol as Unix sockets, but network-capable.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,19 +21,20 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class UnixSocketServer:
-    """Unix socket server transport.
+class TCPSocketServer:
+    """TCP socket server transport.
 
-    Listens on a Unix domain socket and handles client connections.
+    Listens on a TCP socket and handles client connections.
     Broadcasts events to all connected clients.
 
     Example:
-        >>> transport = UnixSocketServer("/tmp/nerve.sock")
+        >>> transport = TCPSocketServer(host="0.0.0.0", port=8080)
         >>> engine = NerveEngine(event_sink=transport)
         >>> await transport.serve(engine)
     """
 
-    socket_path: str
+    host: str = "0.0.0.0"
+    port: int = 8080
     _engine: NerveEngine | None = None
     _server: asyncio.Server | None = None
     _clients: list[asyncio.StreamWriter] = field(default_factory=list)
@@ -79,18 +79,14 @@ class UnixSocketServer:
         self._engine = engine
         self._running = True
 
-        # Remove existing socket
-        socket_path = Path(self.socket_path)
-        if socket_path.exists():
-            socket_path.unlink()
-
-        self._server = await asyncio.start_unix_server(
+        self._server = await asyncio.start_server(
             self._handle_client,
-            path=self.socket_path,
+            host=self.host,
+            port=self.port,
             limit=16 * 1024 * 1024,  # 16MB limit for large buffer responses
         )
 
-        logger.info("Unix socket server started on %s", self.socket_path)
+        logger.info("TCP server started on %s:%s", self.host, self.port)
 
         # Serve until shutdown requested
         async with self._server:
@@ -113,12 +109,7 @@ class UnixSocketServer:
             writer.close()
         self._clients.clear()
 
-        # Remove socket file
-        socket_path = Path(self.socket_path)
-        if socket_path.exists():
-            socket_path.unlink()
-
-        logger.info("Unix socket server stopped")
+        logger.info("TCP server stopped")
 
     async def _handle_client(
         self,
@@ -188,13 +179,13 @@ class UnixSocketServer:
 
 
 @dataclass
-class UnixSocketClient:
-    """Unix socket client transport.
+class TCPSocketClient:
+    """TCP socket client transport.
 
-    Connects to a Unix socket server to send commands and receive events.
+    Connects to a TCP socket server to send commands and receive events.
 
     Example:
-        >>> client = UnixSocketClient("/tmp/nerve.sock")
+        >>> client = TCPSocketClient("192.168.1.5", 8080)
         >>> await client.connect()
         >>>
         >>> result = await client.send_command(Command(
@@ -206,10 +197,11 @@ class UnixSocketClient:
         ...     print(event.type)
     """
 
-    socket_path: str
+    host: str
+    port: int
     _reader: asyncio.StreamReader | None = None
     _writer: asyncio.StreamWriter | None = None
-    _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+    _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)  # type: ignore[type-arg]
     _connected: bool = False
     _reader_task: asyncio.Task | None = None
     _last_error: Exception | None = field(default=None, repr=False)
@@ -218,12 +210,13 @@ class UnixSocketClient:
     async def connect(self) -> None:
         """Connect to the server."""
         # Use larger limit for reading (16MB) to handle large buffer responses
-        self._reader, self._writer = await asyncio.open_unix_connection(
-            self.socket_path,
+        self._reader, self._writer = await asyncio.open_connection(
+            self.host,
+            self.port,
             limit=16 * 1024 * 1024,  # 16MB limit
         )
         self._connected = True
-        logger.debug("Unix socket client connected to %s", self.socket_path)
+        logger.debug("TCP client connected to %s:%s", self.host, self.port)
 
         # Start background reader
         self._reader_task = asyncio.create_task(self._read_loop())

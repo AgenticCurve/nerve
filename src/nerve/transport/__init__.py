@@ -33,6 +33,7 @@ Example (socket server):
 from nerve.transport.http import HTTPClient, HTTPServer
 from nerve.transport.in_process import InProcessTransport
 from nerve.transport.protocol import ClientTransport, ServerTransport, Transport
+from nerve.transport.tcp_socket import TCPSocketClient, TCPSocketServer
 from nerve.transport.unix_socket import UnixSocketClient, UnixSocketServer
 
 __all__ = [
@@ -44,6 +45,8 @@ __all__ = [
     "InProcessTransport",
     "UnixSocketServer",
     "UnixSocketClient",
+    "TCPSocketServer",
+    "TCPSocketClient",
     "HTTPServer",
     "HTTPClient",
 ]

@@ -90,19 +90,31 @@ def _run_cli() -> None:
 
     @server.command()
     @click.argument("name")
-    @click.option("--host", default=None, help="HTTP host (enables HTTP transport)")
-    @click.option("--port", default=8080, help="HTTP port")
-    def start(name: str, host: str | None, port: int):
+    @click.option("--host", default=None, help="Host to bind (enables network transport)")
+    @click.option("--port", default=8080, help="Port for network transport")
+    @click.option("--tcp", "use_tcp", is_flag=True, help="Use TCP socket transport (requires --host)")
+    @click.option("--http", "use_http", is_flag=True, help="Use HTTP transport (requires --host)")
+    def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool):
         """Start the nerve daemon.
 
         NAME is required and determines the socket path (/tmp/nerve-NAME.sock).
         Names must be lowercase alphanumeric with dashes, 1-32 characters.
 
+        **Transports:**
+
+            Unix socket (default): Local-only, fast IPC via /tmp/nerve-NAME.sock
+
+            TCP socket (--tcp): Network-capable, same JSON-line protocol
+
+            HTTP (--http): REST API + WebSocket for web clients
+
         **Examples:**
 
             nerve server start myproject
 
-            nerve server start my-ai-project --host 0.0.0.0 --port 8080
+            nerve server start myproject --tcp --host 0.0.0.0 --port 8080
+
+            nerve server start myproject --http --host 0.0.0.0 --port 8080
         """
         from nerve.core.validation import validate_name
 
@@ -112,22 +124,47 @@ def _run_cli() -> None:
             click.echo(f"Error: {e}", err=True)
             sys.exit(1)
 
-        socket = f"/tmp/nerve-{name}.sock"
+        # Validate transport options
+        if use_tcp and use_http:
+            click.echo("Error: Cannot use both --tcp and --http", err=True)
+            sys.exit(1)
+        if (use_tcp or use_http) and not host:
+            click.echo("Error: --tcp and --http require --host", err=True)
+            sys.exit(1)
+
+        socket_path = f"/tmp/nerve-{name}.sock"
         pid_file = f"/tmp/nerve-{name}.pid"
+        http_file = f"/tmp/nerve-{name}.http"
+        tcp_file = f"/tmp/nerve-{name}.tcp"
         click.echo(f"Starting nerve daemon '{name}'...")
 
         from nerve.server import NerveEngine
 
-        if host:
+        # Determine transport type
+        transport_type = "unix"  # default
+        if use_http:
+            transport_type = "http"
+        elif use_tcp:
+            transport_type = "tcp"
+        elif host:
+            # Legacy: --host without --tcp/--http defaults to HTTP for backwards compatibility
+            transport_type = "http"
+
+        if transport_type == "http":
             from nerve.transport import HTTPServer
 
             transport = HTTPServer(host=host, port=port)
             click.echo(f"Listening on http://{host}:{port}")
+        elif transport_type == "tcp":
+            from nerve.transport import TCPSocketServer
+
+            transport = TCPSocketServer(host=host, port=port)
+            click.echo(f"Listening on tcp://{host}:{port}")
         else:
             from nerve.transport import UnixSocketServer
 
-            transport = UnixSocketServer(socket)
-            click.echo(f"Listening on {socket}")
+            transport = UnixSocketServer(socket_path)
+            click.echo(f"Listening on {socket_path}")
 
         engine = NerveEngine(event_sink=transport)
 
@@ -139,6 +176,14 @@ def _run_cli() -> None:
         # Write PID file (PID == PGID since we're the group leader)
         with open(pid_file, "w") as f:
             f.write(str(os.getpid()))
+
+        # Write transport tracking file
+        if transport_type == "http":
+            with open(http_file, "w") as f:
+                f.write(f"{host}:{port}")
+        elif transport_type == "tcp":
+            with open(tcp_file, "w") as f:
+                f.write(f"{host}:{port}")
 
         # Handle SIGTERM for graceful shutdown (important for WezTerm cleanup)
         def handle_sigterm(signum, frame):
@@ -153,9 +198,13 @@ def _run_cli() -> None:
             finally:
                 # Clean up all channels before exiting
                 await engine._channel_manager.close_all()
-                # Clean up PID file on exit
+                # Clean up tracking files on exit
                 if os.path.exists(pid_file):
                     os.unlink(pid_file)
+                if transport_type == "http" and os.path.exists(http_file):
+                    os.unlink(http_file)
+                if transport_type == "tcp" and os.path.exists(tcp_file):
+                    os.unlink(tcp_file)
 
         asyncio.run(run())
 
@@ -202,6 +251,35 @@ def _run_cli() -> None:
             match = re.match(r"/tmp/nerve-(.+)\.sock", sock_path)
             return match.group(1) if match else ""
 
+        def get_server_name_from_http(http_path: str) -> str:
+            """Extract server name from HTTP tracking file path."""
+            # /tmp/nerve-myproject.http -> myproject
+            import re
+            match = re.match(r"/tmp/nerve-(.+)\.http", http_path)
+            return match.group(1) if match else ""
+
+        def get_server_name_from_tcp(tcp_path: str) -> str:
+            """Extract server name from TCP tracking file path."""
+            # /tmp/nerve-myproject.tcp -> myproject
+            import re
+            match = re.match(r"/tmp/nerve-(.+)\.tcp", tcp_path)
+            return match.group(1) if match else ""
+
+        def get_server_transport(server_name: str) -> tuple[str, str | None]:
+            """Get server transport type. Returns (type, host:port or None).
+
+            Types: "http", "tcp", "unix"
+            """
+            http_file = f"/tmp/nerve-{server_name}.http"
+            tcp_file = f"/tmp/nerve-{server_name}.tcp"
+            if os.path.exists(http_file):
+                with open(http_file) as f:
+                    return "http", f.read().strip()
+            if os.path.exists(tcp_file):
+                with open(tcp_file) as f:
+                    return "tcp", f.read().strip()
+            return "unix", None
+
         def get_descendants(pid: int) -> list[int]:
             """Get all descendant PIDs of a process (children, grandchildren, etc.)."""
             import subprocess
@@ -245,6 +323,8 @@ def _run_cli() -> None:
             """
             pid_file = f"/tmp/nerve-{server_name}.pid"
             socket_file = f"/tmp/nerve-{server_name}.sock"
+            http_file = f"/tmp/nerve-{server_name}.http"
+            tcp_file = f"/tmp/nerve-{server_name}.tcp"
 
             if os.path.exists(pid_file):
                 try:
@@ -259,18 +339,16 @@ def _run_cli() -> None:
                         if wait_for_process_exit(server_pid, timeout=5.0):
                             click.echo(f"  Server {server_pid} exited gracefully")
                             # Clean up files
-                            if os.path.exists(pid_file):
-                                os.unlink(pid_file)
-                            if os.path.exists(socket_file):
-                                os.unlink(socket_file)
+                            for f in [pid_file, socket_file, http_file, tcp_file]:
+                                if os.path.exists(f):
+                                    os.unlink(f)
                             return True
                     except ProcessLookupError:
                         # Already dead
                         click.echo(f"  Server {server_pid} already stopped")
-                        if os.path.exists(pid_file):
-                            os.unlink(pid_file)
-                        if os.path.exists(socket_file):
-                            os.unlink(socket_file)
+                        for f in [pid_file, socket_file, http_file, tcp_file]:
+                            if os.path.exists(f):
+                                os.unlink(f)
                         return True
 
                     # Server didn't exit from SIGTERM, need to force kill
@@ -300,28 +378,30 @@ def _run_cli() -> None:
                         click.echo(f"  Killed server {server_pid}")
 
                     # Clean up files
-                    if os.path.exists(pid_file):
-                        os.unlink(pid_file)
-                    if os.path.exists(socket_file):
-                        os.unlink(socket_file)
+                    for f in [pid_file, socket_file, http_file, tcp_file]:
+                        if os.path.exists(f):
+                            os.unlink(f)
                     return True
                 except (ValueError, ProcessLookupError, PermissionError) as e:
                     click.echo(f"  Could not kill process: {e}", err=True)
                     # Still try to clean up stale files
-                    if os.path.exists(pid_file):
-                        os.unlink(pid_file)
-                    if os.path.exists(socket_file):
-                        os.unlink(socket_file)
+                    for f in [pid_file, socket_file, http_file, tcp_file]:
+                        if os.path.exists(f):
+                            os.unlink(f)
                     return False
             else:
-                # No PID file, just clean up socket if it exists
-                if os.path.exists(socket_file):
-                    os.unlink(socket_file)
-                    click.echo(f"  Cleaned up stale socket")
+                # No PID file, just clean up stale files
+                cleaned = False
+                for f in [socket_file, http_file, tcp_file]:
+                    if os.path.exists(f):
+                        os.unlink(f)
+                        cleaned = True
+                if cleaned:
+                    click.echo(f"  Cleaned up stale files")
                 return False
 
-        async def graceful_stop_server(sock_path: str, timeout_secs: float) -> bool:
-            """Try graceful shutdown. Returns True if successful."""
+        async def graceful_stop_socket(sock_path: str, timeout_secs: float) -> bool:
+            """Try graceful shutdown via Unix socket. Returns True if successful."""
             try:
                 client = UnixSocketClient(sock_path)
                 await client.connect()
@@ -336,17 +416,65 @@ def _run_cli() -> None:
             except TimeoutError:
                 return False
 
+        async def graceful_stop_http(host_port: str, timeout_secs: float) -> bool:
+            """Try graceful shutdown via HTTP. Returns True if successful."""
+            try:
+                import aiohttp
+            except ImportError:
+                click.echo("  Warning: aiohttp not installed, cannot gracefully stop HTTP server")
+                return False
+
+            url = f"http://{host_port}/api/shutdown"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, timeout=aiohttp.ClientTimeout(total=timeout_secs)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            return data.get("success", False)
+                        return False
+            except (aiohttp.ClientError, asyncio.TimeoutError, OSError):
+                return False
+
+        async def graceful_stop_tcp(host_port: str, timeout_secs: float) -> bool:
+            """Try graceful shutdown via TCP socket. Returns True if successful."""
+            from nerve.transport import TCPSocketClient
+
+            host, port_str = host_port.split(":")
+            port = int(port_str)
+            try:
+                client = TCPSocketClient(host, port)
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.SHUTDOWN, params={}),
+                    timeout=timeout_secs,
+                )
+                await client.disconnect()
+                return result.success
+            except (ConnectionRefusedError, OSError):
+                return False
+            except TimeoutError:
+                return False
+
         async def stop_server(server_name: str, force_mode: bool, timeout_secs: float) -> bool:
             """Stop a server - gracefully first, then force if needed."""
             sock_path = f"/tmp/nerve-{server_name}.sock"
+            transport_type, host_port = get_server_transport(server_name)
 
             if force_mode:
                 click.echo(f"  Force stopping '{server_name}'...")
                 return force_kill_server(server_name)
 
             # Try graceful shutdown first
-            click.echo(f"  Stopping '{server_name}' (timeout: {timeout_secs}s)...")
-            if await graceful_stop_server(sock_path, timeout_secs):
+            click.echo(f"  Stopping '{server_name}' ({transport_type}, timeout: {timeout_secs}s)...")
+
+            if transport_type == "http" and host_port:
+                graceful_success = await graceful_stop_http(host_port, timeout_secs)
+            elif transport_type == "tcp" and host_port:
+                graceful_success = await graceful_stop_tcp(host_port, timeout_secs)
+            else:
+                graceful_success = await graceful_stop_socket(sock_path, timeout_secs)
+
+            if graceful_success:
                 # Wait briefly for server to clean up files
                 await asyncio.sleep(0.5)
                 click.echo(f"  Gracefully stopped '{server_name}'")
@@ -362,17 +490,33 @@ def _run_cli() -> None:
 
         async def run():
             if stop_all:
-                # Find all nerve sockets
+                # Find all nerve servers (socket, HTTP, and TCP)
                 sockets = glob("/tmp/nerve-*.sock")
-                if not sockets:
+                http_files = glob("/tmp/nerve-*.http")
+                tcp_files = glob("/tmp/nerve-*.tcp")
+
+                # Collect unique server names
+                server_names = set()
+                for sock_path in sockets:
+                    sname = get_server_name_from_socket(sock_path)
+                    if sname:
+                        server_names.add(sname)
+                for http_path in http_files:
+                    sname = get_server_name_from_http(http_path)
+                    if sname:
+                        server_names.add(sname)
+                for tcp_path in tcp_files:
+                    sname = get_server_name_from_tcp(tcp_path)
+                    if sname:
+                        server_names.add(sname)
+
+                if not server_names:
                     click.echo("No nerve servers found")
                     return
 
-                click.echo(f"Found {len(sockets)} server(s)")
-                for sock_path in sockets:
-                    server_name = get_server_name_from_socket(sock_path)
-                    if server_name:
-                        await stop_server(server_name, force, timeout)
+                click.echo(f"Found {len(server_names)} server(s)")
+                for server_name in sorted(server_names):
+                    await stop_server(server_name, force, timeout)
             else:
                 await stop_server(name, force, timeout)
 
@@ -390,77 +534,205 @@ def _run_cli() -> None:
 
             nerve server status --all
         """
-        if not name and not show_all:
-            click.echo("Error: Provide server NAME or use --all", err=True)
-            sys.exit(1)
-
-        socket = f"/tmp/nerve-{name}.sock" if name else ""
+        import os
+        import re
         from glob import glob
 
         from nerve.server.protocols import Command, CommandType
         from nerve.transport import UnixSocketClient
 
-        async def get_server_status(sock_path: str) -> dict | None:
-            """Get status of a single server. Returns None if not running."""
+        if not name and not show_all:
+            click.echo("Error: Provide server NAME or use --all", err=True)
+            sys.exit(1)
+
+        def get_server_name_from_socket(sock_path: str) -> str:
+            """Extract server name from socket path."""
+            match = re.match(r"/tmp/nerve-(.+)\.sock", sock_path)
+            return match.group(1) if match else ""
+
+        def get_server_name_from_http(http_path: str) -> str:
+            """Extract server name from HTTP file path."""
+            match = re.match(r"/tmp/nerve-(.+)\.http", http_path)
+            return match.group(1) if match else ""
+
+        def get_server_name_from_tcp(tcp_path: str) -> str:
+            """Extract server name from TCP file path."""
+            match = re.match(r"/tmp/nerve-(.+)\.tcp", tcp_path)
+            return match.group(1) if match else ""
+
+        def get_transport_info(server_name: str) -> tuple[str, str | None]:
+            """Get transport type and host:port. Returns (type, info)."""
+            http_file = f"/tmp/nerve-{server_name}.http"
+            tcp_file = f"/tmp/nerve-{server_name}.tcp"
+            if os.path.exists(http_file):
+                with open(http_file) as f:
+                    return "http", f.read().strip()
+            if os.path.exists(tcp_file):
+                with open(tcp_file) as f:
+                    return "tcp", f.read().strip()
+            return "unix", None
+
+        async def get_socket_status(sock_path: str) -> dict | None:
+            """Get status via Unix socket. Returns None if not running."""
             try:
                 client = UnixSocketClient(sock_path)
                 await client.connect()
                 result = await client.send_command(Command(type=CommandType.PING, params={}))
                 await client.disconnect()
                 if result.success:
-                    return {"socket": sock_path, **result.data}
+                    return result.data
                 return None
             except (ConnectionRefusedError, FileNotFoundError, OSError):
                 return None
 
+        async def get_http_status(host_port: str) -> dict | None:
+            """Get status via HTTP PING command. Returns None if not running."""
+            from nerve.transport import HTTPClient
+
+            try:
+                client = HTTPClient(f"http://{host_port}")
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.PING, params={}),
+                    timeout=5.0,
+                )
+                await client.disconnect()
+                if result.success:
+                    return result.data
+                return None
+            except (Exception, asyncio.TimeoutError):
+                return None
+
+        async def get_tcp_status(host_port: str) -> dict | None:
+            """Get status via TCP socket PING command. Returns None if not running."""
+            from nerve.transport import TCPSocketClient
+
+            try:
+                host, port_str = host_port.split(":")
+                port = int(port_str)
+                client = TCPSocketClient(host, port)
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.PING, params={}),
+                    timeout=5.0,
+                )
+                await client.disconnect()
+                if result.success:
+                    return result.data
+                return None
+            except (Exception, asyncio.TimeoutError):
+                return None
+
+        async def get_server_status(server_name: str) -> dict | None:
+            """Get status of a server by name. Returns None if not running."""
+            transport_type, host_port = get_transport_info(server_name)
+
+            if transport_type == "http" and host_port:
+                status = await get_http_status(host_port)
+                if status:
+                    return {"transport": f"http://{host_port}", **status}
+            elif transport_type == "tcp" and host_port:
+                status = await get_tcp_status(host_port)
+                if status:
+                    return {"transport": f"tcp://{host_port}", **status}
+            else:
+                sock_path = f"/tmp/nerve-{server_name}.sock"
+                status = await get_socket_status(sock_path)
+                if status:
+                    return {"transport": sock_path, **status}
+            return None
+
         async def run():
             if show_all:
-                # Find all nerve sockets
-                sockets = glob("/tmp/nerve*.sock")
-                if not sockets:
-                    click.echo("No nerve sockets found")
+                # Find all nerve servers (socket, HTTP, and TCP)
+                sockets = glob("/tmp/nerve-*.sock")
+                http_files = glob("/tmp/nerve-*.http")
+                tcp_files = glob("/tmp/nerve-*.tcp")
+
+                # Collect unique server names
+                server_names = set()
+                for sock_path in sockets:
+                    sname = get_server_name_from_socket(sock_path)
+                    if sname:
+                        server_names.add(sname)
+                for http_path in http_files:
+                    sname = get_server_name_from_http(http_path)
+                    if sname:
+                        server_names.add(sname)
+                for tcp_path in tcp_files:
+                    sname = get_server_name_from_tcp(tcp_path)
+                    if sname:
+                        server_names.add(sname)
+
+                if not server_names:
+                    click.echo("No nerve servers found")
                     return
 
                 running = []
-                for sock_path in sockets:
-                    status_data = await get_server_status(sock_path)
+                for server_name in sorted(server_names):
+                    status_data = await get_server_status(server_name)
                     if status_data:
-                        running.append(status_data)
+                        running.append({"name": server_name, **status_data})
 
                 if not running:
                     click.echo("No nerve servers running")
-                    click.echo(f"(Found {len(sockets)} socket file(s), but none responding)")
+                    click.echo(f"(Found {len(server_names)} server file(s), but none responding)")
                     return
 
-                click.echo(f"{'SOCKET':<30} {'CHANNELS':<10} {'DAGS'}")
-                click.echo("-" * 50)
+                click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'CHANNELS':<10} {'DAGS'}")
+                click.echo("-" * 70)
                 for s in running:
                     click.echo(
-                        f"{s['socket']:<30} {s.get('channels', 0):<10} {s.get('dags', 0)}"
+                        f"{s['name']:<20} {s['transport']:<30} {s.get('channels', '?'):<10} {s.get('dags', '?')}"
                     )
             else:
-                try:
-                    client = UnixSocketClient(socket)
-                    await client.connect()
-
-                    result = await client.send_command(
-                        Command(type=CommandType.PING, params={})
-                    )
-
-                    if result.success:
-                        data = result.data or {}
-                        click.echo(f"Server running on {socket}")
-                        click.echo(f"  Channels: {data.get('channels', 0)}")
-                        click.echo(f"  DAGs: {data.get('dags', 0)}")
-                    else:
-                        click.echo(f"Error: {result.error}", err=True)
-
-                    await client.disconnect()
-                except (ConnectionRefusedError, FileNotFoundError):
-                    click.echo(f"Server not running on {socket}")
+                status_data = await get_server_status(name)
+                if status_data:
+                    click.echo(f"Server '{name}' running on {status_data['transport']}")
+                    if 'channels' in status_data:
+                        click.echo(f"  Channels: {status_data.get('channels', 0)}")
+                        click.echo(f"  DAGs: {status_data.get('dags', 0)}")
+                else:
+                    click.echo(f"Server '{name}' not running")
                     sys.exit(1)
 
         asyncio.run(run())
+
+    # =========================================================================
+    # Helper for getting the right client for a server
+    # =========================================================================
+    def get_server_client(server_name: str):
+        """Get the appropriate client factory for a server.
+
+        Returns (client_factory, connection_info) tuple where:
+        - client_factory: callable that takes connection_info and returns client
+        - connection_info: argument to pass to factory
+
+        Usage:
+            ClientFactory, conn_info = get_server_client("myserver")
+            client = ClientFactory(conn_info)
+            await client.connect()
+        """
+        import os
+
+        from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
+
+        http_file = f"/tmp/nerve-{server_name}.http"
+        tcp_file = f"/tmp/nerve-{server_name}.tcp"
+
+        if os.path.exists(http_file):
+            with open(http_file) as f:
+                host_port = f.read().strip()
+            return HTTPClient, f"http://{host_port}"
+        elif os.path.exists(tcp_file):
+            with open(tcp_file) as f:
+                host_port = f.read().strip()
+            host, port_str = host_port.split(":")
+            # Return a factory that unpacks the tuple
+            return lambda args: TCPSocketClient(args[0], args[1]), (host, int(port_str))
+        else:
+            socket_path = f"/tmp/nerve-{server_name}.sock"
+            return UnixSocketClient, socket_path
 
     # =========================================================================
     # Channel subgroup (under server)
@@ -523,7 +795,6 @@ def _run_cli() -> None:
         """
         from nerve.core.validation import validate_name
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
 
         try:
             validate_name(name, "channel")
@@ -531,13 +802,13 @@ def _run_cli() -> None:
             click.echo(f"Error: {e}", err=True)
             sys.exit(1)
 
-        socket = f"/tmp/nerve-{server_name}.sock"
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
             try:
-                client = UnixSocketClient(socket)
+                client = ClientClass(connection_arg)
                 await client.connect()
-            except (ConnectionRefusedError, FileNotFoundError):
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
@@ -579,12 +850,12 @@ def _run_cli() -> None:
 
             nerve server channel list --server myproject --json
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
-            client = UnixSocketClient(socket)
+            client = ClientClass(connection_arg)
             await client.connect()
 
             result = await client.send_command(
@@ -652,15 +923,15 @@ def _run_cli() -> None:
 
             nerve server channel run my-shell "gemini --flag" --server myproject
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
             try:
-                client = UnixSocketClient(socket)
+                client = ClientClass(connection_arg)
                 await client.connect()
-            except (ConnectionRefusedError, FileNotFoundError):
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
@@ -705,15 +976,15 @@ def _run_cli() -> None:
 
             nerve server channel read my-shell --server local --lines 50
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
             try:
-                client = UnixSocketClient(socket)
+                client = ClientClass(connection_arg)
                 await client.connect()
-            except (ConnectionRefusedError, FileNotFoundError):
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
@@ -772,12 +1043,12 @@ def _run_cli() -> None:
 
             nerve server channel send my-claude "Hello" --server myproject --stream
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
-            client = UnixSocketClient(socket)
+            client = ClientClass(connection_arg)
             await client.connect()
 
             if stream:
@@ -846,18 +1117,18 @@ def _run_cli() -> None:
 
             nerve server channel write my-shell "\\r" --server local    # Send CR
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         # Decode escape sequences
         decoded_data = data.encode().decode("unicode_escape")
 
         async def run():
             try:
-                client = UnixSocketClient(socket)
+                client = ClientClass(connection_arg)
                 await client.connect()
-            except (ConnectionRefusedError, FileNotFoundError):
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
@@ -899,15 +1170,15 @@ def _run_cli() -> None:
 
             nerve server channel interrupt my-claude --server local
         """
-        socket = f"/tmp/nerve-{server_name}.sock"
         from nerve.server.protocols import Command, CommandType
-        from nerve.transport import UnixSocketClient
+
+        ClientClass, connection_arg = get_server_client(server_name)
 
         async def run():
             try:
-                client = UnixSocketClient(socket)
+                client = ClientClass(connection_arg)
                 await client.connect()
-            except (ConnectionRefusedError, FileNotFoundError):
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
