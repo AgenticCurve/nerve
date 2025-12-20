@@ -38,7 +38,7 @@ class PTYConfig(ChannelConfig):
     cwd: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     ready_timeout: float = 60.0
-    response_timeout: float = 300.0
+    response_timeout: float = 1800.0  # 30 minutes
 
 
 @dataclass
@@ -67,7 +67,7 @@ class PTYChannel:
     state: ChannelState = ChannelState.CONNECTING
     channel_type: ChannelType = field(default=ChannelType.TERMINAL, init=False)
     _ready_timeout: float = field(default=60.0, repr=False)
-    _response_timeout: float = field(default=300.0, repr=False)
+    _response_timeout: float = field(default=1800.0, repr=False)  # 30 minutes
     _reader_task: asyncio.Task | None = field(default=None, repr=False)
 
     @classmethod
@@ -78,7 +78,7 @@ class PTYChannel:
         cwd: str | None = None,
         env: dict[str, str] | None = None,
         ready_timeout: float = 60.0,
-        response_timeout: float = 300.0,
+        response_timeout: float = 1800.0,  # 30 minutes
     ) -> PTYChannel:
         """Create a new PTY channel.
 

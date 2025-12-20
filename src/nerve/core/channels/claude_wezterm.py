@@ -49,7 +49,7 @@ class ClaudeOnWezTermChannel:
         cwd: str | None = None,
         parser: ParserType = ParserType.CLAUDE,
         ready_timeout: float = 60.0,
-        response_timeout: float = 300.0,
+        response_timeout: float = 1800.0,  # 30 minutes
     ) -> ClaudeOnWezTermChannel:
         """Create a new ClaudeOnWezTerm channel.
 

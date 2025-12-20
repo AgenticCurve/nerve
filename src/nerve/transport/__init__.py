@@ -30,6 +30,7 @@ Example (socket server):
     >>> await transport.serve(engine)
 """
 
+from nerve.transport.anthropic_proxy import AnthropicProxyConfig, AnthropicProxyServer
 from nerve.transport.http import HTTPClient, HTTPServer
 from nerve.transport.in_process import InProcessTransport
 from nerve.transport.protocol import ClientTransport, ServerTransport, Transport
@@ -49,4 +50,7 @@ __all__ = [
     "TCPSocketClient",
     "HTTPServer",
     "HTTPClient",
+    # Anthropic Proxy
+    "AnthropicProxyServer",
+    "AnthropicProxyConfig",
 ]

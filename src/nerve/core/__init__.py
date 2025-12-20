@@ -99,6 +99,14 @@ from nerve.core.types import (
     TaskResult,
 )
 
+# Lazy imports for optional proxy components (require pydantic)
+def __getattr__(name: str):
+    """Lazy import for optional proxy modules."""
+    if name in ("transforms", "clients"):
+        import importlib
+        return importlib.import_module(f"nerve.core.{name}")
+    raise AttributeError(f"module 'nerve.core' has no attribute {name!r}")
+
 __all__ = [
     # Channel abstraction
     "Channel",
@@ -145,4 +153,7 @@ __all__ = [
     "DAG",
     "Task",
     "TaskStatus",
+    # Proxy components (lazy loaded)
+    "transforms",
+    "clients",
 ]

@@ -26,13 +26,18 @@ dependencies = [
 mcp = [
     "mcp>=1.0.0",
 ]
+proxy = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "mypy>=1.8.0",
     "ruff>=0.2.0",
+    "aioresponses>=0.7.0",
 ]
-all = ["nerve[mcp,dev]"]
+all = ["nerve[mcp,proxy,dev]"]
 
 [project.scripts]
 nerve = "nerve.frontends.cli.main:main"

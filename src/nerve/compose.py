@@ -70,3 +70,112 @@ async def create_http_server(host: str = "127.0.0.1", port: int = 8080) -> None:
     engine = NerveEngine(event_sink=transport)
 
     await transport.serve(engine)
+
+
+async def create_anthropic_proxy(
+    host: str = "127.0.0.1",
+    port: int = 3456,
+    upstream_base_url: str | None = None,
+    upstream_api_key: str | None = None,
+    upstream_model: str | None = None,
+    config_file: str | None = None,
+) -> None:
+    """Create and run an Anthropic-to-OpenAI proxy server.
+
+    This proxy accepts Anthropic Messages API format requests and forwards
+    them to an OpenAI-compatible upstream API. Useful for using Claude Code
+    with alternative LLM backends.
+
+    Configuration priority:
+    1. Function arguments (highest)
+    2. Environment variables
+    3. Config file (if NERVE_PROXY_CONFIG is set)
+
+    This is a convenience function that blocks until stopped.
+
+    Args:
+        host: Host to bind to (or PROXY_HOST env var).
+        port: Port to bind to (or PROXY_PORT env var).
+        upstream_base_url: Upstream API URL (or OPENAI_BASE_URL env var).
+        upstream_api_key: Upstream API key (or OPENAI_API_KEY env var).
+        upstream_model: Default model (or OPENAI_MODEL env var).
+        config_file: Path to YAML config (or NERVE_PROXY_CONFIG env var).
+
+    Example:
+        >>> # Using environment variables
+        >>> # export OPENAI_BASE_URL=https://api.openai.com/v1
+        >>> # export OPENAI_API_KEY=sk-...
+        >>> # export OPENAI_MODEL=gpt-4o
+        >>> await create_anthropic_proxy()
+        >>>
+        >>> # Or with explicit arguments
+        >>> await create_anthropic_proxy(
+        ...     upstream_base_url="https://api.openai.com/v1",
+        ...     upstream_api_key="sk-...",
+        ...     upstream_model="gpt-4o",
+        ... )
+    """
+    import os
+
+    from nerve.transport.anthropic_proxy import (
+        AnthropicProxyConfig,
+        AnthropicProxyServer,
+    )
+
+    # Load config file if specified
+    file_config: dict = {}
+    config_path = config_file or os.environ.get("NERVE_PROXY_CONFIG")
+    if config_path:
+        try:
+            import yaml
+
+            with open(config_path) as f:
+                file_config = yaml.safe_load(f) or {}
+        except ImportError:
+            # YAML not available, skip config file
+            pass
+        except FileNotFoundError:
+            pass
+
+    # Build config with priority: args > env > file > defaults
+    def get_value(arg: str | None, env_key: str, file_key: str, default: str) -> str:
+        if arg is not None:
+            return arg
+        env_val = os.environ.get(env_key)
+        if env_val:
+            return env_val
+        file_val = file_config.get(file_key)
+        if file_val:
+            return str(file_val)
+        return default
+
+    config = AnthropicProxyConfig(
+        host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
+        port=int(get_value(str(port) if port != 3456 else None, "PROXY_PORT", "port", "3456")),
+        upstream_base_url=get_value(
+            upstream_base_url, "OPENAI_BASE_URL", "upstream_base_url", ""
+        ),
+        upstream_api_key=get_value(
+            upstream_api_key, "OPENAI_API_KEY", "upstream_api_key", ""
+        ),
+        upstream_model=get_value(
+            upstream_model, "OPENAI_MODEL", "upstream_model", ""
+        ),
+    )
+
+    # Validate required config
+    if not config.upstream_base_url:
+        raise ValueError(
+            "upstream_base_url is required. Set OPENAI_BASE_URL env var or pass explicitly."
+        )
+    if not config.upstream_api_key:
+        raise ValueError(
+            "upstream_api_key is required. Set OPENAI_API_KEY env var or pass explicitly."
+        )
+    if not config.upstream_model:
+        raise ValueError(
+            "upstream_model is required. Set OPENAI_MODEL env var or pass explicitly."
+        )
+
+    server = AnthropicProxyServer(config=config)
+    await server.serve()

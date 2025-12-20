@@ -36,7 +36,7 @@ class WezTermConfig(ChannelConfig):
 
     cwd: str | None = None
     ready_timeout: float = 60.0
-    response_timeout: float = 300.0
+    response_timeout: float = 1800.0  # 30 minutes
 
 
 @dataclass
@@ -67,7 +67,7 @@ class WezTermChannel:
     state: ChannelState = ChannelState.CONNECTING
     channel_type: ChannelType = field(default=ChannelType.TERMINAL, init=False)
     _ready_timeout: float = field(default=60.0, repr=False)
-    _response_timeout: float = field(default=300.0, repr=False)
+    _response_timeout: float = field(default=1800.0, repr=False)  # 30 minutes
 
     @classmethod
     async def create(
@@ -76,7 +76,7 @@ class WezTermChannel:
         command: list[str] | str | None = None,
         cwd: str | None = None,
         ready_timeout: float = 60.0,
-        response_timeout: float = 300.0,
+        response_timeout: float = 1800.0,  # 30 minutes
     ) -> WezTermChannel:
         """Create a new WezTerm channel by spawning a pane.
 
@@ -133,7 +133,7 @@ class WezTermChannel:
         channel_id: str,
         pane_id: str,
         ready_timeout: float = 60.0,
-        response_timeout: float = 300.0,
+        response_timeout: float = 1800.0,  # 30 minutes
     ) -> WezTermChannel:
         """Attach to an existing WezTerm pane.
 
