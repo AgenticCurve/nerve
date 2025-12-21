@@ -9,13 +9,13 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, TerminalChannel
+from nerve.core import ParserType, PTYChannel
 
 
 async def main():
     print("Creating Claude channel...")
 
-    channel = await TerminalChannel.create(
+    channel = await PTYChannel.create(
         command="claude",
         cwd=".",
     )

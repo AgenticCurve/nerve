@@ -9,7 +9,7 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, TerminalChannel
+from nerve.core import ParserType, PTYChannel
 from nerve.core.dag import DAG, Task
 
 
@@ -17,7 +17,7 @@ async def main():
     print("Creating channel...")
 
     # Create a channel for DAG tasks
-    claude = await TerminalChannel.create(command="claude", cwd=".")
+    claude = await PTYChannel.create(command="claude", cwd=".")
 
     print(f"Claude channel: {claude.id}")
     print()

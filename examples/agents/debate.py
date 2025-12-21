@@ -10,7 +10,7 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, TerminalChannel
+from nerve.core import ParserType, PTYChannel
 
 ROUNDS = 3
 
@@ -20,8 +20,8 @@ async def main():
     print()
 
     # Create two channels
-    advocate_python = await TerminalChannel.create(command="claude", channel_id="python-advocate")
-    advocate_js = await TerminalChannel.create(command="claude", channel_id="js-advocate")
+    advocate_python = await PTYChannel.create(command="claude", channel_id="python-advocate")
+    advocate_js = await PTYChannel.create(command="claude", channel_id="js-advocate")
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")
