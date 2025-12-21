@@ -3,7 +3,7 @@
 import pytest
 from aioresponses import aioresponses
 
-from nerve.core.clients.llm_client import (
+from nerve.gateway.clients.llm_client import (
     CircuitBreaker,
     CircuitOpenError,
     CircuitState,

@@ -26,7 +26,7 @@ dependencies = [
 mcp = [
     "mcp>=1.0.0",
 ]
-proxy = [
+gateway = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
 ]
@@ -37,7 +37,7 @@ dev = [
     "ruff>=0.2.0",
     "aioresponses>=0.7.0",
 ]
-all = ["nerve[mcp,proxy,dev]"]
+all = ["nerve[mcp,gateway,dev]"]
 
 [project.scripts]
 nerve = "nerve.frontends.cli.main:main"

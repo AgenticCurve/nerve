@@ -2,7 +2,7 @@
 
 import pytest
 
-from nerve.core.transforms.tool_id_mapper import ToolIDMapper
+from nerve.gateway.transforms.tool_id_mapper import ToolIDMapper
 
 
 class TestToolIDMapper:

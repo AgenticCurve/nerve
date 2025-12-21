@@ -156,11 +156,11 @@ async def main():
     mock_runner = await start_mock_openai(mock_openai_port)
     print(f"   Mock OpenAI server running at http://127.0.0.1:{mock_openai_port}")
 
-    # Start the Anthropic proxy
-    print(f"\n2. Starting Anthropic proxy on port {proxy_port}...")
-    from nerve.transport.anthropic_proxy import AnthropicProxyConfig, AnthropicProxyServer
+    # Start the OpenAI proxy (accepts Anthropic format, forwards to OpenAI)
+    print(f"\n2. Starting OpenAI proxy on port {proxy_port}...")
+    from nerve.gateway.openai_proxy import OpenAIProxyConfig, OpenAIProxyServer
 
-    proxy_config = AnthropicProxyConfig(
+    proxy_config = OpenAIProxyConfig(
         host="127.0.0.1",
         port=proxy_port,
         upstream_base_url=f"http://127.0.0.1:{mock_openai_port}/v1",
@@ -168,10 +168,10 @@ async def main():
         upstream_model="gpt-4-mock",
     )
 
-    proxy_server = AnthropicProxyServer(config=proxy_config)
+    proxy_server = OpenAIProxyServer(config=proxy_config)
 
     # Start proxy in background
-    from nerve.core.clients.llm_client import LLMClient, LLMClientConfig
+    from nerve.gateway.clients.llm_client import LLMClient, LLMClientConfig
 
     proxy_server._client = LLMClient(
         config=LLMClientConfig(

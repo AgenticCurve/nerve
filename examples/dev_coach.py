@@ -53,7 +53,7 @@ COACH_WARMUP = ""  # Leave empty to skip warmup
 
 INITIAL_TASK = """
 
-Implement this refactoring (ensuring no code change)
+Check if the current implementation is already there. If not, then carry on with refactoring.
 The suggested architecture can be found in: REFACTORED_DIR_ARCHITECTURE
 
 core/ should contain all the business logic such that we could use core/
@@ -351,7 +351,7 @@ async def run_dev_coach(
                 "parser": "claude",
             },
         ),
-        timeout=300.0,
+        timeout=1800.0,
     )
 
     if not result.success:
@@ -391,7 +391,7 @@ async def run_dev_coach(
                 "parser": "claude",
             },
         ),
-        timeout=300.0,
+        timeout=1800.0,
     )
 
     if not result.success:
@@ -452,7 +452,7 @@ async def run_dev_coach(
                     "parser": "claude",
                 },
             ),
-            timeout=300.0,
+            timeout=1800.0,
         )
 
         if not result.success:
@@ -489,7 +489,7 @@ async def run_dev_coach(
                     "parser": "claude",
                 },
             ),
-            timeout=300.0,
+            timeout=1800.0,
         )
 
         if not result.success:

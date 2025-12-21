@@ -72,7 +72,7 @@ async def create_http_server(host: str = "127.0.0.1", port: int = 8080) -> None:
     await transport.serve(engine)
 
 
-async def create_anthropic_proxy(
+async def create_openai_proxy(
     host: str = "127.0.0.1",
     port: int = 3456,
     upstream_base_url: str | None = None,
@@ -80,11 +80,11 @@ async def create_anthropic_proxy(
     upstream_model: str | None = None,
     config_file: str | None = None,
 ) -> None:
-    """Create and run an Anthropic-to-OpenAI proxy server.
+    """Create and run an OpenAI upstream proxy server.
 
-    This proxy accepts Anthropic Messages API format requests and forwards
-    them to an OpenAI-compatible upstream API. Useful for using Claude Code
-    with alternative LLM backends.
+    This proxy accepts Anthropic Messages API format requests, transforms them
+    to OpenAI format, and forwards to an OpenAI-compatible upstream API.
+    Useful for using Claude Code with alternative LLM backends.
 
     Configuration priority:
     1. Function arguments (highest)
@@ -106,10 +106,10 @@ async def create_anthropic_proxy(
         >>> # export OPENAI_BASE_URL=https://api.openai.com/v1
         >>> # export OPENAI_API_KEY=sk-...
         >>> # export OPENAI_MODEL=gpt-4o
-        >>> await create_anthropic_proxy()
+        >>> await create_openai_proxy()
         >>>
         >>> # Or with explicit arguments
-        >>> await create_anthropic_proxy(
+        >>> await create_openai_proxy(
         ...     upstream_base_url="https://api.openai.com/v1",
         ...     upstream_api_key="sk-...",
         ...     upstream_model="gpt-4o",
@@ -117,9 +117,9 @@ async def create_anthropic_proxy(
     """
     import os
 
-    from nerve.transport.anthropic_proxy import (
-        AnthropicProxyConfig,
-        AnthropicProxyServer,
+    from nerve.gateway.openai_proxy import (
+        OpenAIProxyConfig,
+        OpenAIProxyServer,
     )
 
     # Load config file if specified
@@ -149,7 +149,7 @@ async def create_anthropic_proxy(
             return str(file_val)
         return default
 
-    config = AnthropicProxyConfig(
+    config = OpenAIProxyConfig(
         host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
         port=int(get_value(str(port) if port != 3456 else None, "PROXY_PORT", "port", "3456")),
         upstream_base_url=get_value(
@@ -176,6 +176,41 @@ async def create_anthropic_proxy(
         raise ValueError(
             "upstream_model is required. Set OPENAI_MODEL env var or pass explicitly."
         )
+
+    server = OpenAIProxyServer(config=config)
+    await server.serve()
+
+
+async def create_anthropic_proxy(
+    host: str = "127.0.0.1",
+    port: int = 3457,
+    upstream_base_url: str | None = None,
+    upstream_api_key: str | None = None,
+    config_file: str | None = None,
+) -> None:
+    """Create and run an Anthropic upstream proxy server.
+
+    This proxy accepts Anthropic Messages API format requests and forwards
+    them directly to an Anthropic-compatible upstream API with no transformation.
+
+    Args:
+        host: Host to bind to.
+        port: Port to bind to.
+        upstream_base_url: Upstream API URL.
+        upstream_api_key: Upstream API key.
+        config_file: Path to YAML config.
+    """
+    from nerve.gateway.anthropic_proxy import (
+        AnthropicProxyConfig,
+        AnthropicProxyServer,
+    )
+
+    config = AnthropicProxyConfig(
+        host=host,
+        port=port,
+        upstream_base_url=upstream_base_url,
+        upstream_api_key=upstream_api_key,
+    )
 
     server = AnthropicProxyServer(config=config)
     await server.serve()

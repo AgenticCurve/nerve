@@ -20,9 +20,9 @@ from typing import Any
 
 import aiohttp
 
-from nerve.core.transforms.openai import OpenAITransformer
-from nerve.core.transforms.tool_id_mapper import ToolIDMapper
-from nerve.core.transforms.types import (
+from nerve.gateway.transforms.openai import OpenAITransformer
+from nerve.gateway.transforms.tool_id_mapper import ToolIDMapper
+from nerve.gateway.transforms.types import (
     InternalResponse,
     StreamChunk,
     TokenUsage,
@@ -376,6 +376,12 @@ class LLMClient:
                 ) as response:
                     if response.status != 200:
                         error_body = await response.text()
+                        logger.error(
+                            "[%s] Upstream error %d: %s",
+                            trace_id,
+                            response.status,
+                            error_body[:500],
+                        )
                         if response.status in self.config.retryable_status_codes:
                             last_error = UpstreamError(
                                 f"Upstream returned {response.status}",

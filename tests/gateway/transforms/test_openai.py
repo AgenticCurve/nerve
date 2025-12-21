@@ -2,9 +2,9 @@
 
 import pytest
 
-from nerve.core.transforms.openai import OpenAITransformer
-from nerve.core.transforms.tool_id_mapper import ToolIDMapper
-from nerve.core.transforms.types import (
+from nerve.gateway.transforms.openai import OpenAITransformer
+from nerve.gateway.transforms.tool_id_mapper import ToolIDMapper
+from nerve.gateway.transforms.types import (
     ContentBlock,
     InternalMessage,
     InternalRequest,

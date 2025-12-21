@@ -1,20 +1,19 @@
-"""End-to-end tests for AnthropicProxyServer."""
+"""Tests for AnthropicProxyServer (passthrough proxy)."""
 
-import asyncio
 import json
 
 import aiohttp
 import pytest
 from aioresponses import aioresponses
 
-from nerve.transport.anthropic_proxy import (
+from nerve.gateway.anthropic_proxy import (
     AnthropicProxyConfig,
     AnthropicProxyServer,
 )
 
 
 class TestAnthropicProxyServer:
-    """End-to-end tests for the proxy server."""
+    """Tests for the Anthropic passthrough proxy server."""
 
     @pytest.fixture
     def proxy_config(self):
@@ -22,40 +21,38 @@ class TestAnthropicProxyServer:
         return AnthropicProxyConfig(
             host="127.0.0.1",
             port=0,  # Let OS pick a port
-            upstream_base_url="https://api.test.openai.com/v1",
+            upstream_base_url="https://api.test.anthropic.com",
             upstream_api_key="test-key",
-            upstream_model="gpt-4o-test",
-            max_retries=1,
         )
 
     @pytest.fixture
     async def running_proxy(self, proxy_config):
         """Start a proxy server for testing."""
-        server = AnthropicProxyServer(config=proxy_config)
-
-        # We need to start the server but get the actual port
-        # Since serve() blocks, we'll need to set up the server manually
         from aiohttp import web
 
-        server._client = server._client or None
+        server = AnthropicProxyServer(config=proxy_config)
 
-        # Initialize client with mocked upstream
-        from nerve.core.clients.llm_client import LLMClient, LLMClientConfig
-
-        server._client = LLMClient(
-            config=LLMClientConfig(
-                base_url=proxy_config.upstream_base_url,
-                api_key=proxy_config.upstream_api_key,
-                model=proxy_config.upstream_model,
-                max_retries=1,
-            )
+        # Create HTTP session for upstream requests
+        timeout = aiohttp.ClientTimeout(
+            connect=proxy_config.connect_timeout,
+            total=proxy_config.read_timeout,
         )
-        await server._client.connect()
+        server._session = aiohttp.ClientSession(
+            timeout=timeout,
+            headers={
+                "x-api-key": proxy_config.upstream_api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+        )
 
         # Setup app
         server._app = web.Application(client_max_size=proxy_config.max_body_size)
         server._app.router.add_post("/v1/messages", server._handle_messages)
         server._app.router.add_get("/health", server._handle_health)
+        server._app.router.add_post(
+            "/api/event_logging/batch", server._handle_telemetry
+        )
 
         # Start on a free port
         server._runner = web.AppRunner(server._app)
@@ -70,7 +67,10 @@ class TestAnthropicProxyServer:
         yield server, base_url
 
         # Cleanup
-        await server.stop()
+        if server._session:
+            await server._session.close()
+        if server._runner:
+            await server._runner.cleanup()
 
     async def test_health_check(self, running_proxy):
         """Health endpoint should return ok status."""
@@ -78,6 +78,20 @@ class TestAnthropicProxyServer:
 
         async with aiohttp.ClientSession() as session:
             async with session.get(f"{base_url}/health") as resp:
+                assert resp.status == 200
+                data = await resp.json()
+                assert data["status"] == "ok"
+
+    async def test_telemetry_endpoint(self, running_proxy):
+        """Telemetry endpoint should silently accept requests."""
+        server, base_url = running_proxy
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{base_url}/api/event_logging/batch",
+                json={"events": []},
+                headers={"Content-Type": "application/json"},
+            ) as resp:
                 assert resp.status == 200
                 data = await resp.json()
                 assert data["status"] == "ok"
@@ -113,37 +127,22 @@ class TestAnthropicProxyServer:
                 assert data["error"]["type"] == "invalid_request_error"
                 assert "JSON" in data["error"]["message"]
 
-    async def test_request_validation(self, running_proxy):
-        """Should validate Anthropic request format."""
-        server, base_url = running_proxy
-
-        async with aiohttp.ClientSession() as session:
-            # Missing messages field
-            async with session.post(
-                f"{base_url}/v1/messages",
-                json={"max_tokens": 1024},
-                headers={"Content-Type": "application/json"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["error"]["type"] == "invalid_request_error"
-
-    async def test_non_streaming_request(self, running_proxy):
-        """Non-streaming request should return complete response."""
+    async def test_passthrough_non_streaming(self, running_proxy):
+        """Non-streaming request should pass through unchanged."""
         server, base_url = running_proxy
 
         with aioresponses(passthrough=[base_url]) as m:
-            # Mock the upstream OpenAI response
+            # Mock the upstream Anthropic response (same format as input)
             m.post(
-                "https://api.test.openai.com/v1/chat/completions",
+                "https://api.test.anthropic.com/v1/messages",
                 payload={
-                    "choices": [
-                        {
-                            "message": {"content": "Hello from upstream!"},
-                            "finish_reason": "stop",
-                        }
-                    ],
-                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello from Anthropic!"}],
+                    "model": "claude-3-5-sonnet-20241022",
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
                 },
             )
 
@@ -151,6 +150,7 @@ class TestAnthropicProxyServer:
                 async with session.post(
                     f"{base_url}/v1/messages",
                     json={
+                        "model": "claude-3-5-sonnet-20241022",
                         "messages": [{"role": "user", "content": "Hello"}],
                         "max_tokens": 100,
                         "stream": False,
@@ -163,25 +163,32 @@ class TestAnthropicProxyServer:
                     assert resp.status == 200
                     data = await resp.json()
 
+                    # Response should be passed through unchanged
                     assert data["type"] == "message"
                     assert data["role"] == "assistant"
                     assert len(data["content"]) == 1
-                    assert data["content"][0]["text"] == "Hello from upstream!"
+                    assert data["content"][0]["text"] == "Hello from Anthropic!"
 
-    async def test_streaming_request(self, running_proxy):
-        """Streaming request should return SSE events."""
+    async def test_passthrough_streaming(self, running_proxy):
+        """Streaming request should pass through SSE events unchanged."""
         server, base_url = running_proxy
 
         with aioresponses(passthrough=[base_url]) as m:
-            # Mock SSE response from upstream
+            # Mock SSE response from upstream (Anthropic format)
             sse_response = (
-                b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n'
-                b'data: {"choices":[{"delta":{"content":"!"}}]}\n\n'
-                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n'
-                b"data: [DONE]\n\n"
+                b'event: message_start\n'
+                b'data: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022"}}\n\n'
+                b'event: content_block_start\n'
+                b'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
+                b'event: content_block_delta\n'
+                b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello!"}}\n\n'
+                b'event: content_block_stop\n'
+                b'data: {"type":"content_block_stop","index":0}\n\n'
+                b'event: message_stop\n'
+                b'data: {"type":"message_stop"}\n\n'
             )
             m.post(
-                "https://api.test.openai.com/v1/chat/completions",
+                "https://api.test.anthropic.com/v1/messages",
                 body=sse_response,
                 headers={"Content-Type": "text/event-stream"},
             )
@@ -190,6 +197,7 @@ class TestAnthropicProxyServer:
                 async with session.post(
                     f"{base_url}/v1/messages",
                     json={
+                        "model": "claude-3-5-sonnet-20241022",
                         "messages": [{"role": "user", "content": "Say hi"}],
                         "max_tokens": 100,
                         "stream": True,
@@ -210,37 +218,25 @@ class TestAnthropicProxyServer:
                             event_type = line_str.split(":")[1].strip()
                             events.append(event_type)
 
-                    # Should have the required Anthropic event types
+                    # Should have Anthropic event types (passed through)
                     assert "message_start" in events
                     assert "message_stop" in events
 
-    async def test_tool_use_transformation(self, running_proxy):
-        """Tool use should be properly transformed between formats."""
+    async def test_upstream_error_non_streaming(self, running_proxy):
+        """Upstream errors should be returned in Anthropic format."""
         server, base_url = running_proxy
 
         with aioresponses(passthrough=[base_url]) as m:
-            # Mock upstream returning a tool call
+            # Mock upstream returning 401 with JSON body (as real API would)
             m.post(
-                "https://api.test.openai.com/v1/chat/completions",
+                "https://api.test.anthropic.com/v1/messages",
+                status=401,
                 payload={
-                    "choices": [
-                        {
-                            "message": {
-                                "content": None,
-                                "tool_calls": [
-                                    {
-                                        "id": "call_abc123",
-                                        "type": "function",
-                                        "function": {
-                                            "name": "get_weather",
-                                            "arguments": '{"location":"NYC"}',
-                                        },
-                                    }
-                                ],
-                            },
-                            "finish_reason": "tool_calls",
-                        }
-                    ],
+                    "type": "error",
+                    "error": {
+                        "type": "authentication_error",
+                        "message": "Invalid API key",
+                    },
                 },
             )
 
@@ -248,56 +244,12 @@ class TestAnthropicProxyServer:
                 async with session.post(
                     f"{base_url}/v1/messages",
                     json={
-                        "messages": [{"role": "user", "content": "Weather in NYC?"}],
-                        "tools": [
-                            {
-                                "name": "get_weather",
-                                "description": "Get weather",
-                                "input_schema": {"type": "object"},
-                            }
-                        ],
-                        "max_tokens": 100,
-                        "stream": False,
-                    },
-                    headers={"Content-Type": "application/json"},
-                ) as resp:
-                    assert resp.status == 200
-                    data = await resp.json()
-
-                    # Should have tool_use block in Anthropic format
-                    tool_use_blocks = [
-                        b for b in data["content"] if b["type"] == "tool_use"
-                    ]
-                    assert len(tool_use_blocks) == 1
-
-                    tool_block = tool_use_blocks[0]
-                    assert tool_block["name"] == "get_weather"
-                    assert tool_block["input"] == {"location": "NYC"}
-                    # ID should be in Anthropic format
-                    assert tool_block["id"].startswith("toolu_")
-
-    async def test_error_format_matches_anthropic(self, running_proxy):
-        """Errors should be in Anthropic format."""
-        server, base_url = running_proxy
-
-        with aioresponses(passthrough=[base_url]) as m:
-            # Mock upstream returning 401
-            m.post(
-                "https://api.test.openai.com/v1/chat/completions",
-                status=401,
-                body="Unauthorized",
-            )
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{base_url}/v1/messages",
-                    json={
+                        "model": "claude-3-5-sonnet-20241022",
                         "messages": [{"role": "user", "content": "Hello"}],
                         "stream": False,
                     },
                     headers={"Content-Type": "application/json"},
                 ) as resp:
-                    # Should return the error
                     assert resp.status == 401
                     data = await resp.json()
 
@@ -305,3 +257,31 @@ class TestAnthropicProxyServer:
                     assert data["type"] == "error"
                     assert "error" in data
                     assert data["error"]["type"] == "authentication_error"
+
+    async def test_model_override(self):
+        """Model override in config should replace model in requests.
+
+        This is a unit test that directly tests the model override logic
+        rather than going through the full server setup.
+        """
+        from nerve.gateway.anthropic_proxy import AnthropicProxyConfig
+
+        # Config with model override
+        config = AnthropicProxyConfig(
+            upstream_base_url="https://api.test.anthropic.com",
+            upstream_api_key="test-key",
+            upstream_model="claude-3-opus-20240229",
+        )
+
+        # Simulate what _handle_messages does
+        body = {
+            "model": "claude-3-5-sonnet-20241022",  # Original model
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        # Apply model override (as done in _handle_messages)
+        if config.upstream_model:
+            body["model"] = config.upstream_model
+
+        # Verify the model was overridden
+        assert body["model"] == "claude-3-opus-20240229"

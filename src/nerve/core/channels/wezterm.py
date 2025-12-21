@@ -363,7 +363,7 @@ class WezTermChannel:
             else:
                 ready_count = 0
 
-            await asyncio.sleep(0.5)  # Poll every 0.5 seconds
+            await asyncio.sleep(2.0)  # Poll every 2 seconds
 
         raise TimeoutError(f"Terminal did not become ready within {timeout}s")
 

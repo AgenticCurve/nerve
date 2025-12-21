@@ -1,9 +1,9 @@
-"""Anthropic API passthrough proxy.
+"""Anthropic upstream proxy server.
 
 Exposes /v1/messages endpoint that accepts Anthropic Messages API format
-and proxies requests to an Anthropic-compatible upstream (e.g., api.z.ai).
+and proxies requests to an Anthropic-compatible upstream (e.g., api.anthropic.com).
 
-This proxy:
+This server:
 1. Accepts Anthropic format requests from Claude Code CLI
 2. Logs the request for debugging
 3. Forwards directly to upstream (no transformation needed)
@@ -23,24 +23,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from aiohttp import web
 
-logger = logging.getLogger(__name__)
+from nerve.gateway.errors import ERROR_TYPE_MAP
+from nerve.gateway.tracing import RequestTracer
 
-# Error type mapping from upstream status to Anthropic error type
-ERROR_TYPE_MAP = {
-    400: "invalid_request_error",
-    401: "authentication_error",
-    403: "permission_error",
-    404: "not_found_error",
-    429: "rate_limit_error",
-    500: "api_error",
-    502: "api_error",
-    503: "api_error",
-    504: "api_error",
-}
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AnthropicPassthroughConfig:
+class AnthropicProxyConfig:
     """Configuration for Anthropic passthrough proxy server."""
 
     host: str = "127.0.0.1"
@@ -63,110 +53,39 @@ class AnthropicPassthroughConfig:
 
 
 @dataclass
-class AnthropicPassthroughServer:
+class AnthropicProxyServer:
     """Transport that accepts Anthropic Messages API requests
     and proxies them to an Anthropic-compatible upstream.
 
     Example:
-        >>> config = AnthropicPassthroughConfig(
+        >>> config = AnthropicProxyConfig(
         ...     upstream_base_url="https://api.z.ai/api/anthropic",
         ...     upstream_api_key="your-api-key",
         ... )
-        >>> server = AnthropicPassthroughServer(config=config)
+        >>> server = AnthropicProxyServer(config=config)
         >>> await server.serve()
     """
 
-    config: AnthropicPassthroughConfig
+    config: AnthropicProxyConfig
     _app: Any = None  # aiohttp.web.Application
     _runner: Any = None  # aiohttp.web.AppRunner
     _session: Any = None  # aiohttp.ClientSession
     _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
-    _request_counter: int = field(default=0)
-    _session_id: str | None = field(default=None)
+    _tracer: RequestTracer = field(init=False)
+
+    def __post_init__(self):
+        """Initialize tracer with debug directory from config."""
+        self._tracer = RequestTracer(debug_dir=self.config.debug_dir)
 
     def _generate_trace_id(self, body: dict[str, Any]) -> str:
         """Generate a human-readable trace ID with sequence number and context."""
-        import time
-
-        self._request_counter += 1
-
-        # Get timestamp
-        timestamp = time.strftime("%H%M%S")
-
-        # Extract context from request
-        msgs = body.get("messages", [])
-        msg_count = len(msgs)
-
-        # Get LAST user message with actual text content (skip tool_result messages)
-        context = "empty"
-        for m in reversed(msgs):
-            if m.get("role") != "user":
-                continue
-            content = m.get("content", "")
-
-            # String content - use it
-            if isinstance(content, str) and content.strip():
-                words = content.split()[:3]
-                context = "_".join(w[:8] for w in words if w and not w.startswith("<"))[:20]
-                break
-
-            # List content - look for text blocks (skip if only tool_result)
-            elif isinstance(content, list):
-                for block in content:
-                    if block.get("type") == "text" and block.get("text", "").strip():
-                        words = block.get("text", "").split()[:3]
-                        context = "_".join(w[:8] for w in words if w and not w.startswith("<"))[:20]
-                        break
-                if context != "empty":
-                    break
-
-        # Clean context for filesystem
-        context = "".join(c if c.isalnum() or c == "_" else "" for c in context) or "request"
-
-        return f"{self._request_counter:03d}_{timestamp}_{msg_count}msgs_{context}"
-
-    def _get_session_id(self) -> str:
-        """Get or create session ID based on first request timestamp."""
-        import time
-
-        if self._session_id is None:
-            self._session_id = time.strftime("%Y-%m-%d_%H-%M-%S")
-            logger.info("New session started: %s", self._session_id)
-        return self._session_id
-
-    def _get_debug_path(self) -> Path | None:
-        """Get the debug directory path, creating session folder if needed."""
-        if not self.config.debug_dir:
-            return None
-
-        session_id = self._get_session_id()
-
-        # Use .nerve/logs/{session_id}/ structure in current working directory
-        if self.config.debug_dir == ".nerve":
-            debug_path = Path.cwd() / ".nerve" / "logs" / session_id
-        else:
-            # Custom debug_dir: {debug_dir}/{session_id}/
-            debug_path = Path(self.config.debug_dir) / session_id
-
-        debug_path.mkdir(parents=True, exist_ok=True)
-        return debug_path
+        # Use the shared tracer to generate trace ID
+        return self._tracer.generate_trace_id(body)
 
     def _save_debug(self, trace_id: str, filename: str, data: Any) -> None:
         """Save debug data to JSON file if debug_dir is configured."""
-        debug_path = self._get_debug_path()
-        if not debug_path:
-            return
-        try:
-            # Create trace-specific folder
-            trace_path = debug_path / trace_id
-            trace_path.mkdir(exist_ok=True)
-
-            filepath = trace_path / filename
-            with open(filepath, "w") as f:
-                json.dump(data, f, indent=2, default=str)
-            logger.debug("[%s] Saved debug file: %s", trace_id, filepath)
-        except Exception as e:
-            logger.warning("[%s] Failed to save debug file %s: %s", trace_id, filename, e)
+        # Use the shared tracer to save debug data
+        self._tracer.save_debug(trace_id, filename, data)
 
     async def serve(self) -> None:
         """Start the passthrough proxy server."""
@@ -196,6 +115,8 @@ class AnthropicPassthroughServer:
         self._app = web.Application(client_max_size=self.config.max_body_size)
         self._app.router.add_post("/v1/messages", self._handle_messages)
         self._app.router.add_get("/health", self._handle_health)
+        # Silently accept telemetry requests (Claude Code sends these)
+        self._app.router.add_post("/api/event_logging/batch", self._handle_telemetry)
 
         # Start server
         self._runner = web.AppRunner(self._app)
@@ -204,7 +125,7 @@ class AnthropicPassthroughServer:
         await site.start()
 
         logger.info(
-            "Anthropic passthrough proxy listening on http://%s:%d",
+            "Anthropic proxy listening on http://%s:%d",
             self.config.host,
             self.config.port,
         )
@@ -217,7 +138,7 @@ class AnthropicPassthroughServer:
 
     async def shutdown(self) -> None:
         """Shutdown the server gracefully."""
-        logger.info("Shutting down passthrough proxy...")
+        logger.info("Shutting down Anthropic proxy...")
         self._shutdown_event.set()
         if self._session:
             await self._session.close()
@@ -230,6 +151,13 @@ class AnthropicPassthroughServer:
         """Handle GET /health - health check endpoint."""
         from aiohttp import web
 
+        return web.json_response({"status": "ok"})
+
+    async def _handle_telemetry(self, request: web.Request) -> web.Response:
+        """Handle POST /api/event_logging/batch - silently accept telemetry."""
+        from aiohttp import web
+
+        # Just return OK - we don't need to forward telemetry
         return web.json_response({"status": "ok"})
 
     def _error_response(

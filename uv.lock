@@ -741,12 +741,12 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
-mcp = [
-    { name = "mcp" },
-]
-proxy = [
+gateway = [
     { name = "pydantic" },
     { name = "pyyaml" },
+]
+mcp = [
+    { name = "mcp" },
 ]
 
 [package.metadata]
@@ -759,18 +759,18 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'all'", specifier = ">=1.8.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.0" },
-    { name = "pydantic", marker = "extra == 'proxy'", specifier = ">=2.0" },
+    { name = "pydantic", marker = "extra == 'gateway'", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'all'", specifier = ">=8.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'all'", specifier = ">=0.23.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "pyyaml", marker = "extra == 'all'", specifier = ">=6.0" },
-    { name = "pyyaml", marker = "extra == 'proxy'", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'gateway'", specifier = ">=6.0" },
     { name = "rich-click", specifier = ">=1.7.0" },
     { name = "ruff", marker = "extra == 'all'", specifier = ">=0.2.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.0" },
 ]
-provides-extras = ["all", "dev", "mcp", "proxy"]
+provides-extras = ["all", "dev", "gateway", "mcp"]
 
 [[package]]
 name = "packaging"

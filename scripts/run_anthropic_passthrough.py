@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Run the Anthropic passthrough proxy.
+"""Run the Anthropic upstream proxy.
 
 This proxy forwards Anthropic API requests to an Anthropic-compatible upstream
-(like api.z.ai) while logging all requests and responses for debugging.
+(like api.anthropic.com) while logging all requests and responses for debugging.
 
 Environment variables:
     ANTHROPIC_UPSTREAM_URL: Upstream base URL (default: https://api.anthropic.com)
     ANTHROPIC_UPSTREAM_KEY: API key for upstream
     ANTHROPIC_UPSTREAM_MODEL: Optional model override
-    NERVE_DEBUG_DIR: Directory for debug logs (default: /tmp/nerve-passthrough-debug)
+    NERVE_DEBUG_DIR: Directory for debug logs (default: /tmp/nerve-anthropic-debug)
 
 Example:
-    ANTHROPIC_UPSTREAM_URL=https://api.z.ai/api/anthropic \
+    ANTHROPIC_UPSTREAM_URL=https://api.anthropic.com \
     ANTHROPIC_UPSTREAM_KEY=your-key \
     uv run python scripts/run_anthropic_passthrough.py
 """
@@ -25,9 +25,9 @@ import sys
 # Add src to path for development
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from nerve.transport.anthropic_passthrough import (
-    AnthropicPassthroughConfig,
-    AnthropicPassthroughServer,
+from nerve.gateway.anthropic_proxy import (
+    AnthropicProxyConfig,
+    AnthropicProxyServer,
 )
 
 # Enable debug logging
@@ -47,7 +47,7 @@ async def main():
     model = os.environ.get("ANTHROPIC_UPSTREAM_MODEL")  # Optional
     debug_dir = os.environ.get("NERVE_DEBUG_DIR", ".nerve")  # Stores in .nerve/logs/{session}/
 
-    config = AnthropicPassthroughConfig(
+    config = AnthropicProxyConfig(
         host="127.0.0.1",
         port=3456,
         upstream_base_url=base_url,
@@ -56,7 +56,7 @@ async def main():
         debug_dir=debug_dir,
     )
 
-    print(f"Starting Anthropic passthrough proxy on http://{config.host}:{config.port}")
+    print(f"Starting Anthropic proxy on http://{config.host}:{config.port}")
     print(f"Forwarding to: {base_url}")
     if model:
         print(f"Model override: {model}")
@@ -66,7 +66,7 @@ async def main():
     print(f"  export ANTHROPIC_BASE_URL=http://{config.host}:{config.port}")
     print()
 
-    server = AnthropicPassthroughServer(config=config)
+    server = AnthropicProxyServer(config=config)
 
     # Handle shutdown signals
     loop = asyncio.get_event_loop()
