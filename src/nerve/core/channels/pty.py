@@ -66,6 +66,7 @@ class PTYChannel:
     command: str | None = None
     state: ChannelState = ChannelState.CONNECTING
     channel_type: ChannelType = field(default=ChannelType.TERMINAL, init=False)
+    _last_input: str = field(default="", repr=False)
     _ready_timeout: float = field(default=60.0, repr=False)
     _response_timeout: float = field(default=1800.0, repr=False)  # 30 minutes
     _reader_task: asyncio.Task | None = field(default=None, repr=False)
@@ -172,6 +173,9 @@ class PTYChannel:
         """
         if self.state == ChannelState.CLOSED:
             raise RuntimeError("Channel is closed")
+
+        # Track last input
+        self._last_input = input
 
         # Default to NONE parser if not specified
         actual_parser = parser if parser is not None else ParserType.NONE
@@ -386,6 +390,7 @@ class PTYChannel:
             metadata={
                 "backend": "pty",
                 "command": self.command,
+                "last_input": self._last_input,
             },
         )
 

@@ -891,13 +891,14 @@ def _run_cli() -> None:
 
                     click.echo(json.dumps(channels_info, indent=2))
                 elif channels_info:
-                    click.echo(f"{'ID':<12} {'COMMAND':<15} {'BACKEND':<10} {'STATE'}")
-                    click.echo("-" * 50)
+                    click.echo(f"{'ID':<12} {'LAST INPUT':<30} {'BACKEND':<14} {'STATE'}")
+                    click.echo("-" * 65)
                     for info in channels_info:
-                        cmd = (info.get("command") or "-")[:14]
+                        last_input = info.get("last_input") or info.get("command") or "-"
+                        last_input = last_input[:29]
                         click.echo(
-                            f"{info['id']:<12} {cmd:<15} "
-                            f"{info['backend']:<10} {info['state']}"
+                            f"{info['id']:<12} {last_input:<30} "
+                            f"{info['backend']:<14} {info['state']}"
                         )
                 elif channels:
                     # Fallback for older server

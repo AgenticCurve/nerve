@@ -39,6 +39,7 @@ class ClaudeOnWezTermChannel:
     _inner: WezTermChannel
     _command: str = ""
     _default_parser: ParserType = ParserType.CLAUDE
+    _last_input: str = ""
     channel_type: ChannelType = field(default=ChannelType.TERMINAL, init=False)
 
     @classmethod
@@ -148,6 +149,9 @@ class ClaudeOnWezTermChannel:
         Returns:
             Parsed response with sections.
         """
+        # Track last input
+        self._last_input = input
+
         # Use default parser if not specified
         actual_parser = parser if parser is not None else self._default_parser
         return await self._inner.send(
@@ -196,6 +200,7 @@ class ClaudeOnWezTermChannel:
                 "pane_id": self.pane_id,
                 "command": self.command,
                 "default_parser": self._default_parser.value,
+                "last_input": self._last_input,
             },
         )
 

@@ -191,18 +191,29 @@ class NerveEngine:
         for cid in channel_ids:
             channel = self._channel_manager.get(cid)
             if channel:
-                info = {
-                    "id": cid,
-                    "type": channel.channel_type.value,
-                    "state": channel.state.name,
-                }
-                if hasattr(channel, "backend_type"):
-                    bt = channel.backend_type
-                    info["backend"] = bt.value if hasattr(bt, "value") else bt
-                if hasattr(channel, "command"):
-                    info["command"] = channel.command
-                if hasattr(channel, "pane_id"):
-                    info["pane_id"] = channel.pane_id
+                # Use to_info() to get full channel metadata including last_input
+                if hasattr(channel, "to_info"):
+                    channel_info = channel.to_info()
+                    info = {
+                        "id": cid,
+                        "type": channel_info.channel_type.value,
+                        "state": channel_info.state.name,
+                        **channel_info.metadata,
+                    }
+                else:
+                    # Fallback for channels without to_info
+                    info = {
+                        "id": cid,
+                        "type": channel.channel_type.value,
+                        "state": channel.state.name,
+                    }
+                    if hasattr(channel, "backend_type"):
+                        bt = channel.backend_type
+                        info["backend"] = bt.value if hasattr(bt, "value") else bt
+                    if hasattr(channel, "command"):
+                        info["command"] = channel.command
+                    if hasattr(channel, "pane_id"):
+                        info["pane_id"] = channel.pane_id
                 channels_info.append(info)
 
         return {
