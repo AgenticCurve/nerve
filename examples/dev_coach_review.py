@@ -69,14 +69,13 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 
 INITIAL_TASK = """Implement the feature described in the plan.
 
-CHANNEL_HISTORY_PRD.md
+docs/NODE_REFACTORING.md
+docs/AGENT_CAPABILITIES.md
 
 Read the plan, explore the codebase, and implement step by step.
 Write clean, well-tested code following existing patterns."""
 
-TASK_REFRESHER = (
-    """Remember: Implement the planned feature in CHANNEL_HISTORY_PRD.md with tests."""
-)
+TASK_REFRESHER = """Remember: Implement the planned feature in docs/NODE_REFACTORING.md and docs/AGENT_CAPABILITIES.md with tests."""
 
 # =============================================================================
 # PROMPTS - Developer
@@ -185,7 +184,11 @@ Your job:
 3. You CANNOT modify code yourself
 
 Review the current state with `git diff main` and `git status`.
-Provide specific instructions for the Developer on what needs to be fixed."""
+Provide specific instructions for the Developer on what needs to be fixed.
+
+Read CLAUDE.md file to see how to handle your role effectively.
+
+"""
 
 # =============================================================================
 # PROMPTS - Reviewer
@@ -212,6 +215,7 @@ YOUR ROLE:
 - You're the final gatekeeper before merge. Be responsible. Be thorough. Maintain integrity.
 - Verify the feature actually works
 
+Read CLAUDE.md file to see how to handle your role effectively.
 If you have PERSONALLY VERIFIED everything works, respond with EXACTLY:
 "{acceptance_phrase}"
 
