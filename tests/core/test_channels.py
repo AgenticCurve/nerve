@@ -834,3 +834,60 @@ class TestClaudeOnWezTermChannel:
                 assert "my-claude-channel" in repr_str
             finally:
                 await channel.close()
+
+    @pytest.mark.asyncio
+    async def test_send_stream_logs_history(self, tmp_path):
+        """Test that send_stream() logs history correctly."""
+        from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
+        from nerve.core.channels.history import HistoryReader, HistoryWriter
+
+        with patch("nerve.core.channels.wezterm.WezTermBackend") as MockBackend:
+            mock_backend = MagicMock()
+            mock_backend.buffer = "streamed output"
+            mock_backend.pane_id = "test-pane"
+            mock_backend.start = AsyncMock()
+            mock_backend.stop = AsyncMock()
+            mock_backend.write = AsyncMock()
+            MockBackend.return_value = mock_backend
+
+            # Create history writer
+            history_writer = HistoryWriter.create(
+                channel_id="test-stream",
+                server_name="test-server",
+                base_dir=tmp_path,
+            )
+
+            channel = await ClaudeOnWezTermChannel.create(
+                channel_id="test-stream",
+                command="claude",
+                history_writer=history_writer,
+            )
+
+            try:
+                # Mock inner send_stream to yield chunks
+                async def mock_stream(*args, **kwargs):
+                    yield "chunk1"
+                    yield "chunk2"
+
+                channel._inner.send_stream = mock_stream
+
+                # Call send_stream
+                chunks = []
+                async for chunk in channel.send_stream("test streaming"):
+                    chunks.append(chunk)
+
+                assert chunks == ["chunk1", "chunk2"]
+                assert channel._last_input == "test streaming"
+
+                # Verify history was logged
+                history_writer.close()
+                reader = HistoryReader.create(
+                    channel_id="test-stream",
+                    server_name="test-server",
+                    base_dir=tmp_path,
+                )
+                entries = reader.get_by_op("send_stream")
+                assert len(entries) >= 1
+                assert entries[-1]["input"] == "test streaming"
+            finally:
+                await channel.close()

@@ -44,6 +44,12 @@ from nerve.core.channels.base import (
     ChannelType,
 )
 from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
+from nerve.core.channels.history import (
+    HISTORY_BUFFER_LINES,
+    HistoryError,
+    HistoryReader,
+    HistoryWriter,
+)
 from nerve.core.channels.pty import PTYChannel, PTYConfig
 from nerve.core.channels.wezterm import WezTermChannel, WezTermConfig
 
@@ -60,4 +66,9 @@ __all__ = [
     "WezTermChannel",
     "WezTermConfig",
     "ClaudeOnWezTermChannel",
+    # History
+    "HistoryWriter",
+    "HistoryReader",
+    "HistoryError",
+    "HISTORY_BUFFER_LINES",
 ]

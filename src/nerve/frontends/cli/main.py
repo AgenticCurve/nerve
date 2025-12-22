@@ -166,7 +166,7 @@ def _run_cli() -> None:
             transport = UnixSocketServer(socket_path)
             click.echo(f"Listening on {socket_path}")
 
-        engine = NerveEngine(event_sink=transport)
+        engine = NerveEngine(event_sink=transport, _server_name=name)
 
         # Create new process group so we can kill all children on force stop
         import os
@@ -789,6 +789,11 @@ def _run_cli() -> None:
         help="Backend (pty, wezterm, or claude-wezterm)",
     )
     @click.option("--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)")
+    @click.option(
+        "--history/--no-history",
+        default=True,
+        help="Enable/disable history logging (default: enabled)",
+    )
     def channel_create(
         name: str,
         server_name: str,
@@ -796,6 +801,7 @@ def _run_cli() -> None:
         cwd: str | None,
         backend: str,
         pane_id: str | None,
+        history: bool,
     ):
         """Create a new AI CLI channel.
 
@@ -833,6 +839,7 @@ def _run_cli() -> None:
                 "channel_id": name,
                 "cwd": cwd,
                 "backend": backend,
+                "history": history,
             }
             if command:
                 params["command"] = command
@@ -1207,6 +1214,143 @@ def _run_cli() -> None:
             await client.disconnect()
 
         asyncio.run(run())
+
+    @channel.command("history")
+    @click.argument("channel_name")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
+    @click.option("--last", "-n", "limit", type=int, default=None, help="Show only last N entries")
+    @click.option("--op", type=click.Choice(["send", "send_stream", "write", "run", "read", "interrupt", "close"]), help="Filter by operation type")
+    @click.option("--seq", type=int, default=None, help="Get entry by sequence number")
+    @click.option("--inputs-only", is_flag=True, help="Show only input operations (send, write, run)")
+    @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
+    @click.option("--summary", is_flag=True, help="Show summary statistics")
+    def channel_history(
+        channel_name: str,
+        server_name: str,
+        limit: int | None,
+        op: str | None,
+        seq: int | None,
+        inputs_only: bool,
+        json_output: bool,
+        summary: bool,
+    ):
+        """View history for a channel.
+
+        Reads the JSONL history file for the specified channel.
+        History is stored in .nerve/history/<server>/<channel>.jsonl
+
+        **Arguments:**
+
+            CHANNEL_NAME  The channel to view history for
+
+        **Examples:**
+
+            nerve server channel history my-claude --server local
+
+            nerve server channel history my-claude --server local --last 10
+
+            nerve server channel history my-claude --server local --op send
+
+            nerve server channel history my-claude --server local --inputs-only --json
+
+            nerve server channel history my-claude --server local --summary
+        """
+        import json
+        from pathlib import Path
+
+        from nerve.core.channels.history import HistoryReader
+
+        try:
+            # Default base directory
+            base_dir = Path.cwd() / ".nerve" / "history"
+
+            reader = HistoryReader.create(
+                channel_id=channel_name,
+                server_name=server_name,
+                base_dir=base_dir,
+            )
+
+            # Get entries based on filters
+            if seq is not None:
+                entry = reader.get_by_seq(seq)
+                if entry is None:
+                    click.echo(f"No entry with sequence number {seq}", err=True)
+                    sys.exit(1)
+                entries = [entry]
+            elif inputs_only:
+                entries = reader.get_inputs_only()
+            elif op:
+                entries = reader.get_by_op(op)
+            else:
+                entries = reader.get_all()
+
+            # Apply limit if specified
+            if limit is not None:
+                entries = entries[-limit:] if limit < len(entries) else entries
+
+            if not entries:
+                click.echo("No history entries found")
+                return
+
+            # Summary mode
+            if summary:
+                ops_count: dict[str, int] = {}
+                for e in entries:
+                    op_type = e.get("op", "unknown")
+                    ops_count[op_type] = ops_count.get(op_type, 0) + 1
+                click.echo(f"Channel: {channel_name}")
+                click.echo(f"Server: {server_name}")
+                click.echo(f"Total entries: {len(entries)}")
+                click.echo("\nOperations:")
+                for op_name, count in sorted(ops_count.items()):
+                    click.echo(f"  {op_name}: {count}")
+                return
+
+            if json_output:
+                click.echo(json.dumps(entries, indent=2, default=str))
+            else:
+                # Pretty print history
+                for entry in entries:
+                    seq = entry.get("seq", "?")
+                    op_type = entry.get("op", "unknown")
+                    ts = entry.get("ts", entry.get("ts_start", ""))
+
+                    # Format timestamp for display (just time portion)
+                    if ts:
+                        ts_display = ts.split("T")[1][:8] if "T" in ts else ts[:8]
+                    else:
+                        ts_display = ""
+
+                    if op_type == "send":
+                        input_text = entry.get("input", "")[:50]
+                        response = entry.get("response", {})
+                        sections = response.get("sections", [])
+                        section_count = len(sections)
+                        click.echo(f"[{seq:3}] {ts_display} SEND    {input_text!r} -> {section_count} sections")
+                    elif op_type == "send_stream":
+                        input_text = entry.get("input", "")[:50]
+                        click.echo(f"[{seq:3}] {ts_display} STREAM  {input_text!r}")
+                    elif op_type == "run":
+                        cmd = entry.get("input", "")[:50]
+                        click.echo(f"[{seq:3}] {ts_display} RUN     {cmd!r}")
+                    elif op_type == "write":
+                        data = entry.get("input", "")[:30].replace("\n", "\\n")
+                        click.echo(f"[{seq:3}] {ts_display} WRITE   {data!r}")
+                    elif op_type == "read":
+                        lines = entry.get("lines", 0)
+                        buffer_len = len(entry.get("buffer", ""))
+                        click.echo(f"[{seq:3}] {ts_display} READ    {lines} lines, {buffer_len} chars")
+                    elif op_type == "interrupt":
+                        click.echo(f"[{seq:3}] {ts_display} INTERRUPT")
+                    elif op_type == "close":
+                        reason = entry.get("reason", "")
+                        click.echo(f"[{seq:3}] {ts_display} CLOSE   {reason or ''}")
+                    else:
+                        click.echo(f"[{seq:3}] {ts_display} {op_type.upper()}")
+
+        except FileNotFoundError:
+            click.echo(f"No history found for channel '{channel_name}' on server '{server_name}'", err=True)
+            sys.exit(1)
 
     # =========================================================================
     # DAG subgroup (under server)

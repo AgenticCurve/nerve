@@ -88,6 +88,11 @@ DEV_INITIAL_PROMPT = """You are a Senior Software Developer.
 
 {additional_context}
 
+
+Note: Because you are continuing from previous session, so there is already
+some initial work done. Review the existing code before proceeding. However,
+you still have the whole ownership and accountability for the implementation.
+
 YOUR ROLE:
 - You are the ONLY person who can modify code
 - Write clean, well-tested code
@@ -313,7 +318,7 @@ async def run_dev_coach_review(
                 type=CommandType.CREATE_CHANNEL,
                 params={
                     "channel_id": agent_id,
-                    "command": "claude",
+                    "command": "claude --dangerously-skip-permissions",
                     "cwd": cwd,
                     "backend": "claude-wezterm",
                 },
@@ -388,7 +393,7 @@ async def run_dev_coach_review(
                 "parser": "claude",
             },
         ),
-        timeout=600.0,
+        timeout=2400.0,  # 40 minutes
     )
 
     if not result.success:
@@ -441,7 +446,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=600.0,
+                timeout=2400.0,  # 40 minutes
             )
 
             if not result.success:
@@ -479,7 +484,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=600.0,
+                timeout=2400.0,  # 40 minutes
             )
 
             if not result.success:
@@ -541,7 +546,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=600.0,
+                timeout=2400.0,  # 40 minutes
             )
 
             if not result.success:
@@ -587,7 +592,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=600.0,
+                timeout=2400.0,  # 40 minutes
             )
 
             if not result.success:
@@ -641,7 +646,7 @@ async def run_dev_coach_review(
                     "parser": "claude",
                 },
             ),
-            timeout=600.0,
+            timeout=2400.0,  # 40 minutes
         )
 
         if not result.success:

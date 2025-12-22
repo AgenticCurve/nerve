@@ -14,6 +14,7 @@ from typing import Any
 from nerve.core import DAG, ChannelManager, Task
 from nerve.core.channels import ChannelState
 from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
+from nerve.core.channels.history import HistoryReader
 from nerve.core.channels.pty import PTYChannel
 from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.parsers import get_parser
@@ -54,9 +55,15 @@ class NerveEngine:
     """
 
     event_sink: EventSink
-    _channel_manager: ChannelManager = field(default_factory=ChannelManager)
+    _server_name: str = field(default="default")
+    _channel_manager: ChannelManager | None = field(default=None, repr=False)
     _running_dags: dict[str, asyncio.Task] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
+
+    def __post_init__(self):
+        """Initialize channel manager with server name."""
+        if self._channel_manager is None:
+            self._channel_manager = ChannelManager(_server_name=self._server_name)
 
     @property
     def shutdown_requested(self) -> bool:
@@ -85,6 +92,7 @@ class NerveEngine:
             CommandType.SEND_INTERRUPT: self._send_interrupt,
             CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
+            CommandType.GET_HISTORY: self._get_history,
             # DAG commands
             CommandType.EXECUTE_DAG: self._execute_dag,
             CommandType.CANCEL_DAG: self._cancel_dag,
@@ -146,6 +154,7 @@ class NerveEngine:
         cwd = params.get("cwd")
         backend = params.get("backend", "pty")  # "pty" or "wezterm"
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
+        history = params.get("history", True)  # Enable history by default
 
         # ChannelManager.create_terminal enforces uniqueness
         channel = await self._channel_manager.create_terminal(
@@ -154,6 +163,7 @@ class NerveEngine:
             backend=backend,
             cwd=cwd,
             pane_id=pane_id,
+            history=history,
         )
 
         await self._emit(
@@ -364,6 +374,66 @@ class NerveEngine:
             buffer = await channel.read()
 
         return {"buffer": buffer}
+
+    async def _get_history(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Get channel history.
+
+        Reads the JSONL history file for a channel.
+
+        Parameters:
+            channel_id: The channel ID (required)
+            server_name: Server name (optional, defaults to engine's server name)
+            last: Limit to last N entries (optional)
+            op: Filter by operation type (optional)
+            inputs_only: Filter to input operations only (optional)
+
+        Returns:
+            Dict with channel_id, server_name, entries, and total count.
+        """
+        channel_id = params.get("channel_id")
+        if not channel_id:
+            raise ValueError("channel_id is required")
+
+        server_name = params.get("server_name", self._server_name)
+        last = params.get("last")
+        op = params.get("op")
+        inputs_only = params.get("inputs_only", False)
+
+        try:
+            reader = HistoryReader.create(
+                channel_id=channel_id,
+                server_name=server_name,
+                base_dir=self._channel_manager._history_base_dir,
+            )
+
+            # Apply filters
+            if inputs_only:
+                entries = reader.get_inputs_only()
+            elif op:
+                entries = reader.get_by_op(op)
+            else:
+                entries = reader.get_all()
+
+            # Apply limit if specified
+            if last is not None and last < len(entries):
+                entries = entries[-last:]
+
+            return {
+                "channel_id": channel_id,
+                "server_name": server_name,
+                "entries": entries,
+                "total": len(entries),
+            }
+
+        except FileNotFoundError:
+            # Fail soft - return empty results with note
+            return {
+                "channel_id": channel_id,
+                "server_name": server_name,
+                "entries": [],
+                "total": 0,
+                "note": "No history found for this channel",
+            }
 
     # =========================================================================
     # DAG Commands

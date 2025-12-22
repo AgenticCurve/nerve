@@ -59,6 +59,7 @@ class CommandType(Enum):
 
     # Query
     GET_BUFFER = auto()
+    GET_HISTORY = auto()
 
     # Server control
     SHUTDOWN = auto()

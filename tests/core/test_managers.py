@@ -659,6 +659,63 @@ class TestSessionManager:
             pass  # Already closed
 
 
+class TestChannelManagerHistoryIntegration:
+    """Test history integration in ChannelManager."""
+
+    @pytest.mark.asyncio
+    async def test_history_enabled_by_default(self, tmp_path):
+        """Test that history is enabled by default."""
+        manager = ChannelManager(
+            _server_name="test-server",
+            _history_base_dir=tmp_path,
+        )
+
+        try:
+            channel = await manager.create_terminal(channel_id="test-history")
+
+            # Channel should have a history writer
+            assert channel._history_writer is not None
+            assert channel._history_writer.enabled is True
+        finally:
+            await manager.close_all()
+
+    @pytest.mark.asyncio
+    async def test_history_disabled_when_false(self, tmp_path):
+        """Test that history=False disables history."""
+        manager = ChannelManager(
+            _server_name="test-server",
+            _history_base_dir=tmp_path,
+        )
+
+        try:
+            channel = await manager.create_terminal(
+                channel_id="no-history",
+                history=False,
+            )
+
+            # Channel should NOT have a history writer
+            assert channel._history_writer is None
+        finally:
+            await manager.close_all()
+
+    @pytest.mark.asyncio
+    async def test_history_file_created(self, tmp_path):
+        """Test that history file is created in correct location."""
+        manager = ChannelManager(
+            _server_name="myserver",
+            _history_base_dir=tmp_path,
+        )
+
+        try:
+            channel = await manager.create_terminal(channel_id="test-channel")
+
+            # History file should exist
+            expected_path = tmp_path / "myserver" / "test-channel.jsonl"
+            assert expected_path.exists()
+        finally:
+            await manager.close_all()
+
+
 class TestChannelManagerWithKwargs:
     """Test that ChannelManager passes kwargs to channel creation."""
 

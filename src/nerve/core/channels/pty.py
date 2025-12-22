@@ -23,12 +23,17 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from nerve.core.channels.base import ChannelConfig, ChannelInfo, ChannelState, ChannelType
+from nerve.core.channels.history import HISTORY_BUFFER_LINES, HistoryWriter
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
 from nerve.core.pty.pty_backend import PTYBackend
 from nerve.core.types import ParsedResponse, ParserType
+
+if TYPE_CHECKING:
+    pass
 
 
 @dataclass
@@ -70,6 +75,7 @@ class PTYChannel:
     _ready_timeout: float = field(default=60.0, repr=False)
     _response_timeout: float = field(default=1800.0, repr=False)  # 30 minutes
     _reader_task: asyncio.Task | None = field(default=None, repr=False)
+    _history_writer: HistoryWriter | None = field(default=None, repr=False)
 
     @classmethod
     async def create(
@@ -80,6 +86,7 @@ class PTYChannel:
         env: dict[str, str] | None = None,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,  # 30 minutes
+        history_writer: HistoryWriter | None = None,
     ) -> PTYChannel:
         """Create a new PTY channel.
 
@@ -91,6 +98,7 @@ class PTYChannel:
             env: Additional environment variables.
             ready_timeout: Timeout for terminal to become ready.
             response_timeout: Default timeout for responses.
+            history_writer: Optional history writer for logging operations.
 
         Returns:
             A ready PTYChannel.
@@ -124,6 +132,7 @@ class PTYChannel:
             state=ChannelState.OPEN,
             _ready_timeout=ready_timeout,
             _response_timeout=response_timeout,
+            _history_writer=history_writer,
         )
 
         # Start background reader - essential for PTY
@@ -177,6 +186,11 @@ class PTYChannel:
         # Track last input
         self._last_input = input
 
+        # History: capture timestamp
+        ts_start = None
+        if self._history_writer and self._history_writer.enabled:
+            ts_start = self._history_writer._now()
+
         # Default to NONE parser if not specified
         actual_parser = parser if parser is not None else ParserType.NONE
 
@@ -217,7 +231,27 @@ class PTYChannel:
 
         # Parse only the NEW output
         new_output = self.backend.buffer[buffer_start:]
-        return parser_instance.parse(new_output)
+        result = parser_instance.parse(new_output)
+
+        # History: log send with response (NO auto-read after send)
+        if self._history_writer and self._history_writer.enabled:
+            response_data = {
+                "sections": [
+                    {"type": s.type, "content": s.content, "metadata": s.metadata}
+                    for s in result.sections
+                ],
+                "tokens": result.tokens,
+                "is_complete": result.is_complete,
+                "is_ready": result.is_ready,
+            }
+            self._history_writer.log_send(
+                input=input,
+                response=response_data,
+                preceding_buffer_seq=None,
+                ts_start=ts_start,
+            )
+
+        return result
 
     async def send_stream(
         self,
@@ -225,6 +259,9 @@ class PTYChannel:
         parser: ParserType = ParserType.NONE,
     ) -> AsyncIterator[str]:
         """Send input and stream output chunks.
+
+        History logs the final buffer state after streaming completes,
+        NOT individual chunks (per PRD NG1).
 
         Args:
             input: Text to send.
@@ -235,6 +272,11 @@ class PTYChannel:
         """
         if self.state == ChannelState.CLOSED:
             raise RuntimeError("Channel is closed")
+
+        # History: capture timestamp
+        ts_start = None
+        if self._history_writer and self._history_writer.enabled:
+            ts_start = self._history_writer._now()
 
         parser_instance = get_parser(parser)
 
@@ -248,6 +290,17 @@ class PTYChannel:
                 self.state = ChannelState.OPEN
                 break
 
+        # History: log streaming operation
+        if self._history_writer and self._history_writer.enabled:
+            final_buffer = self.read_tail(HISTORY_BUFFER_LINES)
+            self._history_writer.log_send_stream(
+                input=input,
+                final_buffer=final_buffer,
+                parser=parser.value,
+                preceding_buffer_seq=None,
+                ts_start=ts_start,
+            )
+
     async def write(self, data: str) -> None:
         """Write raw data to the terminal (low-level).
 
@@ -255,6 +308,13 @@ class PTYChannel:
             data: Raw data to write.
         """
         await self.backend.write(data)
+
+        # History: log write then read (no natural response for write)
+        if self._history_writer and self._history_writer.enabled:
+            self._history_writer.log_write(data)
+            await asyncio.sleep(0.1)
+            buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
+            self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
     async def read(self) -> str:
         """Read current output buffer.
@@ -283,12 +343,28 @@ class PTYChannel:
         """
         await self.backend.write(command + "\n")
 
+        # History: log run then read (no natural response for run)
+        if self._history_writer and self._history_writer.enabled:
+            self._history_writer.log_run(command)
+            await asyncio.sleep(0.5)
+            buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
+            self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
+
     async def interrupt(self) -> None:
         """Send interrupt signal (Ctrl+C)."""
         await self.backend.write("\x03")
 
+        # History: log interrupt
+        if self._history_writer and self._history_writer.enabled:
+            self._history_writer.log_interrupt()
+
     async def close(self) -> None:
         """Close the channel and stop the backend."""
+        # History: log close
+        if self._history_writer and self._history_writer.enabled:
+            self._history_writer.log_close()
+            self._history_writer.close()
+
         if self._reader_task:
             self._reader_task.cancel()
             try:
