@@ -52,21 +52,30 @@ COACH_WARMUP = ""  # Leave empty to skip warmup
 # =============================================================================
 
 INITIAL_TASK = """
+We will soon be developing a new feature. But before that we need to setup our
+existing project for success. Please find the tests/ we will need in place before
+starting the new feature.
 
-Check if the current implementation is already there. If not, then carry on with refactoring.
-The suggested architecture can be found in: REFACTORED_DIR_ARCHITECTURE
+Ensure the tests/ we write ONLY cover existing functionality and do NOT cover the new feature.
 
-core/ should contain all the business logic such that we could use core/
-independently.
+We want to ensure that we DONT break any of the existing functionality while adding these new tests.
 
-Explore this codebase and understand its architecture.
-
-Please:
-1. Understand the project structure
-2. Identify the main components and how they interact
+You can find the specs for the new feature in:
+CHANNEL_HISTORY_PRD.md
 """
 
-TASK_REFRESHER = """Remember: We are implementing (refactoring) re-architected dir/ structure. The document is called: REFACTORED_DIR_ARCHITECTURE.md"""
+TASK_REFRESHER = """
+We will soon be developing a new feature. But before that we need to setup our
+existing project for success. Please find the tests/ we will need in place before
+starting the new feature.
+
+Ensure the tests/ we write ONLY cover existing functionality and do NOT cover the new feature.
+
+We want to ensure that we DONT break any of the existing functionality while adding these new tests.
+
+You can find the specs for the new feature in:
+CHANNEL_HISTORY_PRD.md
+"""
 
 # =============================================================================
 # PROMPTS - Edit these to customize agent behavior
@@ -80,11 +89,9 @@ DEV_INITIAL_PROMPT = """You are a Senior Software Developer.
 
 You are working with a Coach who will review your work and guide you toward a complete solution.
 
-Your ultimate goal is to refactor the existing codebase to match a document which will have the final architecture that you agree
-with your coach. ONLY you can make changes to the document, coach can read and reference it
-but coach cannot make any changes.
-
-Document is called: REFACTORED_DIR_ARCHITECTURE.md
+You need to make sure our codebase is ready for the new feature.
+You are the ONLY one who can make changes to the codebase and write tests.
+You can ask coach for decisions if you're stuck.
 
 """
 
@@ -107,12 +114,15 @@ Your role:
 6. You need to make design decisions that developer is stuck with.
 7. You are the final authority.
 8. You can read and review any file but you cannot make changes to any file.
-9. ENSURE THE REFACTORING is clean and working.
+9. ENSURE THE DEVELOPER ADDS TESTS FOR EXISTING FUNCTIONALITY AND NOT FOR THE NEW FEATURE.
+10. ENSURE THE DEVELOPER DOES NOT BREAK ANY EXISTING FUNCTIONALITY WHILE ADDING THESE NEW TESTS.
 
-Document is called: REFACTORED_DIR_ARCHITECTURE.md
+Original thoughts regarding the feature are in: CHANNEL_HISTORY_PRD.md
 
 If you are FULLY SATISFIED and the work is complete, respond with EXACTLY:
-"{acceptance_phrase}"
+"{acceptance_phrase}".
+
+Note, use that phrase ONLY when you've NO MORE FEEDBACK at all.
 
 Otherwise, provide your feedback for the next iteration. Catch bugs and feature regressions."""
 
@@ -142,10 +152,9 @@ COACH_LOOP_PROMPT_TEMPLATE = """The Developer addressed your feedback:
 
 {task_refresher}
 
-Dev has this bad habit of jumping ahead and introducing unwanted features. Dev also sometimes blatantly remove features. Ensure there's only refactoring and no feature regression. Also ensure we make a clean break, no backward compatability. Ensure we delete what is unwanted.
-Keep him in check so that the discussion remains conceptual and NOT about different
-execution phases. This is critical. You need to explore the best architecture and NOT implement it or plan about implmenting it.
+Dev has this bad habit of jumping ahead and writing unwanted code.
 
+Ensure they add the wanted tests, refactor existing code for the new feature and no feature regression.
 Give grades to dev on their work an clearly tell them what's missing. Run tests as well.
 
 Review their updated work. If you are FULLY SATISFIED, respond with EXACTLY:
@@ -213,12 +222,14 @@ async def run_dev_coach(
     # Configure transport
     if transport == "tcp":
         from nerve.transport import TCPSocketClient
+
         host, port = "127.0.0.1", 9876
         connection_str = f"tcp://{host}:{port}"
         server_args = ["--tcp", "--host", host, "--port", str(port)]
         client = TCPSocketClient(host, port)
     else:
         from nerve.transport import UnixSocketClient
+
         connection_str = f"/tmp/nerve-{server_name}.sock"
         server_args = []
         client = UnixSocketClient(connection_str)
@@ -309,7 +320,11 @@ async def run_dev_coach(
             timeout=120.0,
         )
         if result.success:
-            log_to_file(LOG_FILE, "Developer - Warmup", extract_text_response(result.data.get("response", {})))
+            log_to_file(
+                LOG_FILE,
+                "Developer - Warmup",
+                extract_text_response(result.data.get("response", {})),
+            )
             print("  Developer warmed up")
 
     if COACH_WARMUP.strip():
@@ -326,7 +341,11 @@ async def run_dev_coach(
             timeout=120.0,
         )
         if result.success:
-            log_to_file(LOG_FILE, "Coach - Warmup", extract_text_response(result.data.get("response", {})))
+            log_to_file(
+                LOG_FILE,
+                "Coach - Warmup",
+                extract_text_response(result.data.get("response", {})),
+            )
             print("  Coach warmed up")
 
     # Phase 1: Developer initial work
@@ -399,7 +418,9 @@ async def run_dev_coach(
         return
 
     coach_response = extract_text_response(result.data.get("response", {}))
-    print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
+    print(
+        coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response
+    )
     log_to_file(LOG_FILE, "Coach - Initial", coach_response)
 
     # Check acceptance after initial review
@@ -497,7 +518,11 @@ async def run_dev_coach(
             break
 
         coach_response = extract_text_response(result.data.get("response", {}))
-        print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
+        print(
+            coach_response[:2000] + "..."
+            if len(coach_response) > 2000
+            else coach_response
+        )
         log_to_file(LOG_FILE, f"Coach - Round {round_num}", coach_response)
 
         # Check acceptance
@@ -514,7 +539,9 @@ async def run_dev_coach(
                 f.write("## Final Output\n\n")
                 f.write(dev_response)
                 f.write("\n\n---\n\n")
-                f.write(f"*Completed after {round_num} rounds on {datetime.now().isoformat()}*\n")
+                f.write(
+                    f"*Completed after {round_num} rounds on {datetime.now().isoformat()}*\n"
+                )
             break
 
         with open(OUTPUT_FILE, "a") as f:
@@ -546,7 +573,12 @@ async def run_dev_coach(
 
     print("\nStopping server...")
     stop_proc = await asyncio.create_subprocess_exec(
-        "uv", "run", "nerve", "server", "stop", server_name,
+        "uv",
+        "run",
+        "nerve",
+        "server",
+        "stop",
+        server_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

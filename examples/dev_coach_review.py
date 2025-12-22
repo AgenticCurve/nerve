@@ -69,10 +69,14 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 
 INITIAL_TASK = """Implement the feature described in the plan.
 
+CHANNEL_HISTORY_PRD.md
+
 Read the plan, explore the codebase, and implement step by step.
 Write clean, well-tested code following existing patterns."""
 
-TASK_REFRESHER = """Remember: Implement the planned feature with tests."""
+TASK_REFRESHER = (
+    """Remember: Implement the planned feature in CHANNEL_HISTORY_PRD.md with tests."""
+)
 
 # =============================================================================
 # PROMPTS - Developer
@@ -90,6 +94,7 @@ YOUR ROLE:
 - Follow existing patterns in the codebase
 
 You are working with a Coach who will review your work.
+If you are stuck, ask the Coach for help. Coach will help you make decisions.
 Start by understanding the task and proposing your approach."""
 
 DEV_LOOP_PROMPT_TEMPLATE = """The Coach reviewed your work and provided feedback:
@@ -135,6 +140,9 @@ REQUIREMENTS FOR ACCEPTANCE:
 2. All tests pass
 3. Feature has been demonstrated to work
 4. Code follows existing patterns
+5. No existing functionality is broken and no feature regression
+6. Code is clean and well-structured
+7. Ask developer to refactor if needed
 
 If ALL requirements are met, respond with EXACTLY:
 "{acceptance_phrase}"
@@ -154,7 +162,9 @@ Review their updated work.
 If ALL requirements are met (tests exist, tests pass, feature works), respond with EXACTLY:
 "{acceptance_phrase}"
 
-Otherwise, provide your next round of feedback."""
+Otherwise, provide your next round of feedback.
+Give developer a grade on their work and clearly tell them what's missing (what can they do to reach A+).
+"""
 
 COACH_PROCESS_REVIEWER_FEEDBACK_TEMPLATE = """Issues have been identified during review that need to be fixed:
 
@@ -256,12 +266,14 @@ async def run_dev_coach_review(
     # Configure transport
     if transport == "tcp":
         from nerve.transport import TCPSocketClient
+
         host, port = "127.0.0.1", 9876
         connection_str = f"tcp://{host}:{port}"
         server_args = ["--tcp", "--host", host, "--port", str(port)]
         client = TCPSocketClient(host, port)
     else:
         from nerve.transport import UnixSocketClient
+
         connection_str = f"/tmp/nerve-{server_name}.sock"
         server_args = []
         client = UnixSocketClient(connection_str)
@@ -325,7 +337,11 @@ async def run_dev_coach_review(
     print(f"Log: {LOG_FILE}")
 
     # Warmup prompts (optional)
-    for agent_id, warmup in [("dev", DEV_WARMUP), ("coach", COACH_WARMUP), ("reviewer", REVIEWER_WARMUP)]:
+    for agent_id, warmup in [
+        ("dev", DEV_WARMUP),
+        ("coach", COACH_WARMUP),
+        ("reviewer", REVIEWER_WARMUP),
+    ]:
         if warmup.strip():
             print(f"\n[{agent_id.upper()}: Warmup...]")
             result = await client.send_command(
@@ -340,7 +356,11 @@ async def run_dev_coach_review(
                 timeout=120.0,
             )
             if result.success:
-                log_to_file(LOG_FILE, f"{agent_id.title()} - Warmup", extract_text_response(result.data.get("response", {})))
+                log_to_file(
+                    LOG_FILE,
+                    f"{agent_id.title()} - Warmup",
+                    extract_text_response(result.data.get("response", {})),
+                )
                 print(f"  {agent_id.title()} warmed up")
 
     # =========================================================================
@@ -428,8 +448,16 @@ async def run_dev_coach_review(
                 break
 
             coach_response = extract_text_response(result.data.get("response", {}))
-            print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
-            log_to_file(LOG_FILE, f"Coach - Processing Feedback (Outer {outer_round})", coach_response)
+            print(
+                coach_response[:2000] + "..."
+                if len(coach_response) > 2000
+                else coach_response
+            )
+            log_to_file(
+                LOG_FILE,
+                f"Coach - Processing Feedback (Outer {outer_round})",
+                coach_response,
+            )
 
             # Dev addresses Coach's instructions
             dev_prompt = DEV_LOOP_PROMPT_TEMPLATE.format(
@@ -458,8 +486,16 @@ async def run_dev_coach_review(
                 break
 
             dev_response = extract_text_response(result.data.get("response", {}))
-            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
-            log_to_file(LOG_FILE, f"Dev - Addressing Feedback (Outer {outer_round})", dev_response)
+            print(
+                dev_response[:2000] + "..."
+                if len(dev_response) > 2000
+                else dev_response
+            )
+            log_to_file(
+                LOG_FILE,
+                f"Dev - Addressing Feedback (Outer {outer_round})",
+                dev_response,
+            )
 
             reviewer_feedback = None  # Clear after processing
 
@@ -470,16 +506,20 @@ async def run_dev_coach_review(
         coach_accepted = False
 
         # First coach review (initial or after processing reviewer feedback)
-        coach_prompt = COACH_INITIAL_PROMPT_TEMPLATE.format(
-            initial_task=INITIAL_TASK,
-            dev_response=dev_response,
-            acceptance_phrase=COACH_ACCEPTANCE,
-            additional_context=ADDITIONAL_CONTEXT,
-        ) if outer_round == 1 and not reviewer_feedback else COACH_LOOP_PROMPT_TEMPLATE.format(
-            dev_response=dev_response,
-            task_refresher=TASK_REFRESHER,
-            acceptance_phrase=COACH_ACCEPTANCE,
-            additional_context=ADDITIONAL_CONTEXT,
+        coach_prompt = (
+            COACH_INITIAL_PROMPT_TEMPLATE.format(
+                initial_task=INITIAL_TASK,
+                dev_response=dev_response,
+                acceptance_phrase=COACH_ACCEPTANCE,
+                additional_context=ADDITIONAL_CONTEXT,
+            )
+            if outer_round == 1 and not reviewer_feedback
+            else COACH_LOOP_PROMPT_TEMPLATE.format(
+                dev_response=dev_response,
+                task_refresher=TASK_REFRESHER,
+                acceptance_phrase=COACH_ACCEPTANCE,
+                additional_context=ADDITIONAL_CONTEXT,
+            )
         )
 
         while inner_round < MAX_INNER_ROUNDS and not coach_accepted:
@@ -508,8 +548,16 @@ async def run_dev_coach_review(
                 break
 
             coach_response = extract_text_response(result.data.get("response", {}))
-            print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
-            log_to_file(LOG_FILE, f"Coach - Outer {outer_round} Inner {inner_round}", coach_response)
+            print(
+                coach_response[:2000] + "..."
+                if len(coach_response) > 2000
+                else coach_response
+            )
+            log_to_file(
+                LOG_FILE,
+                f"Coach - Outer {outer_round} Inner {inner_round}",
+                coach_response,
+            )
 
             # Check coach acceptance
             if COACH_ACCEPTANCE in coach_response:
@@ -546,8 +594,14 @@ async def run_dev_coach_review(
                 break
 
             dev_response = extract_text_response(result.data.get("response", {}))
-            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
-            log_to_file(LOG_FILE, f"Dev - Outer {outer_round} Inner {inner_round}", dev_response)
+            print(
+                dev_response[:2000] + "..."
+                if len(dev_response) > 2000
+                else dev_response
+            )
+            log_to_file(
+                LOG_FILE, f"Dev - Outer {outer_round} Inner {inner_round}", dev_response
+            )
 
             # Prepare next coach prompt
             coach_prompt = COACH_LOOP_PROMPT_TEMPLATE.format(
@@ -594,7 +648,11 @@ async def run_dev_coach_review(
             break
 
         reviewer_response = extract_text_response(result.data.get("response", {}))
-        print(reviewer_response[:2000] + "..." if len(reviewer_response) > 2000 else reviewer_response)
+        print(
+            reviewer_response[:2000] + "..."
+            if len(reviewer_response) > 2000
+            else reviewer_response
+        )
         log_to_file(LOG_FILE, f"Reviewer - Outer {outer_round}", reviewer_response)
 
         # Check reviewer acceptance
@@ -648,7 +706,12 @@ async def run_dev_coach_review(
 
     print("\nStopping server...")
     stop_proc = await asyncio.create_subprocess_exec(
-        "uv", "run", "nerve", "server", "stop", server_name,
+        "uv",
+        "run",
+        "nerve",
+        "server",
+        "stop",
+        server_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
