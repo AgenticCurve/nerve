@@ -16,9 +16,8 @@ from nerve.core.session.session import Session
 class TestSession:
     """Tests for Session (Node API).
 
-    Session is now a clean Node-only registry and lifecycle manager.
-    It uses register/unregister/list_nodes/stop instead of the old
-    Channel-based add/remove/list_channels/close.
+    Session is a clean Node-only registry and lifecycle manager.
+    It uses register/unregister/list_nodes/stop for node management.
     """
 
     def test_session_creation_with_defaults(self):

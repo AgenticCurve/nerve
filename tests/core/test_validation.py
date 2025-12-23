@@ -18,8 +18,8 @@ class TestValidateName:
 
     def test_valid_name_with_dashes(self):
         """Name with dashes should be valid."""
-        validate_name("my-project", "channel")
-        validate_name("my-cool-project-1", "channel")
+        validate_name("my-project", "node")
+        validate_name("my-cool-project-1", "node")
 
     def test_valid_single_char(self):
         """Single character name should be valid."""
@@ -69,8 +69,8 @@ class TestValidateName:
         """Error message should include the entity type."""
         with pytest.raises(ValueError, match="Server"):
             validate_name("", "server")
-        with pytest.raises(ValueError, match="Channel"):
-            validate_name("", "channel")
+        with pytest.raises(ValueError, match="Node"):
+            validate_name("", "node")
 
 
 class TestIsValidName:

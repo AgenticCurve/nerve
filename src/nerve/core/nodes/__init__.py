@@ -1,7 +1,6 @@
 """Node abstraction - unified interface for executable units of work.
 
-This module provides the Node abstraction that unifies Channels and Tasks
-into a single pattern. Nodes are executable units that can be:
+Nodes are executable units that can be:
 - Ephemeral (stateless): FunctionNode, Graph
 - Persistent (stateful): PTYNode, WezTermNode, ClaudeWezTermNode
 

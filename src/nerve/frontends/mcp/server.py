@@ -1,10 +1,4 @@
-"""MCP server implementation for nerve.
-
-Node-based terminology (clean break from Channel):
-- nerve_create_node (was nerve_create_channel)
-- nerve_list_nodes (was nerve_list_channels)
-- nerve_delete_node (was nerve_close_channel)
-"""
+"""MCP server implementation for nerve."""
 
 from __future__ import annotations
 

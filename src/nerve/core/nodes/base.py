@@ -6,7 +6,6 @@ A Node represents any executable unit:
 - WezTermNode: WezTerm pane attachment (persistent)
 - Graph: Contains steps with nodes (can be nested)
 
-The key insight is that Nodes replace Channels and Tasks with a unified interface.
 Persistent nodes maintain state across executions; ephemeral nodes are stateless.
 """
 
@@ -26,12 +25,6 @@ class NodeState(Enum):
 
     State transitions:
         CREATED -> STARTING -> READY <-> BUSY -> STOPPING -> STOPPED
-
-    Mapping from ChannelState:
-        ChannelState.CONNECTING -> NodeState.STARTING
-        ChannelState.OPEN       -> NodeState.READY
-        ChannelState.BUSY       -> NodeState.BUSY
-        ChannelState.CLOSED     -> NodeState.STOPPED
     """
 
     CREATED = auto()  # Node instantiated but not started
@@ -44,13 +37,10 @@ class NodeState(Enum):
 
 @dataclass
 class NodeInfo:
-    """Serializable node information.
-
-    Maps from ChannelInfo with renamed fields.
-    """
+    """Serializable node information."""
 
     id: str
-    node_type: str  # Was: channel_type.value
+    node_type: str
     state: NodeState
     persistent: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -68,10 +58,7 @@ class NodeInfo:
 
 @dataclass
 class NodeConfig:
-    """Base configuration for nodes.
-
-    Maps directly from ChannelConfig.
-    """
+    """Base configuration for nodes."""
 
     id: str | None = None  # Auto-generated if not provided
     metadata: dict[str, Any] = field(default_factory=dict)

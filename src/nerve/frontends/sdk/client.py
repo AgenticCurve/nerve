@@ -1,10 +1,4 @@
-"""Python SDK client.
-
-Node-based terminology (clean break from Channel):
-- RemoteNode replaces RemoteChannel
-- create_node() replaces create_channel()
-- list_nodes() replaces list_channels()
-"""
+"""Python SDK client."""
 
 from __future__ import annotations
 

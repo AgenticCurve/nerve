@@ -1,12 +1,6 @@
 """Server protocols - Command/Event types and EventSink interface.
 
 These protocols define the contract between server and transport layers.
-
-Node-based terminology (clean break from Channel/DAG):
-- CREATE_NODE, DELETE_NODE, LIST_NODES, GET_NODE (was CREATE_CHANNEL, etc.)
-- EXECUTE_GRAPH, CANCEL_GRAPH (was EXECUTE_DAG, CANCEL_DAG)
-- NODE_CREATED, NODE_DELETED (was CHANNEL_CREATED, CHANNEL_CLOSED)
-- STEP_STARTED, STEP_COMPLETED (was TASK_STARTED, TASK_COMPLETED)
 """
 
 from __future__ import annotations

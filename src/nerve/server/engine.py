@@ -3,11 +3,6 @@
 The engine uses core primitives (Nodes, Graphs, etc.) and emits
 events for state changes. It's the bridge between pure core
 and the event-driven server world.
-
-Node-based terminology (clean break from Channel/DAG):
-- Nodes replace Channels
-- Graphs replace DAGs
-- Steps replace Tasks
 """
 
 from __future__ import annotations

@@ -2,9 +2,6 @@
 
 SessionManager manages sessions (groups of nodes).
 
-Note: ChannelManager has been removed. Use NodeFactory to create nodes,
-and Session.register() to add them to a session.
-
 Example:
     >>> from nerve.core.session import Session, SessionManager
     >>> from nerve.core.nodes import NodeFactory

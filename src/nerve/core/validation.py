@@ -1,4 +1,4 @@
-"""Name validation for servers and channels.
+"""Name validation for servers and nodes.
 
 Provides consistent validation rules for naming entities in nerve.
 """
@@ -15,7 +15,7 @@ MAX_NAME_LENGTH = 32
 
 
 def validate_name(name: str, entity: str = "name") -> None:
-    """Validate a name (server/channel).
+    """Validate a name (server/node).
 
     Rules:
     - 1-32 characters
@@ -31,9 +31,9 @@ def validate_name(name: str, entity: str = "name") -> None:
 
     Example:
         >>> validate_name("my-project", "server")  # OK
-        >>> validate_name("claude-1", "channel")   # OK
+        >>> validate_name("claude-1", "node")      # OK
         >>> validate_name("My Project", "server")  # ValueError
-        >>> validate_name("-bad", "channel")       # ValueError
+        >>> validate_name("-bad", "node")          # ValueError
     """
     entity_cap = entity.capitalize()
 

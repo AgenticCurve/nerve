@@ -22,12 +22,12 @@ class TestHistoryWriter:
     def test_create_writer(self, tmp_path: Path):
         """Test creating a history writer."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
 
-        assert writer.node_id == "test-channel"
+        assert writer.node_id == "test-node"
         assert writer.server_name == "test-server"
         assert writer.enabled is True
         assert writer.file_path.exists()
@@ -37,7 +37,7 @@ class TestHistoryWriter:
     def test_disabled_writer_no_file(self, tmp_path: Path):
         """Test disabled writer doesn't create file."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
             enabled=False,
@@ -51,7 +51,7 @@ class TestHistoryWriter:
     def test_log_run(self, tmp_path: Path):
         """Test logging a run operation."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -72,7 +72,7 @@ class TestHistoryWriter:
     def test_log_write(self, tmp_path: Path):
         """Test logging a write operation."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -90,7 +90,7 @@ class TestHistoryWriter:
     def test_log_read(self, tmp_path: Path):
         """Test logging a read/buffer capture."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -109,7 +109,7 @@ class TestHistoryWriter:
     def test_log_send(self, tmp_path: Path):
         """Test logging a send operation."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -144,7 +144,7 @@ class TestHistoryWriter:
     def test_log_send_stream(self, tmp_path: Path):
         """Test logging a send_stream operation."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -171,7 +171,7 @@ class TestHistoryWriter:
     def test_log_interrupt(self, tmp_path: Path):
         """Test logging an interrupt operation."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -189,7 +189,7 @@ class TestHistoryWriter:
     def test_log_delete(self, tmp_path: Path):
         """Test logging a delete event."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -207,7 +207,7 @@ class TestHistoryWriter:
     def test_sequence_numbers_increment(self, tmp_path: Path):
         """Test that sequence numbers increment correctly."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -225,7 +225,7 @@ class TestHistoryWriter:
         """Test sequence numbers continue from existing file."""
         # First writer
         writer1 = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -235,7 +235,7 @@ class TestHistoryWriter:
 
         # Second writer (simulates server restart)
         writer2 = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -247,7 +247,7 @@ class TestHistoryWriter:
     def test_error_handling_non_serializable(self, tmp_path: Path):
         """Test graceful handling of non-serializable objects."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -272,7 +272,7 @@ class TestHistoryWriter:
 
         with pytest.raises(HistoryError):
             HistoryWriter.create(
-                node_id="test-channel",
+                node_id="test-node",
                 server_name="test-server",
                 base_dir=tmp_path,
             )
@@ -290,7 +290,7 @@ class TestHistoryWriter:
         """Test that invalid server_name raises ValueError."""
         with pytest.raises(ValueError, match="(?i)server"):
             HistoryWriter.create(
-                node_id="test-channel",
+                node_id="test-node",
                 server_name="../escape",  # Path traversal attempt
                 base_dir=tmp_path,
             )
@@ -298,7 +298,7 @@ class TestHistoryWriter:
     def test_disabled_writer_returns_zero(self, tmp_path: Path):
         """Test that disabled writer returns 0 for all log methods."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
             enabled=False,
@@ -314,7 +314,7 @@ class TestHistoryWriter:
     def test_closed_writer_returns_zero(self, tmp_path: Path):
         """Test that closed writer returns 0 for all log methods."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -331,7 +331,7 @@ class TestHistoryReader:
     def history_file(self, tmp_path: Path) -> Path:
         """Create a sample history file."""
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -357,7 +357,7 @@ class TestHistoryReader:
     def test_get_all(self, history_file: Path):
         """Test getting all entries."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -371,7 +371,7 @@ class TestHistoryReader:
     def test_get_last(self, history_file: Path):
         """Test getting last N entries."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -385,7 +385,7 @@ class TestHistoryReader:
     def test_get_by_op(self, history_file: Path):
         """Test filtering by operation type."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -398,7 +398,7 @@ class TestHistoryReader:
     def test_get_by_seq(self, history_file: Path):
         """Test getting entry by sequence number."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -412,7 +412,7 @@ class TestHistoryReader:
     def test_get_by_seq_not_found(self, history_file: Path):
         """Test get_by_seq returns None for missing seq."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -424,7 +424,7 @@ class TestHistoryReader:
     def test_get_inputs_only(self, history_file: Path):
         """Test getting only input operations."""
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=history_file,
         )
@@ -448,7 +448,7 @@ class TestHistoryReader:
         # Create file with bad line
         server_dir = tmp_path / "test-server"
         server_dir.mkdir(parents=True)
-        file_path = server_dir / "test-channel.jsonl"
+        file_path = server_dir / "test-node.jsonl"
 
         with open(file_path, "w") as f:
             f.write('{"seq": 1, "op": "run", "ts": "2025-01-01T00:00:00Z", "input": "cmd"}\n')
@@ -456,7 +456,7 @@ class TestHistoryReader:
             f.write('{"seq": 2, "op": "delete", "ts": "2025-01-01T00:00:00Z", "reason": null}\n')
 
         reader = HistoryReader.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )
@@ -484,7 +484,7 @@ class TestInterleavedAccess:
         at await points between writes.
         """
         writer = HistoryWriter.create(
-            node_id="test-channel",
+            node_id="test-node",
             server_name="test-server",
             base_dir=tmp_path,
         )

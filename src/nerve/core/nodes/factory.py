@@ -1,8 +1,7 @@
 """NodeFactory - factory for creating different node types.
 
-NodeFactory replaces ChannelManager as the factory for creating nodes.
-It creates nodes but does NOT register them - registration is a separate
-step via Session.register().
+NodeFactory creates nodes but does NOT register them - registration is a
+separate step via Session.register().
 
 Example:
     >>> factory = NodeFactory()
@@ -75,7 +74,6 @@ class NodeFactory:
         """Create a terminal node (PTY, WezTerm, or ClaudeWezTerm).
 
         The returned node is already started and ready for use.
-        This matches current ChannelManager.create_terminal() behavior.
 
         Args:
             node_id: Unique node identifier (required).

@@ -12,8 +12,7 @@ It's just pure Python primitives that can be used anywhere:
 - As building blocks for servers
 
 Architecture:
-    nodes/      Node abstraction (PTYNode, WezTermNode, FunctionNode, Graph)
-    channels/   History persistence (HistoryWriter, HistoryReader)
+    nodes/      Node abstraction (PTYNode, WezTermNode, FunctionNode, Graph, History)
     pty/        PTY/WezTerm backends for terminal nodes
     parsers/    Output parsers (Claude, Gemini, None)
     session/    Session grouping and management

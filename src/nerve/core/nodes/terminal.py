@@ -1,7 +1,6 @@
 """Terminal nodes - PTY and WezTerm based terminal interactions.
 
 Terminal nodes implement the Node protocol for terminal-based interactions.
-They use Backends directly (not wrapping Channels) for direct control.
 
 Key characteristics:
 - PTYNode: Owns process via pseudo-terminal, continuous buffer

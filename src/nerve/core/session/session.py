@@ -6,8 +6,6 @@ Sessions provide:
 - Named registration and lookup of nodes
 - Lifecycle management (start/stop persistent nodes)
 
-This is a clean break from the Channel-based API. Use nodes directly.
-
 Example:
     >>> session = Session(name="my-project")
     >>>

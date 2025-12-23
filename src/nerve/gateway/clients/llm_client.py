@@ -1,6 +1,5 @@
 """LLM client for upstream API calls.
 
-NOT a Channel - this is a standalone HTTP client with resilience patterns.
 Uses aiohttp.ClientSession for consistency with Nerve's HTTP transport.
 
 Features:
