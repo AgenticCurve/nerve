@@ -31,22 +31,17 @@ def print_help():
     print("""
 Graph Definition Syntax:
 ------------------------
-  from nerve.core import NodeFactory, ParserType
+  from nerve.core import ParserType
   from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
   from nerve.core.session import Session
 
-  # Create nodes using factory
-  factory = NodeFactory()
-  claude = await factory.create_terminal("claude", command="claude")
-  gemini = await factory.create_terminal("gemini", command="gemini")
-
-  # Register in session
+  # Create session and nodes
   session = Session()
-  session.register(claude)
-  session.register(gemini)
+  claude = await session.create_node("claude", command="claude")
+  gemini = await session.create_node("gemini", command="gemini")
 
   # Define graph with function nodes
-  graph = Graph(id="pipeline")
+  graph = session.create_graph("pipeline")
 
   graph.add_step(
       FunctionNode(id="ask", fn=lambda ctx: claude.execute(
@@ -143,16 +138,15 @@ async def run_interactive(
         pass
 
     # Lazy import to avoid circular deps
-    from nerve.core import BackendType, ParserType
+    from nerve.core import ParserType
     from nerve.core.nodes import (
         ExecutionContext,
         FunctionNode,
         Graph,
-        NodeFactory,
         PTYNode,
         WezTermNode,
     )
-    from nerve.core.session import Session
+    from nerve.core.session import BackendType, Session
 
     # Initialize namespace with nerve imports
     state.namespace = {
@@ -160,7 +154,6 @@ async def run_interactive(
         "Graph": Graph,
         "FunctionNode": FunctionNode,
         "ExecutionContext": ExecutionContext,
-        "NodeFactory": NodeFactory,
         "PTYNode": PTYNode,
         "WezTermNode": WezTermNode,
         "Session": Session,
@@ -177,7 +170,7 @@ async def run_interactive(
     print("Nerve Graph REPL - Interactive Mode")
     print("=" * 50)
     print("\nType 'help' for syntax guide.")
-    print("Use NodeFactory to create terminal nodes")
+    print("Use Session to create nodes: session.create_node(...)")
     print("Commands: help, nodes, clear, show, validate, dry, run, exit")
     print("-" * 50)
 
@@ -329,23 +322,21 @@ async def run_from_file(
         filepath: Path to Python file containing Graph definition.
         dry_run: If True, only show execution order.
     """
-    from nerve.core import BackendType, ParserType
+    from nerve.core import ParserType
     from nerve.core.nodes import (
         ExecutionContext,
         FunctionNode,
         Graph,
-        NodeFactory,
         PTYNode,
         WezTermNode,
     )
-    from nerve.core.session import Session
+    from nerve.core.session import BackendType, Session
 
     namespace = {
         "asyncio": asyncio,
         "Graph": Graph,
         "FunctionNode": FunctionNode,
         "ExecutionContext": ExecutionContext,
-        "NodeFactory": NodeFactory,
         "PTYNode": PTYNode,
         "WezTermNode": WezTermNode,
         "Session": Session,

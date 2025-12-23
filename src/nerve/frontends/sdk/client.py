@@ -139,7 +139,6 @@ class NerveClient:
     """
 
     _transport: object = None
-    _standalone_factory: object = None
     _standalone_session: object = None
     _nodes: dict[str, RemoteNode] = field(default_factory=dict)
 
@@ -183,17 +182,15 @@ class NerveClient:
     async def standalone(cls) -> NerveClient:
         """Create a standalone client using core directly.
 
-        No server required - uses core.NodeFactory directly.
+        No server required - uses Session directly.
 
         Returns:
             Standalone client.
         """
-        from nerve.core.nodes import NodeFactory
         from nerve.core.session import Session
 
-        factory = NodeFactory()
         session = Session()
-        client = cls(_standalone_factory=factory, _standalone_session=session)
+        client = cls(_standalone_session=session)
         return client
 
     async def disconnect(self) -> None:
@@ -201,13 +198,9 @@ class NerveClient:
         if self._transport:
             await self._transport.disconnect()
 
-        if self._standalone_factory:
+        if self._standalone_session:
             # Stop all nodes tracked in the session
-            if self._standalone_session:
-                for node_id in list(self._nodes.keys()):
-                    node = self._standalone_session.get(node_id)
-                    if node:
-                        await node.stop()
+            await self._standalone_session.stop()
 
     async def __aenter__(self) -> NerveClient:
         return self
@@ -239,14 +232,13 @@ class NerveClient:
 
         validate_name(name, "node")
 
-        if self._standalone_factory:
-            # Use core directly
-            node = await self._standalone_factory.create_terminal(
+        if self._standalone_session:
+            # Use Session directly (node is auto-registered)
+            node = await self._standalone_session.create_node(
                 node_id=name,
                 command=command,
                 cwd=cwd,
             )
-            self._standalone_session.register(node)
             cmd_str = command if isinstance(command, str) else " ".join(command or [])
             remote = RemoteNode(
                 id=node.id,
@@ -295,7 +287,7 @@ class NerveClient:
         Returns:
             List of node IDs.
         """
-        if self._standalone_factory:
+        if self._standalone_session:
             return list(self._nodes.keys())
 
         from nerve.server.protocols import Command, CommandType

@@ -4,13 +4,9 @@ SessionManager manages sessions (groups of nodes).
 
 Example:
     >>> from nerve.core.session import Session, SessionManager
-    >>> from nerve.core.nodes import NodeFactory
-    >>>
-    >>> factory = NodeFactory()
-    >>> node = await factory.create_terminal("my-node", command="bash")
     >>>
     >>> session = Session()
-    >>> session.register(node)
+    >>> node = await session.create_node("my-node", command="bash")
 """
 
 from __future__ import annotations
@@ -30,17 +26,13 @@ class SessionManager:
     Use this when you need logical groupings of nodes with metadata.
 
     Example:
-        >>> from nerve.core.nodes import NodeFactory
-        >>>
         >>> manager = SessionManager()
-        >>> factory = NodeFactory()
         >>>
         >>> # Create a session
         >>> session = manager.create_session(name="my-project")
         >>>
-        >>> # Create and register nodes
-        >>> shell = await factory.create_terminal("shell", command="bash")
-        >>> session.register(shell)
+        >>> # Create nodes (auto-registered in session)
+        >>> shell = await session.create_node("shell", command="bash")
         >>>
         >>> # Close session (stops all its nodes)
         >>> await manager.close_session(session.id)

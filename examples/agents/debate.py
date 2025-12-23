@@ -11,7 +11,7 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.nodes import ExecutionContext
 from nerve.core.session import Session
 
 ROUNDS = 3
@@ -21,19 +21,15 @@ async def main():
     print("Setting up debate between two Claude instances...")
     print()
 
-    # Create two nodes
-    factory = NodeFactory()
+    # Create session and nodes (nodes are auto-registered)
     session = Session()
 
-    advocate_python = await factory.create_terminal(
+    advocate_python = await session.create_node(
         node_id="python-advocate", command="claude"
     )
-    advocate_js = await factory.create_terminal(
+    advocate_js = await session.create_node(
         node_id="js-advocate", command="claude"
     )
-
-    session.register(advocate_python)
-    session.register(advocate_js)
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")

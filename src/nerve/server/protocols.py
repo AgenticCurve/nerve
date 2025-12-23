@@ -31,6 +31,14 @@ class EventType(Enum):
     STEP_FAILED = auto()
     GRAPH_COMPLETED = auto()
 
+    # Session lifecycle
+    SESSION_CREATED = auto()
+    SESSION_DELETED = auto()
+
+    # Graph lifecycle
+    GRAPH_CREATED = auto()
+    GRAPH_DELETED = auto()
+
     # Errors
     ERROR = auto()
 
@@ -56,6 +64,19 @@ class CommandType(Enum):
     # Graph execution
     EXECUTE_GRAPH = auto()
     CANCEL_GRAPH = auto()
+
+    # Session management
+    CREATE_SESSION = auto()
+    DELETE_SESSION = auto()
+    LIST_SESSIONS = auto()
+    GET_SESSION = auto()
+
+    # Graph management
+    CREATE_GRAPH = auto()
+    DELETE_GRAPH = auto()
+    LIST_GRAPHS = auto()
+    GET_GRAPH = auto()
+    RUN_GRAPH = auto()  # Execute a registered graph
 
     # Query
     GET_BUFFER = auto()

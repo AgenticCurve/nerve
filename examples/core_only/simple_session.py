@@ -11,24 +11,20 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.nodes import ExecutionContext
 from nerve.core.session import Session
 
 
 async def main():
     print("Creating Claude node...")
 
-    # Create a terminal node directly using core
-    factory = NodeFactory()
-    node = await factory.create_terminal(
+    # Create session and node (node is auto-registered)
+    session = Session()
+    node = await session.create_node(
         "claude",
         command="claude",
         cwd=".",  # Current directory
     )
-
-    # Register in session
-    session = Session()
-    session.register(node)
 
     print(f"Node created: {node.id}")
     print(f"State: {node.state}")

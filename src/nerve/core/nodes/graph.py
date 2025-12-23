@@ -516,7 +516,7 @@ class Graph:
             return step.node
 
         if step.node_ref is not None:
-            node = session.get(step.node_ref)
+            node = session.get_node(step.node_ref)
             if node is None:
                 raise ValueError(f"Node '{step.node_ref}' not found in session")
             return node

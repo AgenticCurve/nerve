@@ -228,7 +228,7 @@ YOUR ROLE:
 - Be STRICT - reject if tests missing or failing or code not following existing patterns
 - You're the final gatekeeper before merge. Be responsible. Be thorough. Maintain integrity.
 - Verify the feature actually works
-- Look at git diff carefully
+- Look at git diff/git diff main carefully
 - Check if the code has any regressions
 - Check if the old code has been deleted
 - ENSURE NO FEATURE REGRESSION
@@ -256,7 +256,7 @@ def extract_text_response(response_data: dict) -> str:
     sections = response_data.get("sections", [])
     text_parts = []
     for section in sections:
-        if section.get("type") == "input":
+        if section.get("type") == "text":
             content = section.get("content", "").strip()
             if content:
                 text_parts.append(content)
@@ -377,7 +377,7 @@ async def run_dev_coach_review(
                     type=CommandType.EXECUTE_INPUT,
                     params={
                         "node_id": agent_id,
-                        "input": warmup,
+                        "text": warmup,
                         "parser": "claude",
                     },
                 ),
@@ -411,7 +411,7 @@ async def run_dev_coach_review(
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": "dev",
-                "input": dev_prompt,
+                "text": dev_prompt,
                 "parser": "claude",
             },
         ),
@@ -464,7 +464,7 @@ async def run_dev_coach_review(
                     type=CommandType.EXECUTE_INPUT,
                     params={
                         "node_id": "coach",
-                        "input": coach_prompt,
+                        "text": coach_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -502,7 +502,7 @@ async def run_dev_coach_review(
                     type=CommandType.EXECUTE_INPUT,
                     params={
                         "node_id": "dev",
-                        "input": dev_prompt,
+                        "text": dev_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -564,7 +564,7 @@ async def run_dev_coach_review(
                     type=CommandType.EXECUTE_INPUT,
                     params={
                         "node_id": "coach",
-                        "input": coach_prompt,
+                        "text": coach_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -610,7 +610,7 @@ async def run_dev_coach_review(
                     type=CommandType.EXECUTE_INPUT,
                     params={
                         "node_id": "dev",
-                        "input": dev_prompt,
+                        "text": dev_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -664,7 +664,7 @@ async def run_dev_coach_review(
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "reviewer",
-                    "input": reviewer_prompt,
+                    "text": reviewer_prompt,
                     "parser": "claude",
                 },
             ),

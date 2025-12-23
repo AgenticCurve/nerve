@@ -190,7 +190,7 @@ What number do you pick?"""
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": "claude-loop",
-                "input": initial_prompt,
+                "text": initial_prompt,
                 "parser": "claude",
             },
         ),
@@ -262,7 +262,7 @@ Pick a different number than {number} this time. What's your choice?"""
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "claude-loop",
-                    "input": follow_up,
+                    "text": follow_up,
                     "parser": "claude",
                 },
             ),

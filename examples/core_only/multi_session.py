@@ -10,23 +10,18 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.nodes import ExecutionContext
 from nerve.core.session import Session
 
 
 async def main():
     print("Creating nodes...")
 
-    factory = NodeFactory()
     session = Session()
 
-    # Create multiple nodes
-    claude1 = await factory.create_terminal(node_id="claude-1", command="claude")
-    claude2 = await factory.create_terminal(node_id="claude-2", command="claude")
-
-    # Register in session
-    session.register(claude1)
-    session.register(claude2)
+    # Create multiple nodes (auto-registered)
+    claude1 = await session.create_node(node_id="claude-1", command="claude")
+    claude2 = await session.create_node(node_id="claude-2", command="claude")
 
     print(f"Active nodes: {session.list_nodes()}")
     print()
@@ -53,10 +48,9 @@ async def main():
     print()
     print(f"Active nodes: {session.list_nodes()}")
 
-    # Unregister and stop one
-    print("\nStopping claude-1...")
-    session.unregister("claude-1")
-    await claude1.stop()
+    # Delete one node (stops and removes it)
+    print("\nDeleting claude-1...")
+    await session.delete_node("claude-1")
     print(f"Active nodes: {session.list_nodes()}")
 
     # Stop session (stops all remaining nodes)

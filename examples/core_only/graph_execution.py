@@ -10,26 +10,22 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext, FunctionNode, Graph, NodeFactory
+from nerve.core.nodes import ExecutionContext, FunctionNode
 from nerve.core.session import Session
 
 
 async def main():
     print("Creating node...")
 
-    # Create a node for Graph steps
-    factory = NodeFactory()
-    claude = await factory.create_terminal("claude", command="claude", cwd=".")
-
-    # Register in session
+    # Create session and node (node is auto-registered)
     session = Session()
-    session.register(claude)
+    claude = await session.create_node("claude", command="claude", cwd=".")
 
     print(f"Claude node: {claude.id}")
     print()
 
-    # Build a Graph
-    graph = Graph(id="haiku-pipeline")
+    # Build a Graph (auto-registered in session)
+    graph = session.create_graph("haiku-pipeline")
 
     # Step 1: Ask Claude to generate a haiku
     async def generate_haiku(ctx: ExecutionContext):

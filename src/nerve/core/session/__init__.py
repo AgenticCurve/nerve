@@ -1,29 +1,36 @@
-"""Session management.
+"""Session management - central workspace abstraction.
 
-Sessions are logical groupings of nodes with metadata.
-Use NodeFactory to create nodes, and Session.register() to add them.
+Session is the central workspace that creates, registers, and manages
+nodes and graphs.
 
-Example (standalone nodes):
-    >>> from nerve.core.nodes import NodeFactory
-    >>> from nerve.core.session import Session
+Example:
+    >>> from nerve.core.session import Session, BackendType
     >>>
-    >>> factory = NodeFactory()
-    >>> node = await factory.create_terminal("my-node", command="bash")
+    >>> # Create session
+    >>> session = Session(name="my-project")
     >>>
-    >>> session = Session()
-    >>> session.register(node)
+    >>> # Create nodes (auto-registered)
+    >>> claude = await session.create_node("claude", command="claude")
+    >>> shell = await session.create_node("shell", command="bash")
+    >>>
+    >>> # Create graphs (auto-registered)
+    >>> workflow = session.create_graph("workflow")
+    >>> workflow.add_step(claude, step_id="step1", input="Hello")
+    >>>
+    >>> # Execute
+    >>> from nerve.core.nodes import ExecutionContext
+    >>> context = ExecutionContext(session=session, input="...")
+    >>> result = await claude.execute(context)
+    >>>
+    >>> # Cleanup
     >>> await session.stop()
 
 Example (with session manager):
-    >>> from nerve.core.nodes import NodeFactory
     >>> from nerve.core.session import Session, SessionManager
     >>>
     >>> manager = SessionManager()
-    >>> factory = NodeFactory()
-    >>>
     >>> session = manager.create_session(name="my-project")
-    >>> node = await factory.create_terminal("claude", command="claude")
-    >>> session.register(node)
+    >>> node = await session.create_node("claude", command="claude")
     >>>
     >>> await manager.close_session(session.id)
 """
@@ -35,11 +42,12 @@ from nerve.core.session.persistence import (
     get_default_store,
     get_default_store_path,
 )
-from nerve.core.session.session import Session
+from nerve.core.session.session import BackendType, Session
 
 __all__ = [
     # Session
     "Session",
+    "BackendType",
     # Manager
     "SessionManager",
     # Persistence

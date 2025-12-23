@@ -1,8 +1,11 @@
-"""NerveEngine - Wraps core with event emission.
+"""NerveEngine - Command dispatcher and event emitter.
 
-The engine uses core primitives (Nodes, Graphs, etc.) and emits
-events for state changes. It's the bridge between pure core
-and the event-driven server world.
+NerveEngine is a thin wrapper that:
+- Dispatches commands to Session methods
+- Emits events for state changes
+- Manages multiple sessions (multi-workspace)
+
+Session is the single source of truth for nodes and graphs.
 """
 
 from __future__ import annotations
@@ -13,11 +16,7 @@ from typing import Any
 
 from nerve.core.nodes import (
     ExecutionContext,
-    Graph,
-    NodeFactory,
     NodeState,
-    Step,
-    TerminalNode,
 )
 from nerve.core.nodes.history import HistoryReader
 from nerve.core.parsers import get_parser
@@ -35,16 +34,12 @@ from nerve.server.protocols import (
 
 @dataclass
 class NerveEngine:
-    """Main nerve engine - wraps core with event emission.
+    """Command dispatcher and event emitter.
 
-    The engine:
-    - Uses core.NodeFactory, core.Graph, etc. for actual work
-    - Emits events through EventSink for state changes
-    - Handles commands from transport layer
-
-    This layer knows about core, but not about:
-    - Specific transports (that's the transport layer)
-    - Frontends (that's the frontends layer)
+    NerveEngine is the server-layer adapter that:
+    - Dispatches commands to Session methods
+    - Emits events for state changes
+    - Manages multiple sessions (multi-workspace)
 
     Example:
         >>> sink = MyEventSink()
@@ -60,23 +55,43 @@ class NerveEngine:
 
     event_sink: EventSink
     _server_name: str = field(default="default")
-    _node_factory: NodeFactory | None = field(default=None, repr=False)
-    _nodes: dict[str, TerminalNode] = field(default_factory=dict, repr=False)
-    _session: Session | None = field(default=None, repr=False)
+    _default_session: Session | None = field(default=None, repr=False)
+    _sessions: dict[str, Session] = field(default_factory=dict, repr=False)
     _running_graphs: dict[str, asyncio.Task] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
 
     def __post_init__(self):
-        """Initialize node factory and session."""
-        if self._node_factory is None:
-            self._node_factory = NodeFactory(server_name=self._server_name)
-        if self._session is None:
-            self._session = Session()
+        """Initialize default session."""
+        if self._default_session is None:
+            self._default_session = Session(
+                server_name=self._server_name,
+            )
+        self._sessions[self._default_session.id] = self._default_session
 
     @property
     def shutdown_requested(self) -> bool:
         """Whether shutdown has been requested."""
         return self._shutdown_requested
+
+    def _get_session(self, params: dict[str, Any]) -> Session:
+        """Get session from params or return default.
+
+        Args:
+            params: Command parameters (may contain session_id).
+
+        Returns:
+            The requested session or default session.
+
+        Raises:
+            ValueError: If session_id is provided but not found.
+        """
+        session_id = params.get("session_id")
+        if session_id:
+            session = self._sessions.get(session_id)
+            if session is None:
+                raise ValueError(f"Session not found: {session_id}")
+            return session
+        return self._default_session
 
     async def execute(self, command: Command) -> CommandResult:
         """Execute a command.
@@ -102,9 +117,20 @@ class NerveEngine:
             CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
             CommandType.GET_HISTORY: self._get_history,
-            # Graph execution
+            # Graph execution (ad-hoc)
             CommandType.EXECUTE_GRAPH: self._execute_graph,
             CommandType.CANCEL_GRAPH: self._cancel_graph,
+            # Session management
+            CommandType.CREATE_SESSION: self._create_session,
+            CommandType.DELETE_SESSION: self._delete_session,
+            CommandType.LIST_SESSIONS: self._list_sessions,
+            CommandType.GET_SESSION: self._get_session_info,
+            # Graph management
+            CommandType.CREATE_GRAPH: self._create_graph,
+            CommandType.DELETE_GRAPH: self._delete_graph,
+            CommandType.LIST_GRAPHS: self._list_graphs,
+            CommandType.GET_GRAPH: self._get_graph_info,
+            CommandType.RUN_GRAPH: self._run_graph,
             # Server control
             CommandType.STOP: self._stop,
             CommandType.PING: self._ping,
@@ -161,21 +187,16 @@ class NerveEngine:
 
         Requires node_id (name) in params. Names must be unique.
         """
+        session = self._get_session(params)
+
         node_id = params.get("node_id")
-        if not node_id:
-            raise ValueError("Node ID is required")
-
-        # Check for duplicate
-        if node_id in self._nodes:
-            raise ValueError(f"Node already exists: {node_id}")
-
         command = params.get("command")  # e.g., "claude" or ["claude", "--flag"]
         cwd = params.get("cwd")
         backend = params.get("backend", "pty")  # "pty" or "wezterm"
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
         history = params.get("history", True)  # Enable history by default
 
-        node = await self._node_factory.create_terminal(
+        node = await session.create_node(
             node_id=node_id,
             command=command,
             backend=backend,
@@ -183,10 +204,6 @@ class NerveEngine:
             pane_id=pane_id,
             history=history,
         )
-
-        # Register with session and track locally
-        self._session.register(node)
-        self._nodes[node_id] = node
 
         await self._emit(
             EventType.NODE_CREATED,
@@ -206,15 +223,12 @@ class NerveEngine:
 
     async def _delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
         """Delete a node."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
 
-        node = self._nodes.get(node_id)
-        if not node:
+        deleted = await session.delete_node(node_id)
+        if not deleted:
             raise ValueError(f"Node not found: {node_id}")
-
-        await node.stop()
-        del self._nodes[node_id]
-        self._session.unregister(node_id)
 
         await self._emit(EventType.NODE_DELETED, node_id=node_id)
 
@@ -222,12 +236,14 @@ class NerveEngine:
 
     async def _list_nodes(self, params: dict[str, Any]) -> dict[str, Any]:
         """List all nodes."""
-        node_ids = list(self._nodes.keys())
+        session = self._get_session(params)
+
+        node_ids = session.list_nodes()
         nodes_info = []
 
         for nid in node_ids:
-            node = self._nodes.get(nid)
-            if node:
+            node = session.get_node(nid)
+            if node and hasattr(node, "to_info"):
                 info = node.to_info()
                 nodes_info.append({
                     "id": nid,
@@ -243,9 +259,10 @@ class NerveEngine:
 
     async def _get_node(self, params: dict[str, Any]) -> dict[str, Any]:
         """Get node info."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
-        node = self._nodes.get(node_id)
 
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -274,10 +291,11 @@ class NerveEngine:
         This starts a program that takes over the terminal (like claude, python, etc.)
         without waiting for a response. Use EXECUTE_INPUT to interact with it after.
         """
+        session = self._get_session(params)
         node_id = params.get("node_id")
         command = params["command"]
 
-        node = self._nodes.get(node_id)
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -287,13 +305,14 @@ class NerveEngine:
 
     async def _execute_input(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute input on a node and wait for response."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
         text = params["text"]
         parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
         submit = params.get("submit")  # Custom submit sequence (optional)
 
-        node = self._nodes.get(node_id)
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -304,14 +323,14 @@ class NerveEngine:
 
         # Create execution context
         context = ExecutionContext(
-            session=self._session,
+            session=session,
             input=text,
         )
 
         if stream:
             # Stream output chunks as events
             stream_context = ExecutionContext(
-                session=self._session,
+                session=session,
                 input=text,
                 parser=parser_type,
             )
@@ -361,9 +380,10 @@ class NerveEngine:
 
     async def _send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         """Send interrupt to a node."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
 
-        node = self._nodes.get(node_id)
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -373,10 +393,11 @@ class NerveEngine:
 
     async def _write_data(self, params: dict[str, Any]) -> dict[str, Any]:
         """Write raw data to a node (no waiting)."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
         data = params["data"]
 
-        node = self._nodes.get(node_id)
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -386,10 +407,11 @@ class NerveEngine:
 
     async def _get_buffer(self, params: dict[str, Any]) -> dict[str, Any]:
         """Get node buffer."""
+        session = self._get_session(params)
         node_id = params.get("node_id")
         lines = params.get("lines")
 
-        node = self._nodes.get(node_id)
+        node = session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -415,6 +437,7 @@ class NerveEngine:
         Returns:
             Dict with node_id, server_name, entries, and total count.
         """
+        session = self._get_session(params)
         node_id = params.get("node_id")
         if not node_id:
             raise ValueError("node_id is required")
@@ -428,7 +451,7 @@ class NerveEngine:
             reader = HistoryReader.create(
                 node_id=node_id,
                 server_name=server_name,
-                base_dir=self._node_factory.history_base_dir,
+                base_dir=session.history_base_dir,
             )
 
             # Apply filters
@@ -466,11 +489,12 @@ class NerveEngine:
 
     async def _execute_graph(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a graph."""
+        session = self._get_session(params)
         graph_id = params.get("graph_id", "graph_0")
         steps_data = params["steps"]
 
         # Build Graph from step definitions
-        graph = self._node_factory.create_graph(graph_id)
+        graph = session.create_graph(graph_id)
 
         for step_data in steps_data:
             step_id = step_data["id"]
@@ -480,7 +504,7 @@ class NerveEngine:
             depends_on = step_data.get("depends_on", [])
 
             # Get the node for this step
-            node = self._nodes.get(node_id)
+            node = session.get_node(node_id)
             if not node:
                 raise ValueError(f"Node not found: {node_id}")
 
@@ -495,7 +519,7 @@ class NerveEngine:
         await self._emit(EventType.GRAPH_STARTED, data={"graph_id": graph_id})
 
         # Create context with session
-        context = ExecutionContext(session=self._session)
+        context = ExecutionContext(session=session)
 
         # Execute graph with streaming
         results = {}
@@ -543,6 +567,292 @@ class NerveEngine:
         return {"cancelled": False, "error": "Graph not found"}
 
     # =========================================================================
+    # Session Management Commands
+    # =========================================================================
+
+    async def _create_session(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Create a new session.
+
+        Parameters:
+            name: Session name (optional)
+            description: Session description (optional)
+            tags: Session tags (optional)
+
+        Returns:
+            Dict with session_id.
+        """
+        name = params.get("name")
+        description = params.get("description", "")
+        tags = params.get("tags", [])
+
+        session = Session(
+            name=name or "",
+            description=description,
+            tags=tags,
+            server_name=self._server_name,
+        )
+        self._sessions[session.id] = session
+
+        await self._emit(
+            EventType.SESSION_CREATED,
+            data={
+                "session_id": session.id,
+                "name": session.name,
+            },
+        )
+
+        return {
+            "session_id": session.id,
+            "name": session.name,
+        }
+
+    async def _delete_session(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Delete a session.
+
+        Parameters:
+            session_id: Session ID to delete (required)
+
+        Returns:
+            Dict with deleted status.
+        """
+        session_id = params.get("session_id")
+        if not session_id:
+            raise ValueError("session_id is required")
+
+        if session_id == self._default_session.id:
+            raise ValueError("Cannot delete the default session")
+
+        session = self._sessions.pop(session_id, None)
+        if session is None:
+            raise ValueError(f"Session not found: {session_id}")
+
+        await session.stop()
+
+        await self._emit(
+            EventType.SESSION_DELETED,
+            data={"session_id": session_id},
+        )
+
+        return {"deleted": True}
+
+    async def _list_sessions(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List all sessions.
+
+        Returns:
+            Dict with sessions list.
+        """
+        sessions = []
+        for session in self._sessions.values():
+            sessions.append({
+                "id": session.id,
+                "name": session.name,
+                "description": session.description,
+                "tags": session.tags,
+                "node_count": len(session.nodes),
+                "graph_count": len(session.graphs),
+                "is_default": session.id == self._default_session.id,
+            })
+
+        return {
+            "sessions": sessions,
+            "default_session_id": self._default_session.id,
+        }
+
+    async def _get_session_info(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Get session info.
+
+        Parameters:
+            session_id: Session ID (optional, defaults to default session)
+
+        Returns:
+            Dict with session info.
+        """
+        session = self._get_session(params)
+
+        return {
+            "session_id": session.id,
+            "name": session.name,
+            "description": session.description,
+            "tags": session.tags,
+            "nodes": session.list_nodes(),
+            "graphs": session.list_graphs(),
+            "is_default": session.id == self._default_session.id,
+        }
+
+    # =========================================================================
+    # Graph Management Commands
+    # =========================================================================
+
+    async def _create_graph(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Create and register a graph in a session.
+
+        Parameters:
+            graph_id: Graph ID (required)
+            session_id: Session ID (optional, defaults to default session)
+
+        Returns:
+            Dict with graph_id.
+        """
+        session = self._get_session(params)
+        graph_id = params.get("graph_id")
+
+        if not graph_id:
+            raise ValueError("graph_id is required")
+
+        graph = session.create_graph(graph_id)
+
+        await self._emit(
+            EventType.GRAPH_CREATED,
+            data={"graph_id": graph_id},
+        )
+
+        return {"graph_id": graph.id}
+
+    async def _delete_graph(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Delete a graph from a session.
+
+        Parameters:
+            graph_id: Graph ID (required)
+            session_id: Session ID (optional, defaults to default session)
+
+        Returns:
+            Dict with deleted status.
+        """
+        session = self._get_session(params)
+        graph_id = params.get("graph_id")
+
+        if not graph_id:
+            raise ValueError("graph_id is required")
+
+        deleted = session.delete_graph(graph_id)
+        if not deleted:
+            raise ValueError(f"Graph not found: {graph_id}")
+
+        await self._emit(
+            EventType.GRAPH_DELETED,
+            data={"graph_id": graph_id},
+        )
+
+        return {"deleted": True}
+
+    async def _list_graphs(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List all graphs in a session.
+
+        Parameters:
+            session_id: Session ID (optional, defaults to default session)
+
+        Returns:
+            Dict with graphs list.
+        """
+        session = self._get_session(params)
+        graph_ids = session.list_graphs()
+
+        graphs = []
+        for gid in graph_ids:
+            graph = session.get_graph(gid)
+            if graph is not None:
+                graphs.append({
+                    "id": gid,
+                    "step_count": len(graph.list_steps()),
+                })
+
+        return {"graphs": graphs}
+
+    async def _get_graph_info(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Get graph info.
+
+        Parameters:
+            graph_id: Graph ID (required)
+            session_id: Session ID (optional, defaults to default session)
+
+        Returns:
+            Dict with graph info.
+        """
+        session = self._get_session(params)
+        graph_id = params.get("graph_id")
+
+        if not graph_id:
+            raise ValueError("graph_id is required")
+
+        graph = session.get_graph(graph_id)
+        if graph is None:
+            raise ValueError(f"Graph not found: {graph_id}")
+
+        steps = []
+        for step_id in graph.list_steps():
+            step = graph.get_step(step_id)
+            if step is not None:
+                steps.append({
+                    "id": step_id,
+                    "depends_on": step.depends_on,
+                })
+
+        return {
+            "graph_id": graph_id,
+            "steps": steps,
+        }
+
+    async def _run_graph(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Run a registered graph.
+
+        Parameters:
+            graph_id: Graph ID (required)
+            session_id: Session ID (optional, defaults to default session)
+            input: Initial input for the graph (optional)
+
+        Returns:
+            Dict with results.
+        """
+        session = self._get_session(params)
+        graph_id = params.get("graph_id")
+        initial_input = params.get("input")
+
+        if not graph_id:
+            raise ValueError("graph_id is required")
+
+        graph = session.get_graph(graph_id)
+        if graph is None:
+            raise ValueError(f"Graph not found: {graph_id}")
+
+        await self._emit(EventType.GRAPH_STARTED, data={"graph_id": graph_id})
+
+        # Create context with session
+        context = ExecutionContext(session=session, input=initial_input)
+
+        # Execute graph with streaming
+        results = {}
+        async for event in graph.stream(context):
+            if event.event == "step_started":
+                await self._emit(
+                    EventType.STEP_STARTED,
+                    data={"step_id": event.step_id},
+                )
+            elif event.event == "step_completed":
+                results[event.step_id] = event.output
+                await self._emit(
+                    EventType.STEP_COMPLETED,
+                    data={"step_id": event.step_id, "output": str(event.output)[:500]},
+                )
+            elif event.event == "step_failed":
+                await self._emit(
+                    EventType.STEP_FAILED,
+                    data={"step_id": event.step_id, "error": str(event.error)},
+                )
+
+        await self._emit(
+            EventType.GRAPH_COMPLETED,
+            data={"graph_id": graph_id, "step_count": len(results)},
+        )
+
+        return {
+            "graph_id": graph_id,
+            "results": {
+                step_id: {"output": str(output)[:500]}
+                for step_id, output in results.items()
+            },
+        }
+
+    # =========================================================================
     # Server Control Commands
     # =========================================================================
 
@@ -569,27 +879,28 @@ class NerveEngine:
             task.cancel()
         self._running_graphs.clear()
 
-        # Delete all nodes
-        for node_id, node in list(self._nodes.items()):
+        # Stop all sessions
+        for session in self._sessions.values():
             try:
-                await node.stop()
+                await session.stop()
             except Exception:
                 pass  # Best effort cleanup
-        self._nodes.clear()
 
     async def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
         """Ping the server to check if it's alive."""
+        total_nodes = sum(len(s.nodes) for s in self._sessions.values())
         return {
             "pong": True,
-            "nodes": len(self._nodes),
+            "nodes": total_nodes,
             "graphs": len(self._running_graphs),
+            "sessions": len(self._sessions),
         }
 
     # =========================================================================
     # Internal
     # =========================================================================
 
-    async def _monitor_node(self, node: TerminalNode) -> None:
+    async def _monitor_node(self, node) -> None:
         """Monitor node for state changes.
 
         This runs in the background and emits events when

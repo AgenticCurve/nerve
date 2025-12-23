@@ -151,19 +151,20 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
         async def force_cleanup_and_exit():
             """Force kill all nodes and exit."""
             click.echo("Killing nodes...")
-            for node_id, node in list(engine._nodes.items()):
-                try:
-                    await asyncio.wait_for(node.stop(), timeout=2.0)
-                except asyncio.TimeoutError:
-                    click.echo(f"  {node_id}: timeout, force killing...")
-                    if hasattr(node, "backend") and hasattr(node.backend, "process"):
-                        try:
-                            node.backend.process.kill()
-                        except Exception:
-                            pass
-                except Exception:
-                    pass  # Best effort
-            engine._nodes.clear()
+            for session in engine._sessions.values():
+                for node_id, node in list(session.nodes.items()):
+                    try:
+                        await asyncio.wait_for(node.stop(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        click.echo(f"  {node_id}: timeout, force killing...")
+                        if hasattr(node, "backend") and hasattr(node.backend, "process"):
+                            try:
+                                node.backend.process.kill()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass  # Best effort
+                session.nodes.clear()
             click.echo("Done.")
             os._exit(0)
 
@@ -187,12 +188,13 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
         finally:
             # Clean up all nodes before exiting
             click.echo("Cleaning up nodes...")
-            for node_id, node in list(engine._nodes.items()):
-                try:
-                    await node.stop()
-                except Exception:
-                    pass  # Best effort cleanup
-            engine._nodes.clear()
+            for session in engine._sessions.values():
+                for node_id, node in list(session.nodes.items()):
+                    try:
+                        await node.stop()
+                    except Exception:
+                        pass  # Best effort cleanup
+                session.nodes.clear()
             click.echo("Cleanup complete.")
             # Clean up tracking files on exit
             if os.path.exists(pid_file):
@@ -477,4 +479,4 @@ def status(name: str | None, show_all: bool):
 
 
 # Import subcommands to register them
-from nerve.frontends.cli.server import graph, node
+from nerve.frontends.cli.server import graph, node, session

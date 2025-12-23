@@ -233,7 +233,7 @@ class TestGraph:
         """Test execution with node_ref resolved from session."""
         session = Session()
         registered_node = FunctionNode(id="registered", fn=lambda ctx: "from_session")
-        session.register(registered_node)
+        session.nodes["registered"] = registered_node
 
         graph = Graph(id="test")
         graph.add_step_ref(node_id="registered", step_id="a")

@@ -16,13 +16,11 @@ Key Concepts:
     Session:    Optional grouping of nodes with metadata
 
 Quick Start (create a terminal node):
-    >>> from nerve.core.nodes import NodeFactory, ExecutionContext
+    >>> from nerve.core.nodes import ExecutionContext
     >>> from nerve.core.session import Session
     >>>
-    >>> factory = NodeFactory()
-    >>> node = await factory.create_terminal("my-node", command="claude")
     >>> session = Session()
-    >>> session.register(node)
+    >>> node = await session.create_node("my-node", command="claude")
     >>> context = ExecutionContext(session=session, input="Hello!")
     >>> response = await node.execute(context)
     >>> print(response.sections)
@@ -52,7 +50,6 @@ from nerve.core import (
     FunctionNode,
     Graph,
     Node,
-    NodeFactory,
     NodeState,
     ParsedResponse,
     ParserType,
@@ -74,7 +71,6 @@ __all__ = [
     "WezTermNode",
     "ClaudeWezTermNode",
     "FunctionNode",
-    "NodeFactory",
     # Graph
     "Graph",
     "Step",

@@ -14,10 +14,10 @@ from nerve.core.session.session import Session
 
 
 class TestSession:
-    """Tests for Session (Node API).
+    """Tests for Session.
 
-    Session is a clean Node-only registry and lifecycle manager.
-    It uses register/unregister/list_nodes/stop for node management.
+    Session is the central workspace that creates, registers, and manages
+    nodes and graphs.
     """
 
     def test_session_creation_with_defaults(self):
@@ -45,41 +45,34 @@ class TestSession:
         assert session.description == "A test session"
         assert session.tags == ["test", "example"]
 
-    def test_register_node(self):
-        """Test registering a node to session."""
+    def test_add_node_directly(self):
+        """Test adding a node directly to session.nodes."""
         session = Session()
         mock_node = MagicMock()
         mock_node.id = "test-node"
 
-        session.register(mock_node, name="test")
+        # Direct assignment (used by create_node internally)
+        session.nodes["test"] = mock_node
 
         assert "test" in session
         assert len(session) == 1
-        assert session.get("test") is mock_node
+        assert session.get_node("test") is mock_node
 
-    def test_register_node_uses_id_by_default(self):
-        """Test that register uses node.id when name not specified."""
-        session = Session()
-        mock_node = MagicMock()
-        mock_node.id = "node-123"
-
-        session.register(mock_node)
-
-        assert "node-123" in session
-        assert session.get("node-123") is mock_node
-
-    def test_register_duplicate_raises(self):
-        """Test that registering duplicate name raises."""
+    def test_duplicate_node_raises(self):
+        """Test that create_node with duplicate ID raises."""
         session = Session()
         mock_node = MagicMock()
         mock_node.id = "node-1"
+        session.nodes["test"] = mock_node
 
-        session.register(mock_node, name="test")
+        # Create a mock that would be returned by create_node
+        # To test duplicate behavior, we'll test create_function which is sync
+        from nerve.core.nodes import FunctionNode
 
-        mock_node2 = MagicMock()
-        mock_node2.id = "node-2"
+        session.create_function("fn1", fn=lambda ctx: None)
+
         with pytest.raises(ValueError, match="already exists"):
-            session.register(mock_node2, name="test")
+            session.create_function("fn1", fn=lambda ctx: None)
 
     def test_get_node(self):
         """Test getting a node by name."""
@@ -87,30 +80,34 @@ class TestSession:
         mock_node = MagicMock()
         mock_node.id = "my-node"
 
-        session.register(mock_node, name="my-node")
+        session.nodes["my-node"] = mock_node
 
-        assert session.get("my-node") is mock_node
-        assert session.get("nonexistent") is None
+        assert session.get_node("my-node") is mock_node
+        assert session.get_node("nonexistent") is None
 
-    def test_unregister_node(self):
-        """Test unregistering a node."""
+    @pytest.mark.asyncio
+    async def test_delete_node(self):
+        """Test deleting a node."""
         session = Session()
         mock_node = MagicMock()
         mock_node.id = "to-remove"
+        mock_node.stop = AsyncMock()
 
-        session.register(mock_node, name="to-remove")
+        session.nodes["to-remove"] = mock_node
         assert "to-remove" in session
 
-        removed = session.unregister("to-remove")
-        assert removed is mock_node
+        deleted = await session.delete_node("to-remove")
+        assert deleted is True
         assert "to-remove" not in session
+        mock_node.stop.assert_called_once()
 
-    def test_unregister_nonexistent(self):
-        """Test unregistering nonexistent node returns None."""
+    @pytest.mark.asyncio
+    async def test_delete_nonexistent_node(self):
+        """Test deleting nonexistent node returns False."""
         session = Session()
 
-        result = session.unregister("nonexistent")
-        assert result is None
+        result = await session.delete_node("nonexistent")
+        assert result is False
 
     def test_list_nodes(self):
         """Test listing node names."""
@@ -123,9 +120,9 @@ class TestSession:
         mock_node_c = MagicMock()
         mock_node_c.id = "node-c"
 
-        session.register(mock_node_a, name="node-a")
-        session.register(mock_node_b, name="node-b")
-        session.register(mock_node_c, name="node-c")
+        session.nodes["node-a"] = mock_node_a
+        session.nodes["node-b"] = mock_node_b
+        session.nodes["node-c"] = mock_node_c
 
         names = session.list_nodes()
         assert len(names) == 3
@@ -142,7 +139,7 @@ class TestSession:
         mock_info = MagicMock()
         mock_node.to_info.return_value = mock_info
 
-        session.register(mock_node, name="test")
+        session.nodes["test"] = mock_node
 
         info = session.get_node_info()
         assert "test" in info
@@ -161,7 +158,7 @@ class TestSession:
             node.persistent = True
             node.stop = AsyncMock()
             nodes.append(node)
-            session.register(node, name=f"node-{i}")
+            session.nodes[f"node-{i}"] = node
 
         assert len(session) == 3
 
@@ -179,7 +176,7 @@ class TestSession:
         mock_node = MagicMock(spec=["id", "execute"])
         mock_node.id = "func-node"
 
-        session.register(mock_node, name="func")
+        session.nodes["func"] = mock_node
 
         # Should not raise
         await session.stop()
@@ -199,7 +196,7 @@ class TestSession:
         mock_info.to_dict.return_value = {"id": "node-1", "state": "ready"}
         mock_node.to_info.return_value = mock_info
 
-        session.register(mock_node, name="node1")
+        session.nodes["node1"] = mock_node
 
         result = session.to_dict()
 
@@ -215,7 +212,7 @@ class TestSession:
         session = Session()
         mock_node = MagicMock()
         mock_node.id = "exists"
-        session.register(mock_node, name="exists")
+        session.nodes["exists"] = mock_node
 
         assert "exists" in session
         assert "missing" not in session
@@ -228,12 +225,12 @@ class TestSession:
 
         mock_node1 = MagicMock()
         mock_node1.id = "node1"
-        session.register(mock_node1, name="node1")
+        session.nodes["node1"] = mock_node1
         assert len(session) == 1
 
         mock_node2 = MagicMock()
         mock_node2.id = "node2"
-        session.register(mock_node2, name="node2")
+        session.nodes["node2"] = mock_node2
         assert len(session) == 2
 
     def test_repr(self):
@@ -241,12 +238,55 @@ class TestSession:
         session = Session(id="my-id", name="My Session")
         mock_node = MagicMock()
         mock_node.id = "node1"
-        session.register(mock_node, name="node1")
+        session.nodes["node1"] = mock_node
 
         repr_str = repr(session)
         assert "Session" in repr_str
         assert "my-id" in repr_str
         assert "My Session" in repr_str
+
+    def test_create_function(self):
+        """Test creating a function node."""
+        session = Session()
+
+        fn = session.create_function("test-fn", fn=lambda ctx: ctx.input)
+
+        assert fn.id == "test-fn"
+        assert "test-fn" in session.nodes
+        assert session.get_node("test-fn") is fn
+
+    def test_create_graph(self):
+        """Test creating a graph."""
+        session = Session()
+
+        graph = session.create_graph("test-graph")
+
+        assert graph.id == "test-graph"
+        assert "test-graph" in session.graphs
+        assert session.get_graph("test-graph") is graph
+
+    def test_delete_graph(self):
+        """Test deleting a graph."""
+        session = Session()
+
+        graph = session.create_graph("to-delete")
+        assert "to-delete" in session.graphs
+
+        deleted = session.delete_graph("to-delete")
+        assert deleted is True
+        assert "to-delete" not in session.graphs
+
+    def test_list_graphs(self):
+        """Test listing graph IDs."""
+        session = Session()
+
+        session.create_graph("graph-a")
+        session.create_graph("graph-b")
+
+        graphs = session.list_graphs()
+        assert len(graphs) == 2
+        assert "graph-a" in graphs
+        assert "graph-b" in graphs
 
 
 class TestSessionManager:
@@ -336,7 +376,7 @@ class TestSessionManager:
         mock_node.id = "node"
         mock_node.persistent = True
         mock_node.stop = AsyncMock()
-        session.register(mock_node, name="node")
+        session.nodes["node"] = mock_node
 
         result = await manager.close_session("to-close")
 
@@ -364,13 +404,13 @@ class TestSessionManager:
         node1.id = "node1"
         node1.persistent = True
         node1.stop = AsyncMock()
-        s1.register(node1, name="node1")
+        s1.nodes["node1"] = node1
 
         node2 = MagicMock()
         node2.id = "node2"
         node2.persistent = True
         node2.stop = AsyncMock()
-        s2.register(node2, name="node2")
+        s2.nodes["node2"] = node2
 
         await manager.close_all()
 

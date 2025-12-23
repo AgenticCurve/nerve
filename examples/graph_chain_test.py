@@ -126,7 +126,7 @@ async def run_chain_test(server_name: str = "graph-test", node_name: str = "clau
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": node_name,
-                    "input": prompt,
+                    "text": prompt,
                     "parser": "claude",
                 },
             )

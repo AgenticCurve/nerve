@@ -25,14 +25,12 @@ Key Concepts:
     Session:    Optional grouping of nodes with metadata
 
 Example (PTY node - you own the process):
-    >>> from nerve.core.nodes import NodeFactory, ExecutionContext
+    >>> from nerve.core.nodes import ExecutionContext
     >>> from nerve.core.session import Session
     >>>
     >>> async def main():
-    ...     factory = NodeFactory()
-    ...     node = await factory.create_terminal("my-node", command="claude")
     ...     session = Session()
-    ...     session.register(node)
+    ...     node = await session.create_node("my-node", command="claude")
     ...     context = ExecutionContext(session=session, input="Hello!")
     ...     response = await node.execute(context)
     ...     print(response.sections)
@@ -52,7 +50,6 @@ Example (Graph execution):
 
 # Nodes
 from nerve.core.nodes import (
-    BackendType,
     Budget,
     BudgetExceededError,
     CancelledException,
@@ -65,7 +62,6 @@ from nerve.core.nodes import (
     Graph,
     Node,
     NodeConfig,
-    NodeFactory,
     NodeInfo,
     NodeState,
     PersistentNode,
@@ -105,6 +101,7 @@ from nerve.core.pty import (
 
 # Session
 from nerve.core.session import (
+    BackendType,
     Session,
     SessionManager,
     SessionMetadata,
@@ -138,9 +135,6 @@ __all__ = [
     "WezTermNode",
     "ClaudeWezTermNode",
     "TerminalNode",
-    # Factory
-    "NodeFactory",
-    "BackendType",
     # Context
     "ExecutionContext",
     # Agent capabilities
@@ -167,6 +161,7 @@ __all__ = [
     "SessionManager",
     "SessionMetadata",
     "SessionStore",
+    "BackendType",
     "get_default_store",
     # Backends
     "Backend",

@@ -300,7 +300,7 @@ async def send_prompt(client, node_id: str, text: str, timeout: float = 300.0):
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": node_id,
-                "input": text,
+                "text": text,
                 "parser": "claude",
             },
         ),

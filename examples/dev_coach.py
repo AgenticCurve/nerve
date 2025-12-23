@@ -313,7 +313,7 @@ async def run_dev_coach(
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "developer",
-                    "input": DEV_WARMUP,
+                    "text": DEV_WARMUP,
                     "parser": "claude",
                 },
             ),
@@ -334,7 +334,7 @@ async def run_dev_coach(
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "coach",
-                    "input": COACH_WARMUP,
+                    "text": COACH_WARMUP,
                     "parser": "claude",
                 },
             ),
@@ -366,7 +366,7 @@ async def run_dev_coach(
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": "developer",
-                "input": dev_initial,
+                "text": dev_initial,
                 "parser": "claude",
             },
         ),
@@ -406,7 +406,7 @@ async def run_dev_coach(
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": "coach",
-                "input": coach_prompt,
+                "text": coach_prompt,
                 "parser": "claude",
             },
         ),
@@ -469,7 +469,7 @@ async def run_dev_coach(
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "developer",
-                    "input": dev_prompt,
+                    "text": dev_prompt,
                     "parser": "claude",
                 },
             ),
@@ -506,7 +506,7 @@ async def run_dev_coach(
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "coach",
-                    "input": coach_prompt,
+                    "text": coach_prompt,
                     "parser": "claude",
                 },
             ),

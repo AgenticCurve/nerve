@@ -88,40 +88,30 @@ class TestNerveClientStandalone:
     @pytest.mark.asyncio
     async def test_standalone_create_node(self):
         """Test creating node in standalone mode."""
-        mock_factory = MagicMock()
+        mock_session = MagicMock()
         mock_node = MagicMock()
         mock_node.id = "my-node"
-        mock_factory.create_terminal = AsyncMock(return_value=mock_node)
+        mock_session.create_node = AsyncMock(return_value=mock_node)
 
-        mock_session = MagicMock()
-
-        client = NerveClient(
-            _standalone_factory=mock_factory,
-            _standalone_session=mock_session,
-        )
+        client = NerveClient(_standalone_session=mock_session)
 
         node = await client.create_node("my-node", command="claude")
 
         assert isinstance(node, RemoteNode)
         assert node.id == "my-node"
-        mock_factory.create_terminal.assert_called_once()
-        mock_session.register.assert_called_once_with(mock_node)
+        mock_session.create_node.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_standalone_list_nodes(self):
         """Test listing nodes in standalone mode."""
-        mock_factory = MagicMock()
         mock_session = MagicMock()
-
-        client = NerveClient(
-            _standalone_factory=mock_factory,
-            _standalone_session=mock_session,
-        )
-
-        # Simulate created nodes
         mock_node = MagicMock()
         mock_node.id = "node-1"
-        mock_factory.create_terminal = AsyncMock(return_value=mock_node)
+        mock_session.create_node = AsyncMock(return_value=mock_node)
+
+        client = NerveClient(_standalone_session=mock_session)
+
+        # Simulate created nodes
         await client.create_node("node-1", command="bash")
 
         nodes = await client.list_nodes()
@@ -131,17 +121,12 @@ class TestNerveClientStandalone:
     @pytest.mark.asyncio
     async def test_standalone_get_node(self):
         """Test getting node in standalone mode."""
-        mock_factory = MagicMock()
+        mock_session = MagicMock()
         mock_node = MagicMock()
         mock_node.id = "my-node"
-        mock_factory.create_terminal = AsyncMock(return_value=mock_node)
+        mock_session.create_node = AsyncMock(return_value=mock_node)
 
-        mock_session = MagicMock()
-
-        client = NerveClient(
-            _standalone_factory=mock_factory,
-            _standalone_session=mock_session,
-        )
+        client = NerveClient(_standalone_session=mock_session)
 
         # Create a node first
         await client.create_node("my-node", command="claude")
@@ -155,13 +140,9 @@ class TestNerveClientStandalone:
     @pytest.mark.asyncio
     async def test_standalone_get_node_not_found(self):
         """Test getting non-existent node returns None."""
-        mock_factory = MagicMock()
         mock_session = MagicMock()
 
-        client = NerveClient(
-            _standalone_factory=mock_factory,
-            _standalone_session=mock_session,
-        )
+        client = NerveClient(_standalone_session=mock_session)
 
         node = await client.get_node("nonexistent")
 
@@ -170,13 +151,9 @@ class TestNerveClientStandalone:
     @pytest.mark.asyncio
     async def test_create_node_validates_name(self):
         """Test that create_node validates node name."""
-        mock_factory = MagicMock()
         mock_session = MagicMock()
 
-        client = NerveClient(
-            _standalone_factory=mock_factory,
-            _standalone_session=mock_session,
-        )
+        client = NerveClient(_standalone_session=mock_session)
 
         # Invalid name should raise ValueError
         with pytest.raises(ValueError):
@@ -191,7 +168,6 @@ class TestNerveClientFactory:
         """Test NerveClient.standalone() factory."""
         client = await NerveClient.standalone()
 
-        assert client._standalone_factory is not None
         assert client._standalone_session is not None
         assert client._transport is None
 
@@ -201,7 +177,7 @@ class TestNerveClientFactory:
     async def test_context_manager(self):
         """Test NerveClient as async context manager."""
         async with await NerveClient.standalone() as client:
-            assert client._standalone_factory is not None
+            assert client._standalone_session is not None
 
         # After context, client should be disconnected
         # (no explicit check needed, just verify no exceptions)

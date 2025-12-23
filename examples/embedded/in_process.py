@@ -56,7 +56,7 @@ async def main():
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": node_id,
-                "input": "What is the capital of France? One word answer.",
+                "text": "What is the capital of France? One word answer.",
                 "parser": "claude",
                 "stream": True,
             },

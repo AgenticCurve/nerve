@@ -37,6 +37,7 @@ def node():
 @node.command("create")
 @click.argument("name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name to create the node on")
+@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')")
 @click.option("--cwd", default=None, help="Working directory for the node")
 @click.option(
@@ -55,6 +56,7 @@ def node():
 def node_create(
     name: str,
     server_name: str,
+    session_id: str | None,
     command: str | None,
     cwd: str | None,
     backend: str,
@@ -73,6 +75,8 @@ def node_create(
         nerve server node create gemini-1 --server myproject --command gemini
 
         nerve server node create attached --server myproject --backend wezterm --pane-id 4
+
+        nerve server node create claude --server myproject --session my-workspace
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -97,6 +101,8 @@ def node_create(
             "backend": backend,
             "history": history,
         }
+        if session_id:
+            params["session_id"] = session_id
         if command:
             params["command"] = command
         if pane_id:
@@ -121,8 +127,9 @@ def node_create(
 
 @node.command("list")
 @click.option("--server", "-s", "server_name", required=True, help="Server name to list nodes from")
+@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def node_list(server_name: str, json_output: bool):
+def node_list(server_name: str, session_id: str | None, json_output: bool):
     """List active nodes on a server.
 
     **Examples:**
@@ -130,6 +137,8 @@ def node_list(server_name: str, json_output: bool):
         nerve server node list --server myproject
 
         nerve server node list --server myproject --json
+
+        nerve server node list --server myproject --session my-workspace
     """
     from nerve.server.protocols import Command, CommandType
 
@@ -137,10 +146,14 @@ def node_list(server_name: str, json_output: bool):
         client = create_client(server_name)
         await client.connect()
 
+        params = {}
+        if session_id:
+            params["session_id"] = session_id
+
         result = await client.send_command(
             Command(
                 type=CommandType.LIST_NODES,
-                params={},
+                params=params,
             )
         )
 
@@ -179,7 +192,8 @@ def node_list(server_name: str, json_output: bool):
 @node.command("delete")
 @click.argument("node_name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_delete(node_name: str, server_name: str):
+@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
+def node_delete(node_name: str, server_name: str, session_id: str | None):
     """Delete a node.
 
     Stops the node, closes its terminal/pane, and removes it from the server.
@@ -193,6 +207,8 @@ def node_delete(node_name: str, server_name: str):
         nerve server node delete my-claude --server local
 
         nerve server node delete my-shell -s myproject
+
+        nerve server node delete claude --server myproject --session my-workspace
     """
     from nerve.server.protocols import Command, CommandType
 
@@ -204,10 +220,14 @@ def node_delete(node_name: str, server_name: str):
             click.echo(f"Error: Server '{server_name}' not running", err=True)
             sys.exit(1)
 
+        params = {"node_id": node_name}
+        if session_id:
+            params["session_id"] = session_id
+
         result = await client.send_command(
             Command(
                 type=CommandType.DELETE_NODE,
-                params={"node_id": node_name},
+                params=params,
             )
         )
 

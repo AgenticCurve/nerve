@@ -183,7 +183,7 @@ Address a JavaScript developer who disagrees with you."""
             type=CommandType.EXECUTE_INPUT,
             params={
                 "node_id": "agent-a",
-                "input": opening_prompt,
+                "text": opening_prompt,
                 "parser": "claude",
             },
         ),
@@ -229,7 +229,7 @@ Respond to their arguments and make your case for JavaScript."""
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "agent-b",
-                    "input": prompt_b,
+                    "text": prompt_b,
                     "parser": "claude",
                 },
             ),
@@ -265,7 +265,7 @@ Counter their arguments and reinforce why Python is better."""
                 type=CommandType.EXECUTE_INPUT,
                 params={
                     "node_id": "agent-a",
-                    "input": prompt_a,
+                    "text": prompt_a,
                     "parser": "claude",
                 },
             ),

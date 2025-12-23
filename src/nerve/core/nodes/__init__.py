@@ -86,8 +86,8 @@ from nerve.core.nodes.cancellation import CancelledException, CancellationToken
 # Agent capabilities: Tracing
 from nerve.core.nodes.trace import ExecutionTrace, StepTrace
 
-# Factory
-from nerve.core.nodes.factory import BackendType, NodeFactory, TerminalNode
+# Terminal node type alias
+TerminalNode = PTYNode | WezTermNode | ClaudeWezTermNode
 
 # History
 from nerve.core.nodes.history import (
@@ -116,9 +116,6 @@ __all__ = [
     "WezTermNode",
     "ClaudeWezTermNode",
     "TerminalNode",
-    # Factory
-    "NodeFactory",
-    "BackendType",
     # Policies
     "ErrorPolicy",
     # Budget
