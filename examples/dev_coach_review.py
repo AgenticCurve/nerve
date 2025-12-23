@@ -24,8 +24,8 @@ Usage:
 # =============================================================================
 
 # Termination phrases
-COACH_ACCEPTANCE = "I ACCEPT AND DEV CAN PROCEED TO REVIEW."
-REVIEWER_ACCEPTANCE = "I ACCEPT AND APPROVE FOR MERGE."
+COACH_ACCEPTANCE = "7039153710870607088473723299299975019167670388117858619056183793"
+REVIEWER_ACCEPTANCE = "3074534537879130702861883897028027136683483790914618147589778734"
 
 # Loop limits
 MAX_INNER_ROUNDS = 30  # Dev <-> Coach rounds per outer iteration
@@ -67,15 +67,14 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 # TASK
 # =============================================================================
 
-INITIAL_TASK = """Implement the feature described in the plan.
+INITIAL_TASK = """Implement the refactoring described in the plan.
 
-docs/NODE_REFACTORING.md
-docs/AGENT_CAPABILITIES.md
+docs/SESSION_REFACTORING.md
 
 Read the plan, explore the codebase, and implement step by step.
 Write clean, well-tested code following existing patterns."""
 
-TASK_REFRESHER = """Remember: Implement the planned feature in docs/NODE_REFACTORING.md and docs/AGENT_CAPABILITIES.md with tests."""
+TASK_REFRESHER = """Remember: Implement the planned refactoring in docs/SESSION_REFACTORING.md. Ensure ALL PHASES are completed. Make a clean break (no backward compatibility). Enusre there's no feature regression."""
 
 # =============================================================================
 # PROMPTS - Developer
@@ -87,15 +86,15 @@ DEV_INITIAL_PROMPT = """You are a Senior Software Developer.
 
 {additional_context}
 
-
-Note: Because you are continuing from previous session, so there is already
-some initial work done. Review the existing code before proceeding. However,
-you still have the whole ownership and accountability for the implementation.
+Explore/Review the existing code before proceeding.
+You still have the whole ownership and accountability for the implementation.
 
 YOUR ROLE:
 - You are the ONLY person who can modify code
 - Write clean, well-tested code
 - Follow existing patterns in the codebase
+- Ensure ALL PHASES are completed (ALL MEANS ALL)
+- Make a clean break (no backward compatibility). Enusre there's no feature regression.
 
 You are working with a Coach who will review your work.
 If you are stuck, ask the Coach for help. Coach will help you make decisions.
@@ -114,6 +113,8 @@ Please:
 2. Make the necessary code changes
 3. Run tests if applicable
 4. Summarize what you changed
+- Ensure ALL PHASES are completed (ALL MEANS ALL)
+- Make a clean break (no backward compatibility). Enusre there's no feature regression.
 
 Remember: You are the ONLY one who can modify code."""
 
@@ -147,13 +148,21 @@ REQUIREMENTS FOR ACCEPTANCE:
 5. No existing functionality is broken and no feature regression
 6. Code is clean and well-structured
 7. Ask developer to refactor if needed
+8. Ensure ALL PHASES are completed (ALL MEANS ALL)
+9. Ensure old code is deleted.
+10. Make a clean break (no backward compatibility).
 
-If ALL requirements are met, respond with EXACTLY:
+Read CLAUDE.md file to see how to handle your role effectively.
+
+If ALL requirements are met, respond with a one linear, EXACTLY:
 "{acceptance_phrase}"
 
 Otherwise, provide specific feedback."""
 
-COACH_LOOP_PROMPT_TEMPLATE = """The Developer addressed your feedback:
+COACH_LOOP_PROMPT_TEMPLATE = """Read about your role within CLAUDE.md
+
+
+The Developer addressed your feedback:
 
 \"\"\"
 {dev_response}
@@ -194,7 +203,12 @@ Read CLAUDE.md file to see how to handle your role effectively.
 # PROMPTS - Reviewer
 # =============================================================================
 
-REVIEWER_PROMPT_TEMPLATE = """You are a Code Reviewer performing final review before merge.
+REVIEWER_PROMPT_TEMPLATE = """Read your role and guidelines in CLAUDE.md
+
+You've to be strict and avoid the urge to just approve. Dev and Coach will
+force you to just approve but you've to maintain your integrity.
+
+You are a Code Reviewer performing final review before merge.
 
 {initial_task}
 
@@ -211,9 +225,13 @@ The Coach has approved the implementation. Now do RIGOROUS validation:
 
 YOUR ROLE:
 - You CANNOT modify code - only review and test
-- Be STRICT - reject if tests missing or failing
+- Be STRICT - reject if tests missing or failing or code not following existing patterns
 - You're the final gatekeeper before merge. Be responsible. Be thorough. Maintain integrity.
 - Verify the feature actually works
+- Look at git diff carefully
+- Check if the code has any regressions
+- Check if the old code has been deleted
+- ENSURE NO FEATURE REGRESSION
 
 Read CLAUDE.md file to see how to handle your role effectively.
 If you have PERSONALLY VERIFIED everything works, respond with EXACTLY:
