@@ -666,16 +666,12 @@ class WezTermNode:
         is_claude = parser_type == ParserType.CLAUDE
         parser_instance = get_parser(parser_type)
 
-        # Send input
+        # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
         if is_claude:
-            # Claude CLI has vim-like INSERT mode
-            await self.backend.write("i")  # Enter INSERT mode
-            await asyncio.sleep(0.2)
+            # WezTerm + Claude: Just text + Enter
             await self.backend.write(input_str)
-            await asyncio.sleep(0.3)
-            await self.backend.write("\x1b")  # Escape to exit INSERT mode
-            await asyncio.sleep(0.3)
-            await self.backend.write("\r")  # Submit
+            await asyncio.sleep(0.1)
+            await self.backend.write("\r")
         else:
             await self.backend.write(input_str)
             await asyncio.sleep(0.1)
@@ -737,16 +733,12 @@ class WezTermNode:
         parser_instance = get_parser(parser_type)
         is_claude = parser_type == ParserType.CLAUDE
 
-        # Send input
+        # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
         if is_claude:
-            # Claude CLI has vim-like INSERT mode
-            await self.backend.write("i")  # Enter INSERT mode
-            await asyncio.sleep(0.2)
+            # WezTerm + Claude: Just text + Enter
             await self.backend.write(input_str)
-            await asyncio.sleep(0.3)
-            await self.backend.write("\x1b")  # Escape to exit INSERT mode
-            await asyncio.sleep(0.3)
-            await self.backend.write("\r")  # Submit
+            await asyncio.sleep(0.1)
+            await self.backend.write("\r")
         else:
             await self.backend.write(input_str + "\n")
 

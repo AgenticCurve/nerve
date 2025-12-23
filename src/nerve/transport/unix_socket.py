@@ -92,10 +92,10 @@ class UnixSocketServer:
 
         logger.info("Unix socket server started on %s", self.socket_path)
 
-        # Serve until shutdown requested
+        # Serve until shutdown requested (poll every 0.1s for responsive shutdown)
         async with self._server:
             while self._running and not engine.shutdown_requested:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.1)
 
         # Cleanup
         await self.stop()

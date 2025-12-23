@@ -190,16 +190,37 @@ def _run_cli() -> None:
             shutdown_event = asyncio.Event()
             shutdown_count = [0]  # Use list for nonlocal in closure
 
+            async def force_cleanup_and_exit():
+                """Force kill all nodes and exit."""
+                click.echo("Killing nodes...")
+                for node_id, node in list(engine._nodes.items()):
+                    try:
+                        await asyncio.wait_for(node.stop(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        click.echo(f"  {node_id}: timeout, force killing...")
+                        # Try to kill underlying process directly
+                        if hasattr(node, 'backend') and hasattr(node.backend, 'process'):
+                            try:
+                                node.backend.process.kill()
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass  # Best effort
+                engine._nodes.clear()
+                click.echo("Done.")
+                os._exit(0)
+
             def handle_shutdown(sig_name: str):
                 shutdown_count[0] += 1
                 if shutdown_count[0] == 1:
                     click.echo(f"\nReceived {sig_name}, shutting down gracefully...")
-                    click.echo("(Cleaning up nodes, press Ctrl+C again to force quit)")
+                    click.echo("(Press Ctrl+C again to force quit)")
                     engine._shutdown_requested = True
                     shutdown_event.set()
                 else:
                     click.echo("\nForce quitting...")
-                    os._exit(1)  # Immediate exit
+                    # Schedule cleanup task - it will run and then exit
+                    loop.create_task(force_cleanup_and_exit())
 
             # Use asyncio signal handlers for proper event loop integration
             loop.add_signal_handler(sig.SIGTERM, lambda: handle_shutdown("SIGTERM"))

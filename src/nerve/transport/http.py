@@ -39,7 +39,7 @@ class HTTPServer:
     _app: Any = None  # aiohttp.web.Application
     _runner: Any = None  # aiohttp.web.AppRunner
     _websockets: list = field(default_factory=list)
-    _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
+    _running: bool = False
 
     async def emit(self, event: Event) -> None:
         """Broadcast event to all WebSocket clients."""
@@ -76,6 +76,7 @@ class HTTPServer:
             ) from err
 
         self._engine = engine
+        self._running = True
 
         self._app = web.Application()
         self._app.router.add_post("/api/command", self._handle_command)
@@ -90,8 +91,10 @@ class HTTPServer:
         await site.start()
         logger.info("HTTP server started on %s:%s", self.host, self.port)
 
-        # Wait for shutdown signal
-        await self._shutdown_event.wait()
+        # Serve until shutdown requested (poll every 0.1s for responsive shutdown)
+        while self._running and not engine.shutdown_requested:
+            await asyncio.sleep(0.1)
+
         logger.info("HTTP server shutdown requested")
 
         # Clean up after shutdown
@@ -99,6 +102,8 @@ class HTTPServer:
 
     async def stop(self) -> None:
         """Stop the HTTP server."""
+        self._running = False
+
         if self._runner:
             await self._runner.cleanup()
 
@@ -183,11 +188,9 @@ class HTTPServer:
                 status=503,
             )
 
-        # Trigger engine shutdown
+        # Trigger engine shutdown (the serve loop polls this)
         self._engine._shutdown_requested = True
-
-        # Signal the serve loop to exit
-        self._shutdown_event.set()
+        self._running = False
 
         return web.json_response({"success": True, "message": "Shutdown initiated"})
 

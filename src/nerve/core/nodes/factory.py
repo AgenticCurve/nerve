@@ -119,6 +119,8 @@ class NodeFactory:
             if backend == BackendType.CLAUDE_WEZTERM:
                 if not command:
                     raise ValueError("command is required for claude-wezterm backend")
+                # ClaudeWezTermNode defaults to CLAUDE parser
+                actual_parser = default_parser if default_parser != ParserType.NONE else ParserType.CLAUDE
                 return await ClaudeWezTermNode.create(
                     node_id=node_id,
                     command=command if isinstance(command, str) else " ".join(command),
@@ -126,7 +128,7 @@ class NodeFactory:
                     ready_timeout=ready_timeout,
                     response_timeout=response_timeout,
                     history_writer=history_writer,
-                    parser=default_parser,
+                    parser=actual_parser,
                 )
 
             elif backend == BackendType.WEZTERM or pane_id is not None:
