@@ -1,7 +1,7 @@
-"""Channel history persistence.
+"""Node history persistence.
 
-Provides JSONL-based history recording for channel operations.
-All operations (send, send_stream, write, run, interrupt, read, close)
+Provides JSONL-based history recording for node operations.
+All operations (send, send_stream, write, run, interrupt, read, delete)
 are logged with timestamps and sequence numbers for debugging and auditing.
 """
 
@@ -24,9 +24,9 @@ HISTORY_BUFFER_LINES = 50
 
 Rationale:
 - 50 lines typically captures 1-2 Claude Code responses with context
-- Matches read_tail() default in existing channel implementations
+- Matches read_tail() default in existing node implementations
 - Balances debugging utility vs file size (avg ~5KB per buffer capture)
-- Configurable per-channel would add complexity without clear benefit for v1
+- Configurable per-node would add complexity without clear benefit for v1
 
 Tradeoff: Very long single-line outputs may be truncated. For v1, this is
 acceptable as the full buffer is still available in the terminal.
@@ -41,9 +41,9 @@ class HistoryError(Exception):
 
 @dataclass
 class HistoryWriter:
-    """Writes channel history to JSONL file.
+    """Writes node history to JSONL file.
 
-    Append-only writer for channel operations. All write operations are
+    Append-only writer for node operations. All write operations are
     synchronous and atomic within the async context (no yielding during
     writes), so no explicit locking is required.
 
@@ -53,25 +53,26 @@ class HistoryWriter:
     - Never raises exceptions to caller (except in create())
 
     Example:
-        >>> writer = HistoryWriter.create("my-channel", server_name="test")
+        >>> writer = HistoryWriter.create("my-node", server_name="test")
         >>> writer.log_run("claude")
         >>> writer.log_read("Claude started...")
         >>> writer.log_send("Hello", response_data, preceding_buffer_seq=2)
         >>> writer.close()
     """
 
-    channel_id: str
+    node_id: str
     server_name: str
     file_path: Path
     _seq: int = field(default=0, repr=False)
     _file: Any = field(default=None, repr=False)
     _enabled: bool = field(default=True, repr=False)
     _closed: bool = field(default=False, repr=False)
+    _last_op: str | None = field(default=None, repr=False)
 
     @classmethod
     def create(
         cls,
-        channel_id: str,
+        node_id: str,
         server_name: str,
         base_dir: Path | None = None,
         enabled: bool = True,
@@ -81,8 +82,8 @@ class HistoryWriter:
         If appending to existing file, recovers sequence number from last entry.
 
         Args:
-            channel_id: Unique channel identifier.
-            server_name: Server this channel belongs to.
+            node_id: Unique node identifier.
+            server_name: Server this node belongs to.
             base_dir: Base directory for history files (default: .nerve/history).
             enabled: Whether history logging is enabled.
 
@@ -91,21 +92,21 @@ class HistoryWriter:
 
         Raises:
             HistoryError: If directory creation or file access fails.
-            ValueError: If channel_id or server_name is invalid.
+            ValueError: If node_id or server_name is invalid.
         """
         # Validate names to prevent path traversal (raises ValueError)
-        validate_name(channel_id, "channel")
+        validate_name(node_id, "node")
         validate_name(server_name, "server")
 
         if base_dir is None:
             base_dir = Path.cwd() / ".nerve" / "history"
 
         server_dir = base_dir / server_name
-        file_path = server_dir / f"{channel_id}.jsonl"
+        file_path = server_dir / f"{node_id}.jsonl"
 
         # Create instance first (before any file ops)
         writer = cls(
-            channel_id=channel_id,
+            node_id=node_id,
             server_name=server_name,
             file_path=file_path,
             _enabled=enabled,
@@ -161,6 +162,19 @@ class HistoryWriter:
         """Current sequence number."""
         return self._seq
 
+    @property
+    def last_op(self) -> str | None:
+        """Last operation type logged."""
+        return self._last_op
+
+    def needs_buffer_capture(self) -> bool:
+        """Check if buffer capture is needed from previous run/write.
+
+        Returns True if the last logged operation was 'run' or 'write',
+        which are fire-and-forget operations that don't capture responses.
+        """
+        return self._last_op in ("run", "write")
+
     def _next_seq(self) -> int:
         """Get next sequence number."""
         self._seq += 1
@@ -191,7 +205,7 @@ class HistoryWriter:
             self._file.flush()  # Ensure immediate write
             return True
         except (OSError, IOError, TypeError) as e:
-            logger.warning(f"History write failed for {self.channel_id}: {e}")
+            logger.warning(f"History write failed for {self.node_id}: {e}")
             return False
 
     def log_run(self, command: str) -> int:
@@ -215,6 +229,8 @@ class HistoryWriter:
                 "input": command,
             }
         )
+        if success:
+            self._last_op = "run"
         return seq if success else 0
 
     def log_write(self, data: str) -> int:
@@ -238,6 +254,8 @@ class HistoryWriter:
                 "input": data,
             }
         )
+        if success:
+            self._last_op = "write"
         return seq if success else 0
 
     def log_read(self, buffer: str, lines: int = 50) -> int:
@@ -263,6 +281,8 @@ class HistoryWriter:
                 "lines": lines,
             }
         )
+        if success:
+            self._last_op = "read"
         return seq if success else 0
 
     def log_send(
@@ -300,6 +320,8 @@ class HistoryWriter:
                 "response": response,
             }
         )
+        if success:
+            self._last_op = "send"
         return seq if success else 0
 
     def log_send_stream(
@@ -343,6 +365,8 @@ class HistoryWriter:
                 "parser": parser,
             }
         )
+        if success:
+            self._last_op = "send_stream"
         return seq if success else 0
 
     def log_interrupt(self) -> int:
@@ -365,13 +389,15 @@ class HistoryWriter:
                 "ts": self._now(),
             }
         )
+        if success:
+            self._last_op = "interrupt"
         return seq if success else 0
 
-    def log_close(self, reason: str | None = None) -> int:
-        """Log a close event.
+    def log_delete(self, reason: str | None = None) -> int:
+        """Log a delete event.
 
         Args:
-            reason: Optional reason for closing.
+            reason: Optional reason for deleting.
 
         Returns:
             Sequence number of this entry (0 if failed/disabled).
@@ -383,11 +409,13 @@ class HistoryWriter:
         success = self._write_entry(
             {
                 "seq": seq,
-                "op": "close",
+                "op": "delete",
                 "ts": self._now(),
                 "reason": reason,
             }
         )
+        if success:
+            self._last_op = "delete"
         return seq if success else 0
 
     def close(self) -> None:
@@ -403,34 +431,34 @@ class HistoryWriter:
 
 @dataclass
 class HistoryReader:
-    """Reads channel history from JSONL file.
+    """Reads node history from JSONL file.
 
     Note: This implementation loads the entire file into memory.
     For v1 this is acceptable as history files are typically small.
     Consider streaming reads for v2 if files grow large.
 
     Example:
-        >>> reader = HistoryReader.create("my-channel", server_name="test")
+        >>> reader = HistoryReader.create("my-node", server_name="test")
         >>> entries = reader.get_all()
         >>> sends = reader.get_by_op("send")
         >>> last_5 = reader.get_last(5)
     """
 
-    channel_id: str
+    node_id: str
     server_name: str
     file_path: Path
 
     @classmethod
     def create(
         cls,
-        channel_id: str,
+        node_id: str,
         server_name: str,
         base_dir: Path | None = None,
     ) -> HistoryReader:
         """Create a history reader.
 
         Args:
-            channel_id: Channel identifier.
+            node_id: Node identifier.
             server_name: Server name.
             base_dir: Base directory for history files.
 
@@ -443,15 +471,15 @@ class HistoryReader:
         if base_dir is None:
             base_dir = Path.cwd() / ".nerve" / "history"
 
-        file_path = base_dir / server_name / f"{channel_id}.jsonl"
+        file_path = base_dir / server_name / f"{node_id}.jsonl"
 
         if not file_path.exists():
             raise FileNotFoundError(
-                f"No history for channel '{channel_id}' on server '{server_name}'"
+                f"No history for node '{node_id}' on server '{server_name}'"
             )
 
         return cls(
-            channel_id=channel_id,
+            node_id=node_id,
             server_name=server_name,
             file_path=file_path,
         )
@@ -487,7 +515,7 @@ class HistoryReader:
         """Get entries filtered by operation type.
 
         Args:
-            op: Operation type (send, write, run, read, close).
+            op: Operation type (send, write, run, read, delete).
 
         Returns:
             Filtered entries.

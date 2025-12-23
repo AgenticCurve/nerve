@@ -3,7 +3,7 @@
 Node-based terminology (clean break from Channel):
 - nerve_create_node (was nerve_create_channel)
 - nerve_list_nodes (was nerve_list_channels)
-- nerve_stop_node (was nerve_close_channel)
+- nerve_delete_node (was nerve_close_channel)
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class NerveMCPServer:
         nerve_create_node(name, command, cwd) -> node_id
         nerve_send(node_name, text, parser) -> response
         nerve_list_nodes() -> [node names]
-        nerve_stop_node(node_name) -> success
+        nerve_delete_node(node_name) -> success
     """
 
     engine: NerveEngine
@@ -110,14 +110,14 @@ class NerveMCPServer:
                     },
                 ),
                 Tool(
-                    name="nerve_stop_node",
-                    description="Stop an AI CLI node",
+                    name="nerve_delete_node",
+                    description="Delete an AI CLI node",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "node_name": {
                                 "type": "string",
-                                "description": "Node name to stop",
+                                "description": "Node name to delete",
                             },
                         },
                         "required": ["node_name"],
@@ -195,15 +195,15 @@ class NerveMCPServer:
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
-            elif name == "nerve_stop_node":
+            elif name == "nerve_delete_node":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.STOP_NODE,
+                        type=CommandType.DELETE_NODE,
                         params={"node_id": arguments["node_name"]},
                     )
                 )
                 if result.success:
-                    return [TextContent(type="text", text="Node stopped")]
+                    return [TextContent(type="text", text="Node deleted")]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

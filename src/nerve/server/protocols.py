@@ -3,9 +3,9 @@
 These protocols define the contract between server and transport layers.
 
 Node-based terminology (clean break from Channel/DAG):
-- CREATE_NODE, STOP_NODE, LIST_NODES, GET_NODE (was CREATE_CHANNEL, etc.)
+- CREATE_NODE, DELETE_NODE, LIST_NODES, GET_NODE (was CREATE_CHANNEL, etc.)
 - EXECUTE_GRAPH, CANCEL_GRAPH (was EXECUTE_DAG, CANCEL_DAG)
-- NODE_CREATED, NODE_STOPPED (was CHANNEL_CREATED, CHANNEL_CLOSED)
+- NODE_CREATED, NODE_DELETED (was CHANNEL_CREATED, CHANNEL_CLOSED)
 - STEP_STARTED, STEP_COMPLETED (was TASK_STARTED, TASK_COMPLETED)
 """
 
@@ -24,7 +24,7 @@ class EventType(Enum):
     NODE_CREATED = auto()
     NODE_READY = auto()
     NODE_BUSY = auto()
-    NODE_STOPPED = auto()
+    NODE_DELETED = auto()
 
     # Output
     OUTPUT_CHUNK = auto()  # Raw output chunk
@@ -41,7 +41,7 @@ class EventType(Enum):
     ERROR = auto()
 
     # Server lifecycle
-    SERVER_SHUTDOWN = auto()
+    SERVER_STOPPED = auto()
 
 
 class CommandType(Enum):
@@ -49,7 +49,7 @@ class CommandType(Enum):
 
     # Node management
     CREATE_NODE = auto()
-    STOP_NODE = auto()
+    DELETE_NODE = auto()
     LIST_NODES = auto()
     GET_NODE = auto()
 
@@ -68,7 +68,7 @@ class CommandType(Enum):
     GET_HISTORY = auto()
 
     # Server control
-    SHUTDOWN = auto()
+    STOP = auto()
     PING = auto()
 
 

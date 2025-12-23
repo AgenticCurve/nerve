@@ -449,7 +449,7 @@ def _run_cli() -> None:
                 client = UnixSocketClient(sock_path)
                 await client.connect()
                 result = await client.send_command(
-                    Command(type=CommandType.SHUTDOWN, params={}),
+                    Command(type=CommandType.STOP, params={}),
                     timeout=timeout_secs,
                 )
                 await client.disconnect()
@@ -488,7 +488,7 @@ def _run_cli() -> None:
                 client = TCPSocketClient(host, port)
                 await client.connect()
                 result = await client.send_command(
-                    Command(type=CommandType.SHUTDOWN, params={}),
+                    Command(type=CommandType.STOP, params={}),
                     timeout=timeout_secs,
                 )
                 await client.disconnect()
@@ -947,6 +947,55 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
+    # Delete command (under node) - delete a node
+    # =========================================================================
+    @node.command("delete")
+    @click.argument("node_name")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+    def node_delete(node_name: str, server_name: str):
+        """Delete a node.
+
+        Stops the node, closes its terminal/pane, and removes it from the server.
+
+        **Arguments:**
+
+            NODE_NAME     The node to delete
+
+        **Examples:**
+
+            nerve server node delete my-claude --server local
+
+            nerve server node delete my-shell -s myproject
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        ClientClass, connection_arg = get_server_client(server_name)
+
+        async def run():
+            try:
+                client = ClientClass(connection_arg)
+                await client.connect()
+            except (ConnectionRefusedError, FileNotFoundError, OSError):
+                click.echo(f"Error: Server '{server_name}' not running", err=True)
+                sys.exit(1)
+
+            result = await client.send_command(
+                Command(
+                    type=CommandType.DELETE_NODE,
+                    params={"node_id": node_name},
+                )
+            )
+
+            if result.success:
+                click.echo(f"Deleted node: {node_name}")
+            else:
+                click.echo(f"Error: {result.error}", err=True)
+
+            await client.disconnect()
+
+        asyncio.run(run())
+
+    # =========================================================================
     # Run command (under node) - fire and forget
     # =========================================================================
     @node.command("run")
@@ -1245,7 +1294,7 @@ def _run_cli() -> None:
     @click.argument("node_name")
     @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
     @click.option("--last", "-n", "limit", type=int, default=None, help="Show only last N entries")
-    @click.option("--op", type=click.Choice(["send", "send_stream", "write", "run", "read", "interrupt", "close"]), help="Filter by operation type")
+    @click.option("--op", type=click.Choice(["send", "send_stream", "write", "run", "read", "interrupt", "delete"]), help="Filter by operation type")
     @click.option("--seq", type=int, default=None, help="Get entry by sequence number")
     @click.option("--inputs-only", is_flag=True, help="Show only input operations (send, write, run)")
     @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
@@ -1284,14 +1333,14 @@ def _run_cli() -> None:
         import json
         from pathlib import Path
 
-        from nerve.core.channels.history import HistoryReader
+        from nerve.core.nodes.history import HistoryReader
 
         try:
             # Default base directory
             base_dir = Path.cwd() / ".nerve" / "history"
 
             reader = HistoryReader.create(
-                channel_id=node_name,
+                node_id=node_name,
                 server_name=server_name,
                 base_dir=base_dir,
             )
@@ -1368,9 +1417,9 @@ def _run_cli() -> None:
                         click.echo(f"[{seq:3}] {ts_display} READ    {lines} lines, {buffer_len} chars")
                     elif op_type == "interrupt":
                         click.echo(f"[{seq:3}] {ts_display} INTERRUPT")
-                    elif op_type == "close":
+                    elif op_type == "delete":
                         reason = entry.get("reason", "")
-                        click.echo(f"[{seq:3}] {ts_display} CLOSE   {reason or ''}")
+                        click.echo(f"[{seq:3}] {ts_display} DELETE  {reason or ''}")
                     else:
                         click.echo(f"[{seq:3}] {ts_display} {op_type.upper()}")
 

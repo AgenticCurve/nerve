@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from nerve.core.channels.history import HistoryError, HistoryWriter
+from nerve.core.nodes.history import HistoryError, HistoryWriter
 from nerve.core.nodes.base import FunctionNode
 from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
 from nerve.core.types import ParserType
@@ -106,7 +106,7 @@ class NodeFactory:
         if history:
             try:
                 history_writer = HistoryWriter.create(
-                    channel_id=node_id,  # Uses channel_id for compatibility
+                    node_id=node_id,
                     server_name=self.server_name,
                     base_dir=self.history_base_dir,
                     enabled=True,

@@ -80,7 +80,7 @@ from nerve.core.nodes import (
 )
 
 # History
-from nerve.core.channels import (
+from nerve.core.nodes.history import (
     HISTORY_BUFFER_LINES,
     HistoryError,
     HistoryReader,

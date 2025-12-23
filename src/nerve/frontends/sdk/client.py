@@ -115,13 +115,13 @@ class RemoteNode:
             )
         )
 
-    async def stop(self) -> None:
-        """Stop the node."""
+    async def delete(self) -> None:
+        """Delete the node."""
         from nerve.server.protocols import Command, CommandType
 
         await self._client._send_command(
             Command(
-                type=CommandType.STOP_NODE,
+                type=CommandType.DELETE_NODE,
                 params={"node_id": self.id},
             )
         )

@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from nerve.core.channels.history import HISTORY_BUFFER_LINES, HistoryWriter
+from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
@@ -140,6 +140,17 @@ class PTYNode:
         """Current output buffer (accumulated stream)."""
         return self.backend.buffer
 
+    def _capture_pending_buffer_if_needed(self) -> None:
+        """Capture buffer from previous run/write if needed.
+
+        Called at the start of operations to capture deferred buffer
+        from previous fire-and-forget operations (run/write).
+        """
+        if self._history_writer and self._history_writer.enabled:
+            if self._history_writer.needs_buffer_capture():
+                buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
+                self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
+
     async def execute(self, context: ExecutionContext) -> ParsedResponse:
         """Execute by sending input and waiting for response.
 
@@ -155,6 +166,9 @@ class PTYNode:
         """
         if self.state == NodeState.STOPPED:
             raise RuntimeError("Node is stopped")
+
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
 
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
@@ -235,6 +249,9 @@ class PTYNode:
         """
         if self.state == NodeState.STOPPED:
             raise RuntimeError("Node is stopped")
+
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
 
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
@@ -328,13 +345,14 @@ class PTYNode:
         Args:
             data: Raw data to write.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         await self.backend.write(data)
 
+        # History: log write (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_write(data)
-            await asyncio.sleep(0.1)
-            buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
-            self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
     async def run(self, command: str) -> None:
         """Start a command (fire and forget).
@@ -345,8 +363,12 @@ class PTYNode:
         Args:
             command: Command to start.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         await self.backend.write(command + "\n")
 
+        # History: log run (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_run(command)
 
@@ -393,8 +415,11 @@ class PTYNode:
 
         Called by Session.stop() for persistent nodes.
         """
+        # Capture pending buffer from previous run/write before closing
+        self._capture_pending_buffer_if_needed()
+
         if self._history_writer and self._history_writer.enabled:
-            self._history_writer.log_close()
+            self._history_writer.log_delete()
             self._history_writer.close()
 
         if self._reader_task:
@@ -640,6 +665,17 @@ class WezTermNode:
         """Current pane content (always fresh from WezTerm)."""
         return self.backend.buffer
 
+    def _capture_pending_buffer_if_needed(self) -> None:
+        """Capture buffer from previous run/write if needed.
+
+        Called at the start of operations to capture deferred buffer
+        from previous fire-and-forget operations (run/write).
+        """
+        if self._history_writer and self._history_writer.enabled:
+            if self._history_writer.needs_buffer_capture():
+                buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
+                self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
+
     async def execute(self, context: ExecutionContext) -> ParsedResponse:
         """Execute by sending input and waiting for response.
 
@@ -651,6 +687,9 @@ class WezTermNode:
         """
         if self.state == NodeState.STOPPED:
             raise RuntimeError("Node is stopped")
+
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
 
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
@@ -720,6 +759,9 @@ class WezTermNode:
         """
         if self.state == NodeState.STOPPED:
             raise RuntimeError("Node is stopped")
+
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
 
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
@@ -805,13 +847,14 @@ class WezTermNode:
 
     async def write(self, data: str) -> None:
         """Write raw data to the terminal."""
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         await self.backend.write(data)
 
+        # History: log write (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_write(data)
-            await asyncio.sleep(0.1)
-            buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
-            self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
     async def run(self, command: str) -> None:
         """Start a command (fire and forget).
@@ -822,11 +865,15 @@ class WezTermNode:
         Args:
             command: Command to start.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         # WezTerm needs text and \r sent separately with a delay
         await self.backend.write(command)
         await asyncio.sleep(0.1)
         await self.backend.write("\r")
 
+        # History: log run (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_run(command)
 
@@ -863,8 +910,11 @@ class WezTermNode:
 
     async def stop(self) -> None:
         """Stop the node and release resources."""
+        # Capture pending buffer from previous run/write before closing
+        self._capture_pending_buffer_if_needed()
+
         if self._history_writer and self._history_writer.enabled:
-            self._history_writer.log_close()
+            self._history_writer.log_delete()
             self._history_writer.close()
 
         await self.backend.stop()
@@ -1015,14 +1065,12 @@ class ClaudeWezTermNode:
             _history_writer=history_writer,
         )
 
-        # History: log the initial run command
+        # History: log the initial run command (buffer captured by first operation)
         if history_writer and history_writer.enabled:
             history_writer.log_run(command)
-            await asyncio.sleep(2)
-            buffer_content = inner.read_tail(HISTORY_BUFFER_LINES)
-            history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
-        else:
-            await asyncio.sleep(2)
+
+        # Wait for Claude to start
+        await asyncio.sleep(2)
 
         return wrapper
 
@@ -1041,6 +1089,17 @@ class ClaudeWezTermNode:
         """Current pane content."""
         return self._inner.buffer
 
+    def _capture_pending_buffer_if_needed(self) -> None:
+        """Capture buffer from previous run/write if needed.
+
+        Called at the start of operations to capture deferred buffer
+        from previous fire-and-forget operations (run/write).
+        """
+        if self._history_writer and self._history_writer.enabled:
+            if self._history_writer.needs_buffer_capture():
+                buffer_content = self._inner.read_tail(HISTORY_BUFFER_LINES)
+                self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
+
     async def execute(self, context: ExecutionContext) -> ParsedResponse:
         """Execute by sending input and waiting for response.
 
@@ -1052,6 +1111,9 @@ class ClaudeWezTermNode:
         Returns:
             Parsed response.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         self._last_input = str(context.input) if context.input else ""
 
         # History: capture timestamp
@@ -1097,6 +1159,9 @@ class ClaudeWezTermNode:
         Yields:
             Output chunks as they arrive.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         self._last_input = str(context.input) if context.input else ""
 
         # History: capture timestamp
@@ -1164,13 +1229,14 @@ class ClaudeWezTermNode:
 
     async def write(self, data: str) -> None:
         """Write raw data."""
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         await self._inner.backend.write(data)
 
+        # History: log write (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_write(data)
-            await asyncio.sleep(0.1)
-            buffer_content = self._inner.read_tail(HISTORY_BUFFER_LINES)
-            self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
     async def run(self, command: str) -> None:
         """Start a command (fire and forget).
@@ -1181,11 +1247,15 @@ class ClaudeWezTermNode:
         Args:
             command: Command to start.
         """
+        # Capture pending buffer from previous run/write
+        self._capture_pending_buffer_if_needed()
+
         # WezTerm needs text and \r sent separately with a delay
         await self._inner.backend.write(command)
         await asyncio.sleep(0.1)
         await self._inner.backend.write("\r")
 
+        # History: log run (buffer will be captured by next operation)
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_run(command)
 
@@ -1218,8 +1288,11 @@ class ClaudeWezTermNode:
 
     async def stop(self) -> None:
         """Stop the node and release resources."""
+        # Capture pending buffer from previous run/write before closing
+        self._capture_pending_buffer_if_needed()
+
         if self._history_writer and self._history_writer.enabled:
-            self._history_writer.log_close()
+            self._history_writer.log_delete()
             self._history_writer.close()
 
         await self._inner.stop()

@@ -90,6 +90,14 @@ from nerve.core.nodes.trace import ExecutionTrace, StepTrace
 # Factory
 from nerve.core.nodes.factory import BackendType, NodeFactory, TerminalNode
 
+# History
+from nerve.core.nodes.history import (
+    HISTORY_BUFFER_LINES,
+    HistoryError,
+    HistoryReader,
+    HistoryWriter,
+)
+
 __all__ = [
     # Base
     "Node",
@@ -124,4 +132,9 @@ __all__ = [
     # Tracing
     "StepTrace",
     "ExecutionTrace",
+    # History
+    "HistoryWriter",
+    "HistoryReader",
+    "HistoryError",
+    "HISTORY_BUFFER_LINES",
 ]

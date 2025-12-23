@@ -67,18 +67,18 @@ class TestRemoteNode:
         assert call_args.params["node_id"] == "test-node"
 
     @pytest.mark.asyncio
-    async def test_remote_node_stop(self):
-        """Test RemoteNode.stop() method."""
+    async def test_remote_node_delete(self):
+        """Test RemoteNode.delete() method."""
         mock_client = MagicMock()
         mock_client._send_command = AsyncMock()
 
         node = RemoteNode(id="test-node", command="claude", _client=mock_client)
 
-        await node.stop()
+        await node.delete()
 
         assert mock_client._send_command.called
         call_args = mock_client._send_command.call_args[0][0]
-        assert call_args.type.name == "STOP_NODE"
+        assert call_args.type.name == "DELETE_NODE"
         assert call_args.params["node_id"] == "test-node"
 
 

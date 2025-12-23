@@ -22,7 +22,7 @@ Tools exposed:
     nerve_create_node: Create a new AI CLI node
     nerve_send: Send input to a node
     nerve_list_nodes: List active nodes
-    nerve_stop_node: Stop a node
+    nerve_delete_node: Delete a node
 """
 
 from nerve.frontends.mcp.server import NerveMCPServer

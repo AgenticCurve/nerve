@@ -24,7 +24,7 @@ from nerve.core.nodes import (
     Step,
     TerminalNode,
 )
-from nerve.core.channels.history import HistoryReader
+from nerve.core.nodes.history import HistoryReader
 from nerve.core.parsers import get_parser
 from nerve.core.session import Session
 from nerve.core.types import ParserType
@@ -97,7 +97,7 @@ class NerveEngine:
         handlers = {
             # Node management
             CommandType.CREATE_NODE: self._create_node,
-            CommandType.STOP_NODE: self._stop_node,
+            CommandType.DELETE_NODE: self._delete_node,
             CommandType.LIST_NODES: self._list_nodes,
             CommandType.GET_NODE: self._get_node,
             # Interaction
@@ -111,7 +111,7 @@ class NerveEngine:
             CommandType.EXECUTE_GRAPH: self._execute_graph,
             CommandType.CANCEL_GRAPH: self._cancel_graph,
             # Server control
-            CommandType.SHUTDOWN: self._shutdown,
+            CommandType.STOP: self._stop,
             CommandType.PING: self._ping,
         }
 
@@ -209,8 +209,8 @@ class NerveEngine:
 
         return {"node_id": node.id}
 
-    async def _stop_node(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Stop a node."""
+    async def _delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Delete a node."""
         node_id = params.get("node_id")
 
         node = self._nodes.get(node_id)
@@ -219,10 +219,11 @@ class NerveEngine:
 
         await node.stop()
         del self._nodes[node_id]
+        self._session.unregister(node_id)
 
-        await self._emit(EventType.NODE_STOPPED, node_id=node_id)
+        await self._emit(EventType.NODE_DELETED, node_id=node_id)
 
-        return {"stopped": True}
+        return {"deleted": True}
 
     async def _list_nodes(self, params: dict[str, Any]) -> dict[str, Any]:
         """List all nodes."""
@@ -430,7 +431,7 @@ class NerveEngine:
 
         try:
             reader = HistoryReader.create(
-                channel_id=node_id,  # HistoryReader still uses channel_id internally
+                node_id=node_id,
                 server_name=server_name,
                 base_dir=self._node_factory.history_base_dir,
             )
@@ -550,30 +551,30 @@ class NerveEngine:
     # Server Control Commands
     # =========================================================================
 
-    async def _shutdown(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Shutdown the server.
+    async def _stop(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Stop the server.
 
-        Returns immediately after initiating shutdown. Cleanup happens async.
+        Returns immediately after initiating stop. Cleanup happens async.
         """
         # Set shutdown flag first so serve loop will exit
         self._shutdown_requested = True
 
-        # Emit shutdown event
-        await self._emit(EventType.SERVER_SHUTDOWN)
+        # Emit stop event
+        await self._emit(EventType.SERVER_STOPPED)
 
         # Schedule cleanup in background (don't await)
-        asyncio.create_task(self._cleanup_on_shutdown())
+        asyncio.create_task(self._cleanup_on_stop())
 
-        return {"shutdown": True}
+        return {"stopped": True}
 
-    async def _cleanup_on_shutdown(self) -> None:
-        """Background cleanup during shutdown."""
+    async def _cleanup_on_stop(self) -> None:
+        """Background cleanup during stop."""
         # Cancel all running graphs
         for _graph_id, task in self._running_graphs.items():
             task.cancel()
         self._running_graphs.clear()
 
-        # Stop all nodes
+        # Delete all nodes
         for node_id, node in list(self._nodes.items()):
             try:
                 await node.stop()

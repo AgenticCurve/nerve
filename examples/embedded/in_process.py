@@ -74,7 +74,7 @@ async def main():
 
     await transport.send_command(
         Command(
-            type=CommandType.STOP_NODE,
+            type=CommandType.DELETE_NODE,
             params={"node_id": node_id},
         )
     )
