@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Multi-channel example - using core only.
+"""Multi-node example - using core only.
 
-This demonstrates managing multiple terminal channels.
+This demonstrates managing multiple terminal nodes with Session.
 
 Usage:
     python examples/core_only/multi_session.py
@@ -9,41 +9,59 @@ Usage:
 
 import asyncio
 
-from nerve.core import ChannelManager, ParserType
+from nerve.core import ParserType
+from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.session import Session
 
 
 async def main():
-    print("Creating channel manager...")
+    print("Creating nodes...")
 
-    manager = ChannelManager()
+    factory = NodeFactory()
+    session = Session()
 
-    # Create multiple channels
-    claude1 = await manager.create_terminal(command="claude", channel_id="claude-1")
-    claude2 = await manager.create_terminal(command="claude", channel_id="claude-2")
+    # Create multiple nodes
+    claude1 = await factory.create_terminal(node_id="claude-1", command="claude")
+    claude2 = await factory.create_terminal(node_id="claude-2", command="claude")
 
-    print(f"Active channels: {manager.list()}")
+    # Register in session
+    session.register(claude1)
+    session.register(claude2)
+
+    print(f"Active nodes: {session.list_nodes()}")
     print()
 
     # Send messages to both
     print("Sending to claude-1...")
-    r1 = await claude1.send("Say 'Hello from channel 1'", parser=ParserType.CLAUDE)
+    ctx1 = ExecutionContext(
+        session=session,
+        input="Say 'Hello from node 1'",
+        parser=ParserType.CLAUDE,
+    )
+    r1 = await claude1.execute(ctx1)
     print(f"  Response: {r1.raw[:100]}...")
 
     print("Sending to claude-2...")
-    r2 = await claude2.send("Say 'Hello from channel 2'", parser=ParserType.CLAUDE)
+    ctx2 = ExecutionContext(
+        session=session,
+        input="Say 'Hello from node 2'",
+        parser=ParserType.CLAUDE,
+    )
+    r2 = await claude2.execute(ctx2)
     print(f"  Response: {r2.raw[:100]}...")
 
     print()
-    print(f"Active channels: {manager.list_open()}")
+    print(f"Active nodes: {session.list_nodes()}")
 
-    # Close one
-    print("\nClosing claude-1...")
-    await manager.close("claude-1")
-    print(f"Active channels: {manager.list_open()}")
+    # Unregister and stop one
+    print("\nStopping claude-1...")
+    session.unregister("claude-1")
+    await claude1.stop()
+    print(f"Active nodes: {session.list_nodes()}")
 
-    # Close all
-    print("\nClosing all channels...")
-    await manager.close_all()
+    # Stop session (stops all remaining nodes)
+    print("\nStopping session...")
+    await session.stop()
     print("Done.")
 
 

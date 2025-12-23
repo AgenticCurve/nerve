@@ -1,36 +1,34 @@
-"""Session and channel management.
+"""Session management.
 
-Sessions are optional logical groupings of channels with metadata.
-Channels are the actual connections (terminal panes, SQL connections, etc.).
+Sessions are logical groupings of nodes with metadata.
+Use NodeFactory to create nodes, and Session.register() to add them.
 
-Two levels of management:
-- ChannelManager: Manage channels directly (no grouping)
-- SessionManager: Manage sessions (groups of channels)
-
-Example (channels only):
-    >>> from nerve.core.channels import PTYChannel
-    >>> from nerve.core.session import ChannelManager
+Example (standalone nodes):
+    >>> from nerve.core.nodes import NodeFactory
+    >>> from nerve.core.session import Session
     >>>
-    >>> manager = ChannelManager()
-    >>> channel = await manager.create_terminal("my-claude", command="claude")
-    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
-    >>> await manager.close_all()
+    >>> factory = NodeFactory()
+    >>> node = await factory.create_terminal("my-node", command="bash")
+    >>>
+    >>> session = Session()
+    >>> session.register(node)
+    >>> await session.stop()
 
-Example (with sessions):
-    >>> from nerve.core.channels import PTYChannel
+Example (with session manager):
+    >>> from nerve.core.nodes import NodeFactory
     >>> from nerve.core.session import Session, SessionManager
     >>>
     >>> manager = SessionManager()
+    >>> factory = NodeFactory()
+    >>>
     >>> session = manager.create_session(name="my-project")
+    >>> node = await factory.create_terminal("claude", command="claude")
+    >>> session.register(node)
     >>>
-    >>> claude = await PTYChannel.create("claude", command="claude")
-    >>> session.add("claude", claude)
-    >>>
-    >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
-    >>> await session.close()
+    >>> await manager.close_session(session.id)
 """
 
-from nerve.core.session.manager import ChannelManager, SessionManager
+from nerve.core.session.manager import SessionManager
 from nerve.core.session.persistence import (
     SessionMetadata,
     SessionStore,
@@ -42,8 +40,7 @@ from nerve.core.session.session import Session
 __all__ = [
     # Session
     "Session",
-    # Managers
-    "ChannelManager",
+    # Manager
     "SessionManager",
     # Persistence
     "SessionMetadata",

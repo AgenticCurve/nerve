@@ -46,13 +46,13 @@ def _run_cli() -> None:
 
             nerve extract    Parse AI CLI output into structured sections
 
-            nerve repl       Interactive DAG definition and execution
+            nerve repl       Interactive graph definition and execution
 
             nerve wezterm    Manage WezTerm panes directly
 
         **Server commands** (require running daemon):
 
-            nerve server     Start/stop daemon and manage channels
+            nerve server     Start/stop daemon and manage nodes
         """
         pass
 
@@ -64,7 +64,7 @@ def _run_cli() -> None:
         """Server commands - manage the nerve daemon.
 
         The nerve daemon provides a persistent service for managing
-        AI CLI channels over Unix socket or HTTP.
+        AI CLI nodes over Unix socket or HTTP.
 
         **Lifecycle:**
 
@@ -74,13 +74,13 @@ def _run_cli() -> None:
 
             nerve server status    Check if daemon is running
 
-        **Channel management:**
+        **Node management:**
 
-            nerve server channel   Create, list, and send to channels
+            nerve server node      Create, list, and send to nodes
 
-        **DAG execution:**
+        **Graph execution:**
 
-            nerve server dag       Run DAGs on the server
+            nerve server graph     Run graphs on the server
 
         **Interactive:**
 
@@ -194,7 +194,7 @@ def _run_cli() -> None:
                 shutdown_count[0] += 1
                 if shutdown_count[0] == 1:
                     click.echo(f"\nReceived {sig_name}, shutting down gracefully...")
-                    click.echo("(Cleaning up channels, press Ctrl+C again to force quit)")
+                    click.echo("(Cleaning up nodes, press Ctrl+C again to force quit)")
                     engine._shutdown_requested = True
                     shutdown_event.set()
                 else:
@@ -208,9 +208,14 @@ def _run_cli() -> None:
             try:
                 await transport.serve(engine)
             finally:
-                # Clean up all channels before exiting
-                click.echo("Cleaning up channels...")
-                await engine._channel_manager.close_all()
+                # Clean up all nodes before exiting
+                click.echo("Cleaning up nodes...")
+                for node_id, node in list(engine._nodes.items()):
+                    try:
+                        await node.stop()
+                    except Exception:
+                        pass  # Best effort cleanup
+                engine._nodes.clear()
                 click.echo("Cleanup complete.")
                 # Clean up tracking files on exit
                 if os.path.exists(pid_file):
@@ -234,8 +239,8 @@ def _run_cli() -> None:
         """Stop the nerve daemon.
 
         Sends a shutdown command to the running daemon, which will:
-        - Close all active channels
-        - Cancel all running DAGs
+        - Close all active nodes
+        - Cancel all running graphs
         - Cleanup and exit
 
         If graceful shutdown times out, automatically falls back to force kill.
@@ -332,10 +337,10 @@ def _run_cli() -> None:
             return False  # Still running after timeout
 
         def force_kill_server(server_name: str) -> bool:
-            """Force kill a server and all its channel processes.
+            """Force kill a server and all its node processes.
 
-            For PTY channels: kills child processes directly.
-            For WezTerm channels: sends SIGTERM first to let server clean up panes,
+            For PTY nodes: kills child processes directly.
+            For WezTerm nodes: sends SIGTERM first to let server clean up panes,
             then SIGKILL if needed.
             """
             pid_file = f"/tmp/nerve-{server_name}.pid"
@@ -352,7 +357,7 @@ def _run_cli() -> None:
                     # This is important for WezTerm panes which aren't child processes
                     try:
                         os.kill(server_pid, signal.SIGTERM)
-                        # Wait for process to exit (allows channel cleanup)
+                        # Wait for process to exit (allows node cleanup)
                         if wait_for_process_exit(server_pid, timeout=5.0):
                             click.echo(f"  Server {server_pid} exited gracefully")
                             # Clean up files
@@ -371,10 +376,10 @@ def _run_cli() -> None:
                     # Server didn't exit from SIGTERM, need to force kill
                     click.echo(f"  Server didn't respond to SIGTERM, force killing...")
 
-                    # Find all descendant processes (PTY channels)
+                    # Find all descendant processes (PTY nodes)
                     descendants = get_descendants(server_pid)
 
-                    # Kill descendants first (PTY channels), then the server
+                    # Kill descendants first (PTY nodes), then the server
                     killed_count = 0
                     for child_pid in descendants:
                         try:
@@ -390,7 +395,7 @@ def _run_cli() -> None:
                         pass  # Already dead
 
                     if killed_count > 0:
-                        click.echo(f"  Killed server {server_pid} and {killed_count} channel process(es)")
+                        click.echo(f"  Killed server {server_pid} and {killed_count} node process(es)")
                     else:
                         click.echo(f"  Killed server {server_pid}")
 
@@ -696,19 +701,19 @@ def _run_cli() -> None:
                     click.echo(f"(Found {len(server_names)} server file(s), but none responding)")
                     return
 
-                click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'CHANNELS':<10} {'DAGS'}")
+                click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'NODES':<10} {'GRAPHS'}")
                 click.echo("-" * 70)
                 for s in running:
                     click.echo(
-                        f"{s['name']:<20} {s['transport']:<30} {s.get('channels', '?'):<10} {s.get('dags', '?')}"
+                        f"{s['name']:<20} {s['transport']:<30} {s.get('nodes', '?'):<10} {s.get('graphs', '?')}"
                     )
             else:
                 status_data = await get_server_status(name)
                 if status_data:
                     click.echo(f"Server '{name}' running on {status_data['transport']}")
-                    if 'channels' in status_data:
-                        click.echo(f"  Channels: {status_data.get('channels', 0)}")
-                        click.echo(f"  DAGs: {status_data.get('dags', 0)}")
+                    if 'nodes' in status_data:
+                        click.echo(f"  Nodes: {status_data.get('nodes', 0)}")
+                        click.echo(f"  Graphs: {status_data.get('graphs', 0)}")
                 else:
                     click.echo(f"Server '{name}' not running")
                     sys.exit(1)
@@ -752,35 +757,35 @@ def _run_cli() -> None:
             return UnixSocketClient, socket_path
 
     # =========================================================================
-    # Channel subgroup (under server)
+    # Node subgroup (under server)
     # =========================================================================
     @server.group()
-    def channel():
-        """Manage AI CLI channels.
+    def node():
+        """Manage AI CLI nodes.
 
-        Channels are connections to AI CLI tools (Claude, Gemini) running
-        in the daemon. Each channel represents a terminal pane or other
+        Nodes are connections to AI CLI tools (Claude, Gemini) running
+        in the daemon. Each node represents a terminal pane or other
         connection type.
 
         **Commands:**
 
-            nerve server channel create    Create a new channel
+            nerve server node create    Create a new node
 
-            nerve server channel list      List active channels
+            nerve server node list      List active nodes
 
-            nerve server channel run       Start a program (fire and forget)
+            nerve server node run       Start a program (fire and forget)
 
-            nerve server channel read      Read the output buffer
+            nerve server node read      Read the output buffer
 
-            nerve server channel send      Send input and wait for response
+            nerve server node send      Send input and wait for response
         """
         pass
 
-    @channel.command("create")
+    @node.command("create")
     @click.argument("name")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name to create the channel on")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name to create the node on")
     @click.option("--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')")
-    @click.option("--cwd", default=None, help="Working directory for the channel")
+    @click.option("--cwd", default=None, help="Working directory for the node")
     @click.option(
         "--backend",
         "-b",
@@ -794,7 +799,7 @@ def _run_cli() -> None:
         default=True,
         help="Enable/disable history logging (default: enabled)",
     )
-    def channel_create(
+    def node_create(
         name: str,
         server_name: str,
         command: str | None,
@@ -803,24 +808,24 @@ def _run_cli() -> None:
         pane_id: str | None,
         history: bool,
     ):
-        """Create a new AI CLI channel.
+        """Create a new AI CLI node.
 
-        NAME is the channel name (required, must be unique).
+        NAME is the node name (required, must be unique).
         Names must be lowercase alphanumeric with dashes, 1-32 characters.
 
         **Examples:**
 
-            nerve server channel create my-claude --server myproject --command claude
+            nerve server node create my-claude --server myproject --command claude
 
-            nerve server channel create gemini-1 --server myproject --command gemini
+            nerve server node create gemini-1 --server myproject --command gemini
 
-            nerve server channel create attached --server myproject --backend wezterm --pane-id 4
+            nerve server node create attached --server myproject --backend wezterm --pane-id 4
         """
         from nerve.core.validation import validate_name
         from nerve.server.protocols import Command, CommandType
 
         try:
-            validate_name(name, "channel")
+            validate_name(name, "node")
         except ValueError as e:
             click.echo(f"Error: {e}", err=True)
             sys.exit(1)
@@ -836,7 +841,7 @@ def _run_cli() -> None:
                 sys.exit(1)
 
             params = {
-                "channel_id": name,
+                "node_id": name,
                 "cwd": cwd,
                 "backend": backend,
                 "history": history,
@@ -848,13 +853,13 @@ def _run_cli() -> None:
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.CREATE_CHANNEL,
+                    type=CommandType.CREATE_NODE,
                     params=params,
                 )
             )
 
             if result.success:
-                click.echo(f"Created channel: {name}")
+                click.echo(f"Created node: {name}")
             else:
                 click.echo(f"Error: {result.error}", err=True)
 
@@ -862,17 +867,17 @@ def _run_cli() -> None:
 
         asyncio.run(run())
 
-    @channel.command("list")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name to list channels from")
+    @node.command("list")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name to list nodes from")
     @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-    def channel_list(server_name: str, json_output: bool):
-        """List active channels on a server.
+    def node_list(server_name: str, json_output: bool):
+        """List active nodes on a server.
 
         **Examples:**
 
-            nerve server channel list --server myproject
+            nerve server node list --server myproject
 
-            nerve server channel list --server myproject --json
+            nerve server node list --server myproject --json
         """
         from nerve.server.protocols import Command, CommandType
 
@@ -884,35 +889,35 @@ def _run_cli() -> None:
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.LIST_CHANNELS,
+                    type=CommandType.LIST_NODES,
                     params={},
                 )
             )
 
             if result.success:
-                channels_info = result.data.get("channels_info", [])
-                channels = result.data.get("channels", [])
+                nodes_info = result.data.get("nodes_info", [])
+                nodes = result.data.get("nodes", [])
 
                 if json_output:
                     import json
 
-                    click.echo(json.dumps(channels_info, indent=2))
-                elif channels_info:
+                    click.echo(json.dumps(nodes_info, indent=2))
+                elif nodes_info:
                     click.echo(f"{'ID':<12} {'LAST INPUT':<30} {'BACKEND':<14} {'STATE'}")
                     click.echo("-" * 65)
-                    for info in channels_info:
+                    for info in nodes_info:
                         last_input = info.get("last_input") or info.get("command") or "-"
                         last_input = last_input[:29]
                         click.echo(
                             f"{info['id']:<12} {last_input:<30} "
                             f"{info['backend']:<14} {info['state']}"
                         )
-                elif channels:
+                elif nodes:
                     # Fallback for older server
-                    for cid in channels:
-                        click.echo(cid)
+                    for nid in nodes:
+                        click.echo(nid)
                 else:
-                    click.echo("No active channels")
+                    click.echo("No active nodes")
             else:
                 click.echo(f"Error: {result.error}", err=True)
 
@@ -921,14 +926,14 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
-    # Run command (under channel) - fire and forget
+    # Run command (under node) - fire and forget
     # =========================================================================
-    @channel.command("run")
-    @click.argument("channel_name")
+    @node.command("run")
+    @click.argument("node_name")
     @click.argument("command")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
-    def channel_run(channel_name: str, command: str, server_name: str):
-        """Start a program in a channel (fire and forget).
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+    def node_run(node_name: str, command: str, server_name: str):
+        """Start a program in a node (fire and forget).
 
         Use this to launch programs that take over the terminal,
         like claude, python, vim, etc. This does NOT wait for the
@@ -936,17 +941,17 @@ def _run_cli() -> None:
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to run in
+            NODE_NAME     The node to run in
 
             COMMAND       The program/command to start
 
         **Examples:**
 
-            nerve server channel run my-shell claude --server myproject
+            nerve server node run my-shell claude --server myproject
 
-            nerve server channel run my-shell python --server myproject
+            nerve server node run my-shell python --server myproject
 
-            nerve server channel run my-shell "gemini --flag" --server myproject
+            nerve server node run my-shell "gemini --flag" --server myproject
         """
         from nerve.server.protocols import Command, CommandType
 
@@ -964,7 +969,7 @@ def _run_cli() -> None:
                 Command(
                     type=CommandType.RUN_COMMAND,
                     params={
-                        "channel_id": channel_name,
+                        "node_id": node_name,
                         "command": command,
                     },
                 )
@@ -980,26 +985,26 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
-    # Read command (under channel) - read buffer
+    # Read command (under node) - read buffer
     # =========================================================================
-    @channel.command("read")
-    @click.argument("channel_name")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
+    @node.command("read")
+    @click.argument("node_name")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
     @click.option("--lines", "-n", default=None, type=int, help="Only show last N lines")
-    def channel_read(channel_name: str, server_name: str, lines: int | None):
-        """Read the output buffer of a channel.
+    def node_read(node_name: str, server_name: str, lines: int | None):
+        """Read the output buffer of a node.
 
-        Shows all output from the channel since it was created.
+        Shows all output from the node since it was created.
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to read from
+            NODE_NAME     The node to read from
 
         **Examples:**
 
-            nerve server channel read my-shell --server local
+            nerve server node read my-shell --server local
 
-            nerve server channel read my-shell --server local --lines 50
+            nerve server node read my-shell --server local --lines 50
         """
         from nerve.server.protocols import Command, CommandType
 
@@ -1013,7 +1018,7 @@ def _run_cli() -> None:
                 click.echo(f"Error: Server '{server_name}' not running", err=True)
                 sys.exit(1)
 
-            params = {"channel_id": channel_name}
+            params = {"node_id": node_name}
             if lines:
                 params["lines"] = lines
 
@@ -1034,38 +1039,38 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
-    # Send command (under channel) - send and wait
+    # Send command (under node) - send and wait
     # =========================================================================
-    @channel.command("send")
-    @click.argument("channel_name")
+    @node.command("send")
+    @click.argument("node_name")
     @click.argument("text")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
     @click.option(
         "--parser",
         "-p",
         type=click.Choice(["claude", "gemini", "none"]),
         default=None,
-        help="Parser for output. Default: auto-detect from channel type.",
+        help="Parser for output. Default: auto-detect from node type.",
     )
     @click.option(
         "--submit",
         default=None,
         help="Submit sequence (e.g., '\\n', '\\r', '\\x1b\\r'). Default: auto based on parser.",
     )
-    def channel_send(channel_name: str, text: str, server_name: str, parser: str | None, submit: str | None):
-        """Send input to a channel and get JSON response.
+    def node_send(node_name: str, text: str, server_name: str, parser: str | None, submit: str | None):
+        """Send input to a node and get JSON response.
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to send to
+            NODE_NAME     The node to send to
 
             TEXT          The text/prompt to send
 
         **Examples:**
 
-            nerve server channel send my-claude "Explain this code" --server myproject
+            nerve server node send my-claude "Explain this code" --server myproject
 
-            nerve server channel send my-shell "ls" --server myproject --parser none
+            nerve server node send my-shell "ls" --server myproject --parser none
         """
         import json
 
@@ -1078,10 +1083,10 @@ def _run_cli() -> None:
             await client.connect()
 
             params = {
-                "channel_id": channel_name,
+                "node_id": node_name,
                 "text": text,
             }
-            # Only include parser if explicitly set (let channel use its default)
+            # Only include parser if explicitly set (let node use its default)
             if parser is not None:
                 params["parser"] = parser
             # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
@@ -1090,7 +1095,7 @@ def _run_cli() -> None:
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params=params,
                 )
             )
@@ -1108,31 +1113,31 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
-    # Write command (under channel) - raw write
+    # Write command (under node) - raw write
     # =========================================================================
-    @channel.command("write")
-    @click.argument("channel_name")
+    @node.command("write")
+    @click.argument("node_name")
     @click.argument("data")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
-    def channel_write(channel_name: str, data: str, server_name: str):
-        """Write raw data to a channel (no waiting).
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+    def node_write(node_name: str, data: str, server_name: str):
+        """Write raw data to a node (no waiting).
 
         Low-level write for testing and debugging. Does not wait for response.
         Use escape sequences like \\x1b for Escape, \\r for CR, \\n for LF.
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to write to
+            NODE_NAME     The node to write to
 
             DATA          Raw data to write (escape sequences supported)
 
         **Examples:**
 
-            nerve server channel write my-shell "Hello" --server local
+            nerve server node write my-shell "Hello" --server local
 
-            nerve server channel write my-shell "\\x1b" --server local  # Send Escape
+            nerve server node write my-shell "\\x1b" --server local  # Send Escape
 
-            nerve server channel write my-shell "\\r" --server local    # Send CR
+            nerve server node write my-shell "\\r" --server local    # Send CR
         """
         from nerve.server.protocols import Command, CommandType
 
@@ -1153,7 +1158,7 @@ def _run_cli() -> None:
                 Command(
                     type=CommandType.WRITE_DATA,
                     params={
-                        "channel_id": channel_name,
+                        "node_id": node_name,
                         "data": decoded_data,
                     },
                 )
@@ -1169,23 +1174,23 @@ def _run_cli() -> None:
         asyncio.run(run())
 
     # =========================================================================
-    # Interrupt command (under channel) - send Ctrl+C
+    # Interrupt command (under node) - send Ctrl+C
     # =========================================================================
-    @channel.command("interrupt")
-    @click.argument("channel_name")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
-    def channel_interrupt(channel_name: str, server_name: str):
-        """Send interrupt (Ctrl+C) to a channel.
+    @node.command("interrupt")
+    @click.argument("node_name")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+    def node_interrupt(node_name: str, server_name: str):
+        """Send interrupt (Ctrl+C) to a node.
 
-        Cancels the current operation in the channel.
+        Cancels the current operation in the node.
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to interrupt
+            NODE_NAME     The node to interrupt
 
         **Examples:**
 
-            nerve server channel interrupt my-claude --server local
+            nerve server node interrupt my-claude --server local
         """
         from nerve.server.protocols import Command, CommandType
 
@@ -1202,7 +1207,7 @@ def _run_cli() -> None:
             result = await client.send_command(
                 Command(
                     type=CommandType.SEND_INTERRUPT,
-                    params={"channel_id": channel_name},
+                    params={"node_id": node_name},
                 )
             )
 
@@ -1215,17 +1220,17 @@ def _run_cli() -> None:
 
         asyncio.run(run())
 
-    @channel.command("history")
-    @click.argument("channel_name")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name the channel is on")
+    @node.command("history")
+    @click.argument("node_name")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
     @click.option("--last", "-n", "limit", type=int, default=None, help="Show only last N entries")
     @click.option("--op", type=click.Choice(["send", "send_stream", "write", "run", "read", "interrupt", "close"]), help="Filter by operation type")
     @click.option("--seq", type=int, default=None, help="Get entry by sequence number")
     @click.option("--inputs-only", is_flag=True, help="Show only input operations (send, write, run)")
     @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
     @click.option("--summary", is_flag=True, help="Show summary statistics")
-    def channel_history(
-        channel_name: str,
+    def node_history(
+        node_name: str,
         server_name: str,
         limit: int | None,
         op: str | None,
@@ -1234,26 +1239,26 @@ def _run_cli() -> None:
         json_output: bool,
         summary: bool,
     ):
-        """View history for a channel.
+        """View history for a node.
 
-        Reads the JSONL history file for the specified channel.
-        History is stored in .nerve/history/<server>/<channel>.jsonl
+        Reads the JSONL history file for the specified node.
+        History is stored in .nerve/history/<server>/<node>.jsonl
 
         **Arguments:**
 
-            CHANNEL_NAME  The channel to view history for
+            NODE_NAME     The node to view history for
 
         **Examples:**
 
-            nerve server channel history my-claude --server local
+            nerve server node history my-claude --server local
 
-            nerve server channel history my-claude --server local --last 10
+            nerve server node history my-claude --server local --last 10
 
-            nerve server channel history my-claude --server local --op send
+            nerve server node history my-claude --server local --op send
 
-            nerve server channel history my-claude --server local --inputs-only --json
+            nerve server node history my-claude --server local --inputs-only --json
 
-            nerve server channel history my-claude --server local --summary
+            nerve server node history my-claude --server local --summary
         """
         import json
         from pathlib import Path
@@ -1265,7 +1270,7 @@ def _run_cli() -> None:
             base_dir = Path.cwd() / ".nerve" / "history"
 
             reader = HistoryReader.create(
-                channel_id=channel_name,
+                channel_id=node_name,
                 server_name=server_name,
                 base_dir=base_dir,
             )
@@ -1298,7 +1303,7 @@ def _run_cli() -> None:
                 for e in entries:
                     op_type = e.get("op", "unknown")
                     ops_count[op_type] = ops_count.get(op_type, 0) + 1
-                click.echo(f"Channel: {channel_name}")
+                click.echo(f"Node: {node_name}")
                 click.echo(f"Server: {server_name}")
                 click.echo(f"Total entries: {len(entries)}")
                 click.echo("\nOperations:")
@@ -1349,44 +1354,44 @@ def _run_cli() -> None:
                         click.echo(f"[{seq:3}] {ts_display} {op_type.upper()}")
 
         except FileNotFoundError:
-            click.echo(f"No history found for channel '{channel_name}' on server '{server_name}'", err=True)
+            click.echo(f"No history found for node '{node_name}' on server '{server_name}'", err=True)
             sys.exit(1)
 
     # =========================================================================
-    # DAG subgroup (under server)
+    # Graph subgroup (under server) - New terminology
     # =========================================================================
     @server.group()
-    def dag():
-        """Execute DAGs on the server.
+    def graph():
+        """Execute graphs on the server.
 
-        Run DAG definition files on the server, using server-managed channels.
+        Run graph definition files on the server, using server-managed nodes.
 
         **Commands:**
 
-            nerve server dag run       Run a DAG file
+            nerve server graph run       Run a graph file
         """
         pass
 
-    @dag.command("run")
+    @graph.command("run")
     @click.argument("file")
-    @click.option("--server", "-s", "server_name", required=True, help="Server name to run the DAG on")
+    @click.option("--server", "-s", "server_name", required=True, help="Server name to run the graph on")
     @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
-    def dag_run(file: str, server_name: str, dry_run: bool):
-        """Run a DAG definition file on the server.
+    def graph_run(file: str, server_name: str, dry_run: bool):
+        """Run a graph definition file on the server.
 
-        The file should define a `dag` dict or DAG object with tasks.
-        Channels are created automatically if needed.
+        The file should define a `graph` dict or Graph object with steps.
+        Nodes are created automatically if needed.
 
         **Examples:**
 
-            nerve server dag run workflow.py --server myproject
+            nerve server graph run workflow.py --server myproject
 
-            nerve server dag run workflow.py --server myproject --dry-run
+            nerve server graph run workflow.py --server myproject --dry-run
         """
-        from nerve.frontends.cli.server_repl import run_dag_file
+        from nerve.frontends.cli.server_repl import run_graph_file
 
         socket = f"/tmp/nerve-{server_name}.sock"
-        asyncio.run(run_dag_file(file, socket_path=socket, dry_run=dry_run))
+        asyncio.run(run_graph_file(file, socket_path=socket, dry_run=dry_run))
 
     # =========================================================================
     # Server REPL (under server)
@@ -1397,7 +1402,7 @@ def _run_cli() -> None:
         """Interactive REPL connected to the server.
 
         Unlike the standalone `nerve repl`, this REPL connects to a running
-        nerve server and operates on server-managed channels.
+        nerve server and operates on server-managed nodes.
 
         **Examples:**
 
@@ -1467,12 +1472,12 @@ def _run_cli() -> None:
         "-b",
         type=click.Choice(["pty", "wezterm"]),
         default="pty",
-        help="Backend for channels (pty or wezterm)",
+        help="Backend for nodes (pty or wezterm)",
     )
     def repl(file: str | None, dry_run: bool, backend: str):
-        """Interactive DAG definition and execution.
+        """Interactive graph definition and execution.
 
-        A REPL for defining and running DAGs (Directed Acyclic Graphs)
+        A REPL for defining and running graphs (node execution pipelines)
         of AI CLI tasks. Works standalone without a server.
 
         **Examples:**
@@ -1502,7 +1507,7 @@ def _run_cli() -> None:
     def wezterm():
         """Manage WezTerm panes directly.
 
-        Control AI CLI channels running in WezTerm panes without needing
+        Control AI CLI nodes running in WezTerm panes without needing
         the nerve server. Useful for visual debugging and interactive use.
 
         **Commands:**
@@ -1561,9 +1566,9 @@ def _run_cli() -> None:
     @wezterm.command("spawn")
     @click.option("--command", "-c", "cmd", default="claude", help="Command to run (e.g., claude, gemini)")
     @click.option("--cwd", default=None, help="Working directory")
-    @click.option("--name", "-n", default=None, help="Channel name for reference")
+    @click.option("--name", "-n", default=None, help="Node name for reference")
     def wezterm_spawn(cmd: str, cwd: str | None, name: str | None):
-        """Spawn a new CLI channel in a WezTerm pane.
+        """Spawn a new CLI node in a WezTerm pane.
 
         Creates a new pane in WezTerm running the specified command.
         Returns the pane ID which can be used with other commands.

@@ -1,4 +1,10 @@
-"""MCP server implementation for nerve."""
+"""MCP server implementation for nerve.
+
+Node-based terminology (clean break from Channel):
+- nerve_create_node (was nerve_create_channel)
+- nerve_list_nodes (was nerve_list_channels)
+- nerve_stop_node (was nerve_close_channel)
+"""
 
 from __future__ import annotations
 
@@ -22,10 +28,10 @@ class NerveMCPServer:
         >>> await mcp.run()  # Start MCP server
 
     Tools:
-        nerve_create_channel(name, command, cwd) -> channel_id
-        nerve_send(channel_name, text, parser) -> response
-        nerve_list_channels() -> [channel names]
-        nerve_close_channel(channel_name) -> success
+        nerve_create_node(name, command, cwd) -> node_id
+        nerve_send(node_name, text, parser) -> response
+        nerve_list_nodes() -> [node names]
+        nerve_stop_node(node_name) -> success
     """
 
     engine: NerveEngine
@@ -51,14 +57,14 @@ class NerveMCPServer:
             """List available tools."""
             return [
                 Tool(
-                    name="nerve_create_channel",
-                    description="Create a new AI CLI channel",
+                    name="nerve_create_node",
+                    description="Create a new AI CLI node",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "description": "Channel name (lowercase alphanumeric with dashes, 1-32 chars)",
+                                "description": "Node name (lowercase alphanumeric with dashes, 1-32 chars)",
                             },
                             "command": {
                                 "type": "string",
@@ -74,13 +80,13 @@ class NerveMCPServer:
                 ),
                 Tool(
                     name="nerve_send",
-                    description="Send input to an AI CLI channel and get response",
+                    description="Send input to an AI CLI node and get response",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "channel_name": {
+                            "node_name": {
                                 "type": "string",
-                                "description": "Channel name",
+                                "description": "Node name",
                             },
                             "text": {
                                 "type": "string",
@@ -92,29 +98,29 @@ class NerveMCPServer:
                                 "description": "Parser for output (claude, gemini, none)",
                             },
                         },
-                        "required": ["channel_name", "text"],
+                        "required": ["node_name", "text"],
                     },
                 ),
                 Tool(
-                    name="nerve_list_channels",
-                    description="List active AI CLI channels",
+                    name="nerve_list_nodes",
+                    description="List active AI CLI nodes",
                     inputSchema={
                         "type": "object",
                         "properties": {},
                     },
                 ),
                 Tool(
-                    name="nerve_close_channel",
-                    description="Close an AI CLI channel",
+                    name="nerve_stop_node",
+                    description="Stop an AI CLI node",
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "channel_name": {
+                            "node_name": {
                                 "type": "string",
-                                "description": "Channel name to close",
+                                "description": "Node name to stop",
                             },
                         },
-                        "required": ["channel_name"],
+                        "required": ["node_name"],
                     },
                 ),
             ]
@@ -124,20 +130,20 @@ class NerveMCPServer:
             """Handle tool calls."""
             from nerve.server.protocols import Command, CommandType
 
-            if name == "nerve_create_channel":
+            if name == "nerve_create_node":
                 from nerve.core.validation import validate_name
 
-                channel_name = arguments.get("name")
+                node_name = arguments.get("name")
                 try:
-                    validate_name(channel_name, "channel")
+                    validate_name(node_name, "node")
                 except ValueError as e:
                     return [TextContent(type="text", text=f"Error: {e}")]
 
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.CREATE_CHANNEL,
+                        type=CommandType.CREATE_NODE,
                         params={
-                            "channel_id": channel_name,
+                            "node_id": node_name,
                             "command": arguments.get("command"),
                             "cwd": arguments.get("cwd"),
                         },
@@ -147,7 +153,7 @@ class NerveMCPServer:
                     return [
                         TextContent(
                             type="text",
-                            text=f"Created channel: {channel_name}",
+                            text=f"Created node: {node_name}",
                         )
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
@@ -155,9 +161,9 @@ class NerveMCPServer:
             elif name == "nerve_send":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.SEND_INPUT,
+                        type=CommandType.EXECUTE_INPUT,
                         params={
-                            "channel_id": arguments["channel_name"],
+                            "node_id": arguments["node_name"],
                             "text": arguments["text"],
                             "parser": arguments.get("parser", "none"),
                         },
@@ -172,32 +178,32 @@ class NerveMCPServer:
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
-            elif name == "nerve_list_channels":
+            elif name == "nerve_list_nodes":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.LIST_CHANNELS,
+                        type=CommandType.LIST_NODES,
                         params={},
                     )
                 )
                 if result.success:
-                    channels = result.data.get("channels", [])
+                    nodes = result.data.get("nodes", [])
                     return [
                         TextContent(
                             type="text",
-                            text=f"Channels: {', '.join(channels) or 'none'}",
+                            text=f"Nodes: {', '.join(nodes) or 'none'}",
                         )
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
-            elif name == "nerve_close_channel":
+            elif name == "nerve_stop_node":
                 result = await self.engine.execute(
                     Command(
-                        type=CommandType.CLOSE_CHANNEL,
-                        params={"channel_id": arguments["channel_name"]},
+                        type=CommandType.STOP_NODE,
+                        params={"node_id": arguments["node_name"]},
                     )
                 )
                 if result.success:
-                    return [TextContent(type="text", text="Channel closed")]
+                    return [TextContent(type="text", text="Node stopped")]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
 
             return [TextContent(type="text", text=f"Unknown tool: {name}")]

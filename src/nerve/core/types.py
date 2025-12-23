@@ -26,16 +26,6 @@ class SessionState(Enum):
     STOPPED = auto()  # Session terminated
 
 
-class TaskStatus(Enum):
-    """DAG task execution status."""
-
-    PENDING = auto()
-    RUNNING = auto()
-    COMPLETED = auto()
-    FAILED = auto()
-    CANCELLED = auto()
-
-
 @dataclass(frozen=True)
 class Section:
     """A section of an AI response.
@@ -88,22 +78,3 @@ class ParsedResponse:
     is_complete: bool
     is_ready: bool
     tokens: int | None = None
-
-
-@dataclass(frozen=True)
-class TaskResult:
-    """Result of a DAG task execution.
-
-    Attributes:
-        task_id: The task identifier.
-        status: Execution status.
-        output: The task output (if successful).
-        error: Error message (if failed).
-        duration_ms: Execution duration in milliseconds.
-    """
-
-    task_id: str
-    status: TaskStatus
-    output: Any = None
-    error: str | None = None
-    duration_ms: float = 0.0

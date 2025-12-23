@@ -87,13 +87,13 @@ async def run_debate(
         print(f"Failed to connect: {e}")
         return
 
-    # Create two channels
+    # Create two nodes
     print("\nCreating Agent A (Python advocate)...")
     result = await client.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={
-                "channel_id": "agent-a",
+                "node_id": "agent-a",
                 "command": "claude",
                 "cwd": cwd,
                 "backend": "claude-wezterm",
@@ -108,9 +108,9 @@ async def run_debate(
     print("Creating Agent B (JavaScript advocate)...")
     result = await client.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={
-                "channel_id": "agent-b",
+                "node_id": "agent-b",
                 "command": "claude",
                 "cwd": cwd,
                 "backend": "claude-wezterm",
@@ -180,10 +180,10 @@ Address a JavaScript developer who disagrees with you."""
 
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": "agent-a",
-                "text": opening_prompt,
+                "node_id": "agent-a",
+                "input": opening_prompt,
                 "parser": "claude",
             },
         ),
@@ -226,10 +226,10 @@ Respond to their arguments and make your case for JavaScript."""
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "agent-b",
-                    "text": prompt_b,
+                    "node_id": "agent-b",
+                    "input": prompt_b,
                     "parser": "claude",
                 },
             ),
@@ -262,10 +262,10 @@ Counter their arguments and reinforce why Python is better."""
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "agent-a",
-                    "text": prompt_a,
+                    "node_id": "agent-a",
+                    "input": prompt_a,
                     "parser": "claude",
                 },
             ),

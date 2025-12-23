@@ -293,14 +293,14 @@ def log_to_file(log_file: str, label: str, content: str) -> None:
         f.write("\n")
 
 
-async def send_prompt(client, channel_id: str, text: str, timeout: float = 300.0):
+async def send_prompt(client, node_id: str, text: str, timeout: float = 300.0):
     """Send a prompt and return the response text."""
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": channel_id,
-                "text": text,
+                "node_id": node_id,
+                "input": text,
                 "parser": "claude",
             },
         ),
@@ -377,9 +377,9 @@ async def run_dev_coach_consultants(
         print(f"\nCreating {agent_id}...")
         result = await client.send_command(
             Command(
-                type=CommandType.CREATE_CHANNEL,
+                type=CommandType.CREATE_NODE,
                 params={
-                    "channel_id": agent_id,
+                    "node_id": agent_id,
                     "command": "claude",
                     "cwd": cwd,
                     "backend": "claude-wezterm",

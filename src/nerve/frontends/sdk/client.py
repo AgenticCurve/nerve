@@ -1,4 +1,10 @@
-"""Python SDK client."""
+"""Python SDK client.
+
+Node-based terminology (clean break from Channel):
+- RemoteNode replaces RemoteChannel
+- create_node() replaces create_channel()
+- list_nodes() replaces list_channels()
+"""
 
 from __future__ import annotations
 
@@ -12,10 +18,10 @@ if TYPE_CHECKING:
 
 
 @dataclass
-class RemoteChannel:
-    """Proxy for a remote channel.
+class RemoteNode:
+    """Proxy for a remote node.
 
-    Provides a high-level interface to a channel running on the server.
+    Provides a high-level interface to a node running on the server.
     """
 
     id: str
@@ -40,9 +46,9 @@ class RemoteChannel:
 
         result = await self._client._send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": self.id,
+                    "node_id": self.id,
                     "text": text,
                     "parser": parser,
                     "stream": stream,
@@ -73,21 +79,21 @@ class RemoteChannel:
         """
         from nerve.server.protocols import Command, CommandType
 
-        # Subscribe to events for this channel
+        # Subscribe to events for this node
         async def get_chunks():
             async for event in self._client.events():
-                if event.channel_id == self.id:
+                if event.node_id == self.id:
                     if event.type.name == "OUTPUT_CHUNK":
                         yield event.data.get("chunk", "")
-                    elif event.type.name == "CHANNEL_READY":
+                    elif event.type.name == "NODE_READY":
                         break
 
         # Send the command
         await self._client._send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": self.id,
+                    "node_id": self.id,
                     "text": text,
                     "parser": parser,
                     "stream": True,
@@ -105,18 +111,18 @@ class RemoteChannel:
         await self._client._send_command(
             Command(
                 type=CommandType.SEND_INTERRUPT,
-                params={"channel_id": self.id},
+                params={"node_id": self.id},
             )
         )
 
-    async def close(self) -> None:
-        """Close the channel."""
+    async def stop(self) -> None:
+        """Stop the node."""
         from nerve.server.protocols import Command, CommandType
 
         await self._client._send_command(
             Command(
-                type=CommandType.CLOSE_CHANNEL,
-                params={"channel_id": self.id},
+                type=CommandType.STOP_NODE,
+                params={"node_id": self.id},
             )
         )
 
@@ -129,18 +135,19 @@ class NerveClient:
 
     Example (remote):
         >>> async with NerveClient.connect("/tmp/nerve-myproject.sock") as client:
-        ...     channel = await client.create_channel("my-claude", command="claude")
-        ...     response = await channel.send("Hello!", parser="claude")
+        ...     node = await client.create_node("my-claude", command="claude")
+        ...     response = await node.send("Hello!", parser="claude")
 
     Example (standalone):
         >>> async with NerveClient.standalone() as client:
-        ...     channel = await client.create_channel("my-claude", command="claude")
-        ...     response = await channel.send("Hello!", parser="claude")
+        ...     node = await client.create_node("my-claude", command="claude")
+        ...     response = await node.send("Hello!", parser="claude")
     """
 
     _transport: object = None
-    _standalone_manager: object = None
-    _channels: dict[str, RemoteChannel] = field(default_factory=dict)
+    _standalone_factory: object = None
+    _standalone_session: object = None
+    _nodes: dict[str, RemoteNode] = field(default_factory=dict)
 
     @classmethod
     async def connect(cls, socket_path: str) -> NerveClient:
@@ -182,14 +189,17 @@ class NerveClient:
     async def standalone(cls) -> NerveClient:
         """Create a standalone client using core directly.
 
-        No server required - uses core.ChannelManager directly.
+        No server required - uses core.NodeFactory directly.
 
         Returns:
             Standalone client.
         """
-        from nerve.core import ChannelManager
+        from nerve.core.nodes import NodeFactory
+        from nerve.core.session import Session
 
-        client = cls(_standalone_manager=ChannelManager())
+        factory = NodeFactory()
+        session = Session()
+        client = cls(_standalone_factory=factory, _standalone_session=session)
         return client
 
     async def disconnect(self) -> None:
@@ -197,8 +207,13 @@ class NerveClient:
         if self._transport:
             await self._transport.disconnect()
 
-        if self._standalone_manager:
-            await self._standalone_manager.close_all()
+        if self._standalone_factory:
+            # Stop all nodes tracked in the session
+            if self._standalone_session:
+                for node_id in list(self._nodes.keys()):
+                    node = self._standalone_session.get(node_id)
+                    if node:
+                        await node.stop()
 
     async def __aenter__(self) -> NerveClient:
         return self
@@ -206,44 +221,45 @@ class NerveClient:
     async def __aexit__(self, *args) -> None:
         await self.disconnect()
 
-    async def create_channel(
+    async def create_node(
         self,
         name: str,
         command: str | list[str] | None = None,
         cwd: str | None = None,
-    ) -> RemoteChannel:
-        """Create a new channel.
+    ) -> RemoteNode:
+        """Create a new node.
 
         Args:
-            name: Channel name (required, must be unique).
+            name: Node name (required, must be unique).
             command: Command to run (e.g., "claude" or ["claude", "--flag"]).
             cwd: Working directory.
 
         Returns:
-            Channel proxy.
+            Node proxy.
 
         Raises:
             ValueError: If name is invalid.
-            RuntimeError: If channel already exists.
+            RuntimeError: If node already exists.
         """
         from nerve.core.validation import validate_name
 
-        validate_name(name, "channel")
+        validate_name(name, "node")
 
-        if self._standalone_manager:
+        if self._standalone_factory:
             # Use core directly
-            channel = await self._standalone_manager.create_terminal(
-                channel_id=name,
+            node = await self._standalone_factory.create_terminal(
+                node_id=name,
                 command=command,
                 cwd=cwd,
             )
+            self._standalone_session.register(node)
             cmd_str = command if isinstance(command, str) else " ".join(command or [])
-            remote = RemoteChannel(
-                id=channel.id,
+            remote = RemoteNode(
+                id=node.id,
                 command=cmd_str,
                 _client=self,
             )
-            self._channels[channel.id] = remote
+            self._nodes[node.id] = remote
             return remote
 
         # Use transport
@@ -251,8 +267,8 @@ class NerveClient:
 
         result = await self._send_command(
             Command(
-                type=CommandType.CREATE_CHANNEL,
-                params={"channel_id": name, "command": command, "cwd": cwd},
+                type=CommandType.CREATE_NODE,
+                params={"node_id": name, "command": command, "cwd": cwd},
             )
         )
 
@@ -260,45 +276,45 @@ class NerveClient:
             raise RuntimeError(result.error)
 
         cmd_str = command if isinstance(command, str) else " ".join(command or [])
-        remote = RemoteChannel(
+        remote = RemoteNode(
             id=name,
             command=cmd_str,
             _client=self,
         )
-        self._channels[name] = remote
+        self._nodes[name] = remote
         return remote
 
-    async def get_channel(self, channel_id: str) -> RemoteChannel | None:
-        """Get a channel by ID.
+    async def get_node(self, node_id: str) -> RemoteNode | None:
+        """Get a node by ID.
 
         Args:
-            channel_id: Channel ID.
+            node_id: Node ID.
 
         Returns:
-            Channel proxy, or None if not found.
+            Node proxy, or None if not found.
         """
-        return self._channels.get(channel_id)
+        return self._nodes.get(node_id)
 
-    async def list_channels(self) -> list[str]:
-        """List channel IDs.
+    async def list_nodes(self) -> list[str]:
+        """List node IDs.
 
         Returns:
-            List of channel IDs.
+            List of node IDs.
         """
-        if self._standalone_manager:
-            return self._standalone_manager.list()
+        if self._standalone_factory:
+            return list(self._nodes.keys())
 
         from nerve.server.protocols import Command, CommandType
 
         result = await self._send_command(
             Command(
-                type=CommandType.LIST_CHANNELS,
+                type=CommandType.LIST_NODES,
                 params={},
             )
         )
 
         if result.success:
-            return result.data.get("channels", [])
+            return result.data.get("nodes", [])
         return []
 
     async def events(self) -> AsyncIterator[Event]:

@@ -10,7 +10,9 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, PTYChannel
+from nerve.core import ParserType
+from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.session import Session
 
 ROUNDS = 3
 
@@ -19,9 +21,19 @@ async def main():
     print("Setting up debate between two Claude instances...")
     print()
 
-    # Create two channels
-    advocate_python = await PTYChannel.create(command="claude", channel_id="python-advocate")
-    advocate_js = await PTYChannel.create(command="claude", channel_id="js-advocate")
+    # Create two nodes
+    factory = NodeFactory()
+    session = Session()
+
+    advocate_python = await factory.create_terminal(
+        node_id="python-advocate", command="claude"
+    )
+    advocate_js = await factory.create_terminal(
+        node_id="js-advocate", command="claude"
+    )
+
+    session.register(advocate_python)
+    session.register(advocate_js)
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")
@@ -37,13 +49,23 @@ async def main():
 
         # Python advocate's turn
         prompt = f"[Round {round_num}] You're arguing FOR Python. Opponent said: {message}. Keep it under 100 words."
-        response = await advocate_python.send(prompt, parser=ParserType.CLAUDE)
+        context = ExecutionContext(
+            session=session,
+            input=prompt,
+            parser=ParserType.CLAUDE,
+        )
+        response = await advocate_python.execute(context)
         message = response.raw[:500]
         print(f"[PYTHON]: {message[:300]}...")
 
         # JavaScript advocate's turn
         prompt = f"[Round {round_num}] You're arguing FOR JavaScript. Opponent said: {message}. Keep it under 100 words."
-        response = await advocate_js.send(prompt, parser=ParserType.CLAUDE)
+        context = ExecutionContext(
+            session=session,
+            input=prompt,
+            parser=ParserType.CLAUDE,
+        )
+        response = await advocate_js.execute(context)
         message = response.raw[:500]
         print(f"[JAVASCRIPT]: {message[:300]}...")
 
@@ -51,8 +73,7 @@ async def main():
     print("Debate finished!")
 
     # Clean up
-    await advocate_python.close()
-    await advocate_js.close()
+    await session.stop()
 
 
 if __name__ == "__main__":

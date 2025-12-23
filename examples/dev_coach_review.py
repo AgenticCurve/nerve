@@ -183,7 +183,7 @@ Your job:
 2. Formulate clear instructions for the Developer
 3. You CANNOT modify code yourself
 
-Review the current state with `git diff main` and `git status`.
+Review the current state with `git diff main` and `git status`. And git diff to see recent changes.
 Provide specific instructions for the Developer on what needs to be fixed.
 
 Read CLAUDE.md file to see how to handle your role effectively.
@@ -202,7 +202,7 @@ REVIEWER_PROMPT_TEMPLATE = """You are a Code Reviewer performing final review be
 
 The Coach has approved the implementation. Now do RIGOROUS validation:
 
-1. CHECK THE DIFF: Run `git diff main` to see ALL changes
+1. CHECK THE DIFF: Run `git diff main` to see ALL changes or git diff to review recent changes.
 2. RUN ALL TESTS: Run `uv run pytest -v` - ALL must pass
 3. TEST THE FEATURE: Actually run it, don't just read code
 4. CHECK FOR GAPS: Edge cases? Error handling? Integration tests?
@@ -238,7 +238,7 @@ def extract_text_response(response_data: dict) -> str:
     sections = response_data.get("sections", [])
     text_parts = []
     for section in sections:
-        if section.get("type") == "text":
+        if section.get("type") == "input":
             content = section.get("content", "").strip()
             if content:
                 text_parts.append(content)
@@ -319,9 +319,9 @@ async def run_dev_coach_review(
         print(f"\nCreating {agent_id} agent...")
         result = await client.send_command(
             Command(
-                type=CommandType.CREATE_CHANNEL,
+                type=CommandType.CREATE_NODE,
                 params={
-                    "channel_id": agent_id,
+                    "node_id": agent_id,
                     "command": "claude --dangerously-skip-permissions",
                     "cwd": cwd,
                     "backend": "claude-wezterm",
@@ -356,10 +356,10 @@ async def run_dev_coach_review(
             print(f"\n[{agent_id.upper()}: Warmup...]")
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params={
-                        "channel_id": agent_id,
-                        "text": warmup,
+                        "node_id": agent_id,
+                        "input": warmup,
                         "parser": "claude",
                     },
                 ),
@@ -390,10 +390,10 @@ async def run_dev_coach_review(
 
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": "dev",
-                "text": dev_prompt,
+                "node_id": "dev",
+                "input": dev_prompt,
                 "parser": "claude",
             },
         ),
@@ -443,10 +443,10 @@ async def run_dev_coach_review(
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params={
-                        "channel_id": "coach",
-                        "text": coach_prompt,
+                        "node_id": "coach",
+                        "input": coach_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -481,10 +481,10 @@ async def run_dev_coach_review(
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params={
-                        "channel_id": "dev",
-                        "text": dev_prompt,
+                        "node_id": "dev",
+                        "input": dev_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -543,10 +543,10 @@ async def run_dev_coach_review(
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params={
-                        "channel_id": "coach",
-                        "text": coach_prompt,
+                        "node_id": "coach",
+                        "input": coach_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -589,10 +589,10 @@ async def run_dev_coach_review(
 
             result = await client.send_command(
                 Command(
-                    type=CommandType.SEND_INPUT,
+                    type=CommandType.EXECUTE_INPUT,
                     params={
-                        "channel_id": "dev",
-                        "text": dev_prompt,
+                        "node_id": "dev",
+                        "input": dev_prompt,
                         "parser": "claude",
                     },
                 ),
@@ -643,10 +643,10 @@ async def run_dev_coach_review(
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "reviewer",
-                    "text": reviewer_prompt,
+                    "node_id": "reviewer",
+                    "input": reviewer_prompt,
                     "parser": "claude",
                 },
             ),

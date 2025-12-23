@@ -25,11 +25,11 @@ async def main():
     print("Engine ready.")
     print()
 
-    # Create a channel via command
-    print("Creating channel...")
+    # Create a node via command
+    print("Creating node...")
     result = await transport.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={"command": "claude"},
         )
     )
@@ -38,8 +38,8 @@ async def main():
         print(f"Error: {result.error}")
         return
 
-    channel_id = result.data["channel_id"]
-    print(f"Channel created: {channel_id}")
+    node_id = result.data["node_id"]
+    print(f"Node created: {node_id}")
 
     # Start listening for events in background
     async def print_events():
@@ -48,15 +48,15 @@ async def main():
 
     event_task = asyncio.create_task(print_events())
 
-    # Send input
+    # Execute input
     print()
-    print("Sending input...")
+    print("Executing input...")
     result = await transport.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": channel_id,
-                "text": "What is the capital of France? One word answer.",
+                "node_id": node_id,
+                "input": "What is the capital of France? One word answer.",
                 "parser": "claude",
                 "stream": True,
             },
@@ -74,8 +74,8 @@ async def main():
 
     await transport.send_command(
         Command(
-            type=CommandType.CLOSE_CHANNEL,
-            params={"channel_id": channel_id},
+            type=CommandType.STOP_NODE,
+            params={"node_id": node_id},
         )
     )
 

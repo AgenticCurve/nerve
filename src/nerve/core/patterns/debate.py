@@ -17,9 +17,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol, runtime_checkable
 
-from nerve.core.session import Session
 from nerve.core.types import ParsedResponse
+
+
+@runtime_checkable
+class Agent(Protocol):
+    """Protocol for agents that can send messages and receive responses."""
+
+    async def send(self, text: str) -> ParsedResponse:
+        """Send input and get response."""
+        ...
 
 DEFAULT_DEBATE_PROMPT = """You are arguing {position} in a debate.
 
@@ -116,15 +125,15 @@ class DebateLoop:
 
     def __init__(
         self,
-        agent_a: Session,
-        agent_b: Session,
+        agent_a: Agent,
+        agent_b: Agent,
         config: DebateConfig,
     ):
         """Initialize the debate.
 
         Args:
-            agent_a: Session for agent A.
-            agent_b: Session for agent B.
+            agent_a: Agent A (e.g., PTYNode, WezTermNode).
+            agent_b: Agent B (e.g., PTYNode, WezTermNode).
             config: Debate configuration.
         """
         self.agent_a = agent_a

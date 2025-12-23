@@ -17,9 +17,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol, runtime_checkable
 
-from nerve.core.session import Session
 from nerve.core.types import ParsedResponse
+
+
+@runtime_checkable
+class Agent(Protocol):
+    """Protocol for agents that can send messages and receive responses."""
+
+    async def send(self, text: str) -> ParsedResponse:
+        """Send input and get response."""
+        ...
 
 # Default prompt templates
 DEFAULT_DEV_PROMPT = """You are a SENIOR DEVELOPER working with a legendary coach who reviews your work.
@@ -179,15 +188,15 @@ class DevCoachLoop:
 
     def __init__(
         self,
-        developer: Session,
-        coach: Session,
+        developer: Agent,
+        coach: Agent,
         config: DevCoachConfig,
     ):
         """Initialize the loop.
 
         Args:
-            developer: Session for the developer agent.
-            coach: Session for the coach agent.
+            developer: Agent for the developer (e.g., PTYNode, WezTermNode).
+            coach: Agent for the coach (e.g., PTYNode, WezTermNode).
             config: Loop configuration.
         """
         self.developer = developer

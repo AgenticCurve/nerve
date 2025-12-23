@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""DAG chain test - sequential math operations with extraction.
+"""Graph chain test - sequential math operations with extraction.
 
 Tests the full end-to-end flow:
 1. Connect to server
@@ -9,40 +9,39 @@ Tests the full end-to-end flow:
 5. Extract and chain to third prompt
 
 Usage:
-    # First start server and create channel:
-    nerve server start dag-test
-    nerve server channel create claude --server dag-test --backend claude-wezterm --command claude
+    # First start server and create node:
+    nerve server start graph-test
+    nerve server node create claude --server graph-test --backend claude-wezterm --command claude
 
     # Then run this script:
-    python examples/dag_chain_test.py
+    python examples/graph_chain_test.py
 
-    # Or use the DAG file format:
-    nerve server dag run examples/dag_chain_test.py --server dag-test
+    # Or use the Graph file format:
+    nerve server graph run examples/graph_chain_test.py --server graph-test
 """
 
 import asyncio
-import json
 import sys
 
-# DAG definition for nerve server dag run
+# Graph definition for nerve server graph run
 # This is the dict-based format that the server understands
-dag = {
-    "tasks": [
+graph = {
+    "steps": [
         {
             "id": "step1",
-            "channel": "claude",
+            "node": "claude",
             "prompt": "What is 2+2? Reply with just the number, nothing else.",
             "depends_on": [],
         },
         {
             "id": "step2",
-            "channel": "claude",
+            "node": "claude",
             "prompt": "{step1} + {step1} is what? Reply with just the number, nothing else.",
             "depends_on": ["step1"],
         },
         {
             "id": "step3",
-            "channel": "claude",
+            "node": "claude",
             "prompt": "{step2} + {step2} is what? Reply with just the number, nothing else.",
             "depends_on": ["step2"],
         },
@@ -76,7 +75,7 @@ def extract_number_from_response(response_data: dict) -> str:
     raw = response_data.get("raw", "")
     for line in raw.split("\n"):
         stripped = line.strip()
-        if stripped.startswith("⏺") and not "(" in stripped:
+        if stripped.startswith("\u23fa") and "(" not in stripped:
             # This is likely a text response line
             content = stripped[1:].strip()
             try:
@@ -87,7 +86,7 @@ def extract_number_from_response(response_data: dict) -> str:
     return response_data.get("raw", "")[:100]
 
 
-async def run_chain_test(server_name: str = "dag-test", channel_name: str = "claude"):
+async def run_chain_test(server_name: str = "graph-test", node_name: str = "claude"):
     """Run the chained math test manually with extraction."""
     from nerve.server.protocols import Command, CommandType
     from nerve.transport import UnixSocketClient
@@ -113,21 +112,21 @@ async def run_chain_test(server_name: str = "dag-test", channel_name: str = "cla
     ]
 
     print("\n" + "=" * 60)
-    print("Running chained math DAG")
+    print("Running chained math Graph")
     print("=" * 60)
 
-    for task_id, prompt_template in prompts:
+    for step_id, prompt_template in prompts:
         # Substitute previous results
         prompt = prompt_template.format(**results)
 
-        print(f"\n[{task_id}] Sending: {prompt}")
+        print(f"\n[{step_id}] Sending: {prompt}")
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": channel_name,
-                    "text": prompt,
+                    "node_id": node_name,
+                    "input": prompt,
                     "parser": "claude",
                 },
             )
@@ -141,7 +140,7 @@ async def run_chain_test(server_name: str = "dag-test", channel_name: str = "cla
 
         # Extract the number from the response
         extracted = extract_number_from_response(response)
-        results[task_id] = extracted
+        results[step_id] = extracted
 
         print(f"  Response sections: {len(response.get('sections', []))}")
         for i, section in enumerate(response.get("sections", [])):
@@ -155,8 +154,8 @@ async def run_chain_test(server_name: str = "dag-test", channel_name: str = "cla
     print("\n" + "=" * 60)
     print("Results Summary")
     print("=" * 60)
-    for task_id, value in results.items():
-        print(f"  {task_id}: {value}")
+    for step_id, value in results.items():
+        print(f"  {step_id}: {value}")
 
     # Verify the chain
     expected = {"step1": "4", "step2": "8", "step3": "16"}
@@ -176,6 +175,6 @@ async def run_chain_test(server_name: str = "dag-test", channel_name: str = "cla
 
 
 if __name__ == "__main__":
-    server = sys.argv[1] if len(sys.argv) > 1 else "dag-test"
-    channel = sys.argv[2] if len(sys.argv) > 2 else "claude"
-    asyncio.run(run_chain_test(server, channel))
+    server = sys.argv[1] if len(sys.argv) > 1 else "graph-test"
+    node = sys.argv[2] if len(sys.argv) > 2 else "claude"
+    asyncio.run(run_chain_test(server, node))

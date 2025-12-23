@@ -19,10 +19,10 @@ Example:
     >>> await mcp.run()
 
 Tools exposed:
-    nerve_create_channel: Create a new AI CLI channel
-    nerve_send: Send input to a channel
-    nerve_list_channels: List active channels
-    nerve_close_channel: Close a channel
+    nerve_create_node: Create a new AI CLI node
+    nerve_send: Send input to a node
+    nerve_list_nodes: List active nodes
+    nerve_stop_node: Stop a node
 """
 
 from nerve.frontends.mcp.server import NerveMCPServer

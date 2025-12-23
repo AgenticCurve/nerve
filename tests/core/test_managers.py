@@ -1,269 +1,25 @@
-"""Tests for ChannelManager and SessionManager.
+"""Tests for Session and SessionManager.
 
-Tests the existing functionality of session and channel management
-to ensure the new history feature doesn't break existing behavior.
+Tests the session and session management functionality with the new Node API.
 """
 
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nerve.core.channels.base import ChannelState, ChannelType
-from nerve.core.session.manager import ChannelManager, SessionManager
+from nerve.core.session.manager import SessionManager
 from nerve.core.session.session import Session
-from nerve.core.types import ParserType
-
-
-class TestChannelManager:
-    """Tests for ChannelManager."""
-
-    def test_empty_manager(self):
-        """Test empty channel manager."""
-        manager = ChannelManager()
-        assert manager.list() == []
-        assert manager.list_open() == []
-        assert manager.get("nonexistent") is None
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_pty(self):
-        """Test creating a PTY terminal channel."""
-        manager = ChannelManager()
-
-        try:
-            channel = await manager.create_terminal(
-                channel_id="test-pty",
-                command="bash",
-                backend="pty"
-            )
-
-            assert channel.id == "test-pty"
-            assert channel.state == ChannelState.OPEN
-            assert "test-pty" in manager.list()
-            assert "test-pty" in manager.list_open()
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_duplicate_raises(self):
-        """Test that creating duplicate channel raises ValueError."""
-        manager = ChannelManager()
-
-        try:
-            await manager.create_terminal(channel_id="test-channel")
-
-            with pytest.raises(ValueError, match="already exists"):
-                await manager.create_terminal(channel_id="test-channel")
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_wezterm_mocked(self):
-        """Test creating WezTerm channel (mocked)."""
-        manager = ChannelManager()
-
-        with patch("nerve.core.channels.wezterm.WezTermBackend") as MockBackend:
-            mock_backend = MagicMock()
-            mock_backend.buffer = ""
-            mock_backend.pane_id = "test-pane"
-            mock_backend.start = AsyncMock()
-            mock_backend.stop = AsyncMock()
-            MockBackend.return_value = mock_backend
-
-            try:
-                channel = await manager.create_terminal(
-                    channel_id="test-wezterm",
-                    command="bash",
-                    backend="wezterm"
-                )
-
-                assert channel.id == "test-wezterm"
-                assert channel.pane_id == "test-pane"
-                assert "test-wezterm" in manager.list()
-            finally:
-                await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_wezterm_attach_mocked(self):
-        """Test attaching to WezTerm pane (mocked)."""
-        manager = ChannelManager()
-
-        with patch("nerve.core.channels.wezterm.WezTermBackend") as MockBackend:
-            mock_backend = MagicMock()
-            mock_backend.buffer = ""
-            mock_backend.pane_id = "existing-pane"
-            mock_backend.attach = AsyncMock()
-            mock_backend.stop = AsyncMock()
-            MockBackend.return_value = mock_backend
-
-            try:
-                channel = await manager.create_terminal(
-                    channel_id="attached-channel",
-                    pane_id="existing-pane"
-                )
-
-                assert channel.id == "attached-channel"
-                assert channel.pane_id == "existing-pane"
-            finally:
-                await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_claude_wezterm_requires_command(self):
-        """Test that claude-wezterm backend requires command."""
-        manager = ChannelManager()
-
-        with pytest.raises(ValueError, match="command is required"):
-            await manager.create_terminal(
-                channel_id="test",
-                backend="claude-wezterm"
-            )
-
-    @pytest.mark.asyncio
-    async def test_create_terminal_claude_wezterm_mocked(self):
-        """Test creating claude-wezterm channel (mocked)."""
-        manager = ChannelManager()
-
-        with patch("nerve.core.channels.wezterm.WezTermBackend") as MockBackend:
-            mock_backend = MagicMock()
-            mock_backend.buffer = ""
-            mock_backend.pane_id = "claude-pane"
-            mock_backend.start = AsyncMock()
-            mock_backend.stop = AsyncMock()
-            mock_backend.write = AsyncMock()
-            MockBackend.return_value = mock_backend
-
-            try:
-                channel = await manager.create_terminal(
-                    channel_id="test-claude",
-                    command="claude --help",
-                    backend="claude-wezterm"
-                )
-
-                assert channel.id == "test-claude"
-                assert channel.backend_type == "claude-wezterm"
-            finally:
-                await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_add_existing_channel(self):
-        """Test adding an existing channel to manager."""
-        manager = ChannelManager()
-
-        from nerve.core.channels.pty import PTYChannel
-        channel = await PTYChannel.create("external-channel")
-
-        try:
-            manager.add(channel)
-
-            assert "external-channel" in manager.list()
-            assert manager.get("external-channel") is channel
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_get_channel(self):
-        """Test getting a channel by ID."""
-        manager = ChannelManager()
-
-        try:
-            created = await manager.create_terminal(channel_id="test-get")
-
-            retrieved = manager.get("test-get")
-            assert retrieved is created
-
-            assert manager.get("nonexistent") is None
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_list_channels(self):
-        """Test listing channel IDs."""
-        manager = ChannelManager()
-
-        try:
-            await manager.create_terminal(channel_id="channel-a")
-            await manager.create_terminal(channel_id="channel-b")
-            await manager.create_terminal(channel_id="channel-c")
-
-            channels = manager.list()
-            assert len(channels) == 3
-            assert "channel-a" in channels
-            assert "channel-b" in channels
-            assert "channel-c" in channels
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_list_open_channels(self):
-        """Test listing only open channels."""
-        manager = ChannelManager()
-
-        try:
-            await manager.create_terminal(channel_id="open-1")
-            await manager.create_terminal(channel_id="open-2")
-            await manager.create_terminal(channel_id="to-close")
-
-            # Close one channel
-            await manager.close("to-close")
-
-            open_channels = manager.list_open()
-            assert len(open_channels) == 2
-            assert "open-1" in open_channels
-            assert "open-2" in open_channels
-            assert "to-close" not in open_channels
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_close_channel(self):
-        """Test closing a specific channel."""
-        manager = ChannelManager()
-
-        try:
-            await manager.create_terminal(channel_id="to-close")
-            assert "to-close" in manager.list()
-
-            result = await manager.close("to-close")
-            assert result is True
-            assert "to-close" not in manager.list()
-
-            # Closing again returns False
-            result = await manager.close("to-close")
-            assert result is False
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_close_nonexistent_channel(self):
-        """Test closing a channel that doesn't exist."""
-        manager = ChannelManager()
-
-        result = await manager.close("nonexistent")
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_close_all_channels(self):
-        """Test closing all channels."""
-        manager = ChannelManager()
-
-        try:
-            await manager.create_terminal(channel_id="ch-1")
-            await manager.create_terminal(channel_id="ch-2")
-            await manager.create_terminal(channel_id="ch-3")
-
-            assert len(manager.list()) == 3
-
-            await manager.close_all()
-
-            assert len(manager.list()) == 0
-        finally:
-            pass  # Already closed
 
 
 class TestSession:
-    """Tests for Session."""
+    """Tests for Session (Node API).
+
+    Session is now a clean Node-only registry and lifecycle manager.
+    It uses register/unregister/list_nodes/stop instead of the old
+    Channel-based add/remove/list_channels/close.
+    """
 
     def test_session_creation_with_defaults(self):
         """Test creating session with default values."""
@@ -290,146 +46,144 @@ class TestSession:
         assert session.description == "A test session"
         assert session.tags == ["test", "example"]
 
-    def test_add_channel(self):
-        """Test adding a channel to session."""
+    def test_register_node(self):
+        """Test registering a node to session."""
         session = Session()
-        mock_channel = MagicMock()
-        mock_channel.id = "test-channel"
+        mock_node = MagicMock()
+        mock_node.id = "test-node"
 
-        session.add("test", mock_channel)
+        session.register(mock_node, name="test")
 
         assert "test" in session
         assert len(session) == 1
-        assert session.get("test") is mock_channel
+        assert session.get("test") is mock_node
 
-    def test_add_duplicate_raises(self):
-        """Test that adding duplicate channel name raises."""
+    def test_register_node_uses_id_by_default(self):
+        """Test that register uses node.id when name not specified."""
         session = Session()
-        mock_channel = MagicMock()
+        mock_node = MagicMock()
+        mock_node.id = "node-123"
 
-        session.add("test", mock_channel)
+        session.register(mock_node)
 
+        assert "node-123" in session
+        assert session.get("node-123") is mock_node
+
+    def test_register_duplicate_raises(self):
+        """Test that registering duplicate name raises."""
+        session = Session()
+        mock_node = MagicMock()
+        mock_node.id = "node-1"
+
+        session.register(mock_node, name="test")
+
+        mock_node2 = MagicMock()
+        mock_node2.id = "node-2"
         with pytest.raises(ValueError, match="already exists"):
-            session.add("test", MagicMock())
+            session.register(mock_node2, name="test")
 
-    def test_get_channel(self):
-        """Test getting a channel by name."""
+    def test_get_node(self):
+        """Test getting a node by name."""
         session = Session()
-        mock_channel = MagicMock()
+        mock_node = MagicMock()
+        mock_node.id = "my-node"
 
-        session.add("my-channel", mock_channel)
+        session.register(mock_node, name="my-node")
 
-        assert session.get("my-channel") is mock_channel
+        assert session.get("my-node") is mock_node
         assert session.get("nonexistent") is None
 
-    def test_remove_channel(self):
-        """Test removing a channel."""
+    def test_unregister_node(self):
+        """Test unregistering a node."""
         session = Session()
-        mock_channel = MagicMock()
+        mock_node = MagicMock()
+        mock_node.id = "to-remove"
 
-        session.add("to-remove", mock_channel)
+        session.register(mock_node, name="to-remove")
         assert "to-remove" in session
 
-        removed = session.remove("to-remove")
-        assert removed is mock_channel
+        removed = session.unregister("to-remove")
+        assert removed is mock_node
         assert "to-remove" not in session
 
-    def test_remove_nonexistent(self):
-        """Test removing nonexistent channel returns None."""
+    def test_unregister_nonexistent(self):
+        """Test unregistering nonexistent node returns None."""
         session = Session()
 
-        result = session.remove("nonexistent")
+        result = session.unregister("nonexistent")
         assert result is None
 
-    def test_list_channels(self):
-        """Test listing channel names."""
+    def test_list_nodes(self):
+        """Test listing node names."""
         session = Session()
 
-        session.add("ch-a", MagicMock())
-        session.add("ch-b", MagicMock())
-        session.add("ch-c", MagicMock())
+        mock_node_a = MagicMock()
+        mock_node_a.id = "node-a"
+        mock_node_b = MagicMock()
+        mock_node_b.id = "node-b"
+        mock_node_c = MagicMock()
+        mock_node_c.id = "node-c"
 
-        names = session.list_channels()
+        session.register(mock_node_a, name="node-a")
+        session.register(mock_node_b, name="node-b")
+        session.register(mock_node_c, name="node-c")
+
+        names = session.list_nodes()
         assert len(names) == 3
-        assert "ch-a" in names
-        assert "ch-b" in names
-        assert "ch-c" in names
+        assert "node-a" in names
+        assert "node-b" in names
+        assert "node-c" in names
 
-    def test_get_channel_info(self):
-        """Test getting info for all channels."""
+    def test_get_node_info(self):
+        """Test getting info for all nodes."""
         session = Session()
 
-        mock_channel = MagicMock()
+        mock_node = MagicMock()
+        mock_node.id = "test-node"
         mock_info = MagicMock()
-        mock_channel.to_info.return_value = mock_info
+        mock_node.to_info.return_value = mock_info
 
-        session.add("test", mock_channel)
+        session.register(mock_node, name="test")
 
-        info = session.get_channel_info()
+        info = session.get_node_info()
         assert "test" in info
         assert info["test"] is mock_info
 
     @pytest.mark.asyncio
-    async def test_send_to_channel(self):
-        """Test sending to a named channel."""
+    async def test_stop_persistent_nodes(self):
+        """Test stopping all persistent nodes."""
         session = Session()
 
-        mock_channel = MagicMock()
-        mock_response = MagicMock()
-        mock_channel.send = AsyncMock(return_value=mock_response)
-
-        session.add("test", mock_channel)
-
-        result = await session.send("test", "hello", parser=ParserType.NONE)
-
-        assert result is mock_response
-        mock_channel.send.assert_called_once_with(
-            "hello",
-            parser=ParserType.NONE,
-            timeout=None
-        )
-
-    @pytest.mark.asyncio
-    async def test_send_to_nonexistent_raises(self):
-        """Test sending to nonexistent channel raises KeyError."""
-        session = Session()
-
-        with pytest.raises(KeyError, match="not found"):
-            await session.send("nonexistent", "hello")
-
-    @pytest.mark.asyncio
-    async def test_close_specific_channel(self):
-        """Test closing a specific channel."""
-        session = Session()
-
-        mock_channel = MagicMock()
-        mock_channel.close = AsyncMock()
-
-        session.add("to-close", mock_channel)
-        assert "to-close" in session
-
-        await session.close("to-close")
-
-        mock_channel.close.assert_called_once()
-        assert "to-close" not in session
-
-    @pytest.mark.asyncio
-    async def test_close_all_channels(self):
-        """Test closing all channels."""
-        session = Session()
-
-        channels = [MagicMock(), MagicMock(), MagicMock()]
-        for i, ch in enumerate(channels):
-            ch.close = AsyncMock()
-            session.add(f"ch-{i}", ch)
+        # Create mock persistent nodes
+        nodes = []
+        for i in range(3):
+            node = MagicMock()
+            node.id = f"node-{i}"
+            node.persistent = True
+            node.stop = AsyncMock()
+            nodes.append(node)
+            session.register(node, name=f"node-{i}")
 
         assert len(session) == 3
 
-        await session.close()
+        await session.stop()
 
-        for ch in channels:
-            ch.close.assert_called_once()
-        assert len(session) == 0
+        for node in nodes:
+            node.stop.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_non_persistent_nodes_skipped(self):
+        """Test that non-persistent nodes are not stopped."""
+        session = Session()
+
+        # Create mock non-persistent node (no stop method)
+        mock_node = MagicMock(spec=["id", "execute"])
+        mock_node.id = "func-node"
+
+        session.register(mock_node, name="func")
+
+        # Should not raise
+        await session.stop()
 
     def test_to_dict(self):
         """Test converting session to dict."""
@@ -440,12 +194,13 @@ class TestSession:
             tags=["tag1", "tag2"]
         )
 
-        mock_channel = MagicMock()
+        mock_node = MagicMock()
+        mock_node.id = "node-1"
         mock_info = MagicMock()
-        mock_info.to_dict.return_value = {"id": "ch-1", "state": "open"}
-        mock_channel.to_info.return_value = mock_info
+        mock_info.to_dict.return_value = {"id": "node-1", "state": "ready"}
+        mock_node.to_info.return_value = mock_info
 
-        session.add("channel1", mock_channel)
+        session.register(mock_node, name="node1")
 
         result = session.to_dict()
 
@@ -454,32 +209,40 @@ class TestSession:
         assert result["description"] == "Test desc"
         assert result["tags"] == ["tag1", "tag2"]
         assert "created_at" in result
-        assert "channels" in result
+        assert "nodes" in result
 
     def test_contains(self):
-        """Test __contains__ for channel name lookup."""
+        """Test __contains__ for node name lookup."""
         session = Session()
-        session.add("exists", MagicMock())
+        mock_node = MagicMock()
+        mock_node.id = "exists"
+        session.register(mock_node, name="exists")
 
         assert "exists" in session
         assert "missing" not in session
 
     def test_len(self):
-        """Test __len__ returns channel count."""
+        """Test __len__ returns node count."""
         session = Session()
 
         assert len(session) == 0
 
-        session.add("ch1", MagicMock())
+        mock_node1 = MagicMock()
+        mock_node1.id = "node1"
+        session.register(mock_node1, name="node1")
         assert len(session) == 1
 
-        session.add("ch2", MagicMock())
+        mock_node2 = MagicMock()
+        mock_node2.id = "node2"
+        session.register(mock_node2, name="node2")
         assert len(session) == 2
 
     def test_repr(self):
         """Test __repr__ format."""
         session = Session(id="my-id", name="My Session")
-        session.add("channel1", MagicMock())
+        mock_node = MagicMock()
+        mock_node.id = "node1"
+        session.register(mock_node, name="node1")
 
         repr_str = repr(session)
         assert "Session" in repr_str
@@ -553,9 +316,9 @@ class TestSessionManager:
         """Test listing session IDs."""
         manager = SessionManager()
 
-        s1 = manager.create_session(session_id="s1")
-        s2 = manager.create_session(session_id="s2")
-        s3 = manager.create_session(session_id="s3")
+        manager.create_session(session_id="s1")
+        manager.create_session(session_id="s2")
+        manager.create_session(session_id="s3")
 
         sessions = manager.list_sessions()
         assert len(sessions) == 3
@@ -570,15 +333,17 @@ class TestSessionManager:
 
         session = manager.create_session(session_id="to-close")
 
-        mock_channel = MagicMock()
-        mock_channel.close = AsyncMock()
-        session.add("ch", mock_channel)
+        mock_node = MagicMock()
+        mock_node.id = "node"
+        mock_node.persistent = True
+        mock_node.stop = AsyncMock()
+        session.register(mock_node, name="node")
 
         result = await manager.close_session("to-close")
 
         assert result is True
         assert "to-close" not in manager.list_sessions()
-        mock_channel.close.assert_called_once()
+        mock_node.stop.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_close_nonexistent_session(self):
@@ -590,177 +355,26 @@ class TestSessionManager:
 
     @pytest.mark.asyncio
     async def test_close_all(self):
-        """Test closing all sessions and channels."""
+        """Test closing all sessions and nodes."""
         manager = SessionManager()
 
         s1 = manager.create_session(session_id="s1")
         s2 = manager.create_session(session_id="s2")
 
-        ch1 = MagicMock()
-        ch1.close = AsyncMock()
-        s1.add("ch1", ch1)
+        node1 = MagicMock()
+        node1.id = "node1"
+        node1.persistent = True
+        node1.stop = AsyncMock()
+        s1.register(node1, name="node1")
 
-        ch2 = MagicMock()
-        ch2.close = AsyncMock()
-        s2.add("ch2", ch2)
+        node2 = MagicMock()
+        node2.id = "node2"
+        node2.persistent = True
+        node2.stop = AsyncMock()
+        s2.register(node2, name="node2")
 
         await manager.close_all()
 
         assert manager.list_sessions() == []
-        ch1.close.assert_called_once()
-        ch2.close.assert_called_once()
-
-    def test_channels_property(self):
-        """Test that channels property returns ChannelManager."""
-        manager = SessionManager()
-
-        assert isinstance(manager.channels, ChannelManager)
-
-    @pytest.mark.asyncio
-    async def test_channels_integration(self):
-        """Test using channel manager through session manager."""
-        manager = SessionManager()
-
-        try:
-            # Create channel through the channels property
-            channel = await manager.channels.create_terminal(
-                channel_id="standalone",
-                command="bash"
-            )
-
-            assert channel.id == "standalone"
-            assert "standalone" in manager.channels.list()
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_close_all_includes_standalone_channels(self):
-        """Test that close_all closes standalone channels too."""
-        manager = SessionManager()
-
-        try:
-            # Create session with channel
-            session = manager.create_session()
-            session_channel = MagicMock()
-            session_channel.close = AsyncMock()
-            session.add("session-ch", session_channel)
-
-            # Create standalone channel
-            standalone = await manager.channels.create_terminal(
-                channel_id="standalone"
-            )
-
-            await manager.close_all()
-
-            # Both should be closed
-            session_channel.close.assert_called_once()
-            assert manager.channels.list() == []
-        finally:
-            pass  # Already closed
-
-
-class TestChannelManagerHistoryIntegration:
-    """Test history integration in ChannelManager."""
-
-    @pytest.mark.asyncio
-    async def test_history_enabled_by_default(self, tmp_path):
-        """Test that history is enabled by default."""
-        manager = ChannelManager(
-            _server_name="test-server",
-            _history_base_dir=tmp_path,
-        )
-
-        try:
-            channel = await manager.create_terminal(channel_id="test-history")
-
-            # Channel should have a history writer
-            assert channel._history_writer is not None
-            assert channel._history_writer.enabled is True
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_history_disabled_when_false(self, tmp_path):
-        """Test that history=False disables history."""
-        manager = ChannelManager(
-            _server_name="test-server",
-            _history_base_dir=tmp_path,
-        )
-
-        try:
-            channel = await manager.create_terminal(
-                channel_id="no-history",
-                history=False,
-            )
-
-            # Channel should NOT have a history writer
-            assert channel._history_writer is None
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_history_file_created(self, tmp_path):
-        """Test that history file is created in correct location."""
-        manager = ChannelManager(
-            _server_name="myserver",
-            _history_base_dir=tmp_path,
-        )
-
-        try:
-            channel = await manager.create_terminal(channel_id="test-channel")
-
-            # History file should exist
-            expected_path = tmp_path / "myserver" / "test-channel.jsonl"
-            assert expected_path.exists()
-        finally:
-            await manager.close_all()
-
-
-class TestChannelManagerWithKwargs:
-    """Test that ChannelManager passes kwargs to channel creation."""
-
-    @pytest.mark.asyncio
-    async def test_passes_ready_timeout(self):
-        """Test that ready_timeout is passed to channel."""
-        manager = ChannelManager()
-
-        try:
-            channel = await manager.create_terminal(
-                channel_id="test",
-                ready_timeout=120.0
-            )
-
-            assert channel._ready_timeout == 120.0
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_passes_response_timeout(self):
-        """Test that response_timeout is passed to channel."""
-        manager = ChannelManager()
-
-        try:
-            channel = await manager.create_terminal(
-                channel_id="test",
-                response_timeout=3600.0  # 1 hour
-            )
-
-            assert channel._response_timeout == 3600.0
-        finally:
-            await manager.close_all()
-
-    @pytest.mark.asyncio
-    async def test_passes_cwd(self):
-        """Test that cwd is passed to channel."""
-        manager = ChannelManager()
-
-        try:
-            channel = await manager.create_terminal(
-                channel_id="test",
-                cwd="/tmp"
-            )
-
-            # For PTY, cwd is in the config
-            assert channel.backend.config.cwd == "/tmp"
-        finally:
-            await manager.close_all()
+        node1.stop.assert_called_once()
+        node2.stop.assert_called_once()

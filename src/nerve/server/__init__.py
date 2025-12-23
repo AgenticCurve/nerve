@@ -25,7 +25,7 @@ Example:
     >>>
     >>> engine = NerveEngine(event_sink=MySink())
     >>> result = await engine.execute(Command(
-    ...     type=CommandType.CREATE_CHANNEL,
+    ...     type=CommandType.CREATE_NODE,
     ...     params={"command": "claude"},
     ... ))
 """

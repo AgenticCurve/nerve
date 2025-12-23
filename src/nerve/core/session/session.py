@@ -1,33 +1,28 @@
-"""Session - logical grouping of channels.
+"""Session - registry and lifecycle manager for nodes.
 
-A Session is a high-level concept that groups related channels
-together with metadata. For example, a "project" session might include:
+A Session is a registry and lifecycle manager for nodes.
+Sessions provide:
 
-- A Claude channel for AI assistance
-- A shell channel for running commands
-- A database channel for queries
+- Named registration and lookup of nodes
+- Lifecycle management (start/stop persistent nodes)
 
-This is optional - you can use channels directly without sessions.
+This is a clean break from the Channel-based API. Use nodes directly.
 
 Example:
     >>> session = Session(name="my-project")
     >>>
-    >>> # Add channels
-    >>> claude = await PTYChannel.create("claude", command="claude")
-    >>> shell = await PTYChannel.create("shell", command="bash")
+    >>> # Register nodes
+    >>> shell = await PTYNode.create("shell", command="bash")
+    >>> session.register(shell)  # Uses node.id as name
+    >>> session.register(shell, name="dev")  # Custom name
     >>>
-    >>> session.add("claude", claude)
-    >>> session.add("shell", shell)
+    >>> # Use nodes
+    >>> node = session.get("shell")
+    >>> context = ExecutionContext(session=session, input="ls -la")
+    >>> result = await node.execute(context)
     >>>
-    >>> # Use channels through session
-    >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
-    >>>
-    >>> # Or access directly
-    >>> channel = session.get("shell")
-    >>> await channel.send("ls -la")
-    >>>
-    >>> # Close all
-    >>> await session.close()
+    >>> # Stop all persistent nodes
+    >>> await session.stop()
 """
 
 from __future__ import annotations
@@ -38,22 +33,20 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from nerve.core.channels import Channel, ChannelInfo
-    from nerve.core.types import ParsedResponse, ParserType
+    from nerve.core.nodes.base import Node, NodeInfo
 
 
 @dataclass
 class Session:
-    """A logical grouping of channels with metadata.
+    """Registry and lifecycle manager for nodes.
 
     Sessions provide:
-    - Named access to multiple channels
-    - Shared metadata and tags
-    - Convenience methods for common operations
-    - Lifecycle management (close all channels at once)
+    - Named registration and lookup of nodes
+    - Lifecycle management (start/stop persistent nodes)
 
-    Sessions are optional - you can use channels directly
-    if you don't need grouping.
+    Nodes are registered with a name (defaulting to node.id) and can be
+    looked up by that name. Persistent nodes have their lifecycle managed
+    by the session's start() and stop() methods.
     """
 
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
@@ -62,115 +55,135 @@ class Session:
     tags: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     metadata: dict[str, Any] = field(default_factory=dict)
-    _channels: dict[str, Channel] = field(default_factory=dict)
+    _nodes: dict[str, Node] = field(default_factory=dict)
 
     def __post_init__(self):
         if not self.name:
             self.name = self.id
 
-    def add(self, name: str, channel: Channel) -> None:
-        """Add a channel to the session.
+    def register(self, node: Node, name: str | None = None) -> None:
+        """Register a node with an optional custom name.
 
         Args:
-            name: Name to reference the channel by.
-            channel: The channel to add.
+            node: The node to register.
+            name: Optional name for lookup (defaults to node.id).
+                  Allows the same node to be referenced by a different name
+                  than its internal ID.
 
         Raises:
-            ValueError: If name already exists.
-        """
-        if name in self._channels:
-            raise ValueError(f"Channel '{name}' already exists in session")
-        self._channels[name] = channel
+            ValueError: If name already exists in registry.
 
-    def get(self, name: str) -> Channel | None:
-        """Get a channel by name.
+        Example:
+            # Register with node's ID
+            session.register(node)  # Lookup key = node.id
+
+            # Register with custom name
+            session.register(node, name="dev")  # Lookup key = "dev"
+        """
+        key = name or node.id
+        if key in self._nodes:
+            raise ValueError(f"Name '{key}' already exists in session")
+        self._nodes[key] = node
+
+    def unregister(self, name: str) -> Node | None:
+        """Remove a node from registry (does NOT stop it).
 
         Args:
-            name: Channel name.
+            name: The name used when registering the node.
 
         Returns:
-            The channel, or None if not found.
+            The removed node, or None if not found.
         """
-        return self._channels.get(name)
+        return self._nodes.pop(name, None)
 
-    def remove(self, name: str) -> Channel | None:
-        """Remove a channel from the session.
-
-        Note: This does NOT close the channel.
+    def get(self, name: str) -> Node | None:
+        """Get a node by name.
 
         Args:
-            name: Channel name.
+            name: Node name.
 
         Returns:
-            The removed channel, or None if not found.
+            The node, or None if not found.
         """
-        return self._channels.pop(name, None)
+        return self._nodes.get(name)
 
-    def list_channels(self) -> list[str]:
-        """List all channel names.
+    def list_nodes(self) -> list[str]:
+        """List all registered node names.
 
         Returns:
-            List of channel names.
+            List of node names.
         """
-        return list(self._channels.keys())
+        return list(self._nodes.keys())
 
-    def get_channel_info(self) -> dict[str, ChannelInfo]:
-        """Get info for all channels.
+    def list_ready_nodes(self) -> list[str]:
+        """List names of nodes in READY or BUSY state (non-stopped).
 
         Returns:
-            Dict of channel name -> ChannelInfo.
+            List of active node names.
         """
-        return {
-            name: channel.to_info()
-            for name, channel in self._channels.items()
-            if hasattr(channel, "to_info")
-        }
+        from nerve.core.nodes.base import NodeState
 
-    async def send(
-        self,
-        channel_name: str,
-        input: str,
-        parser: ParserType | None = None,
-        timeout: float | None = None,
-    ) -> ParsedResponse:
-        """Send input to a named channel.
+        ready_states = (NodeState.READY, NodeState.BUSY, NodeState.STARTING)
+        result = []
 
-        Convenience method that combines get() and send().
+        for name, node in self._nodes.items():
+            if hasattr(node, "state"):
+                if node.state in ready_states:
+                    result.append(name)
+            else:
+                # FunctionNode or similar without state - always ready
+                result.append(name)
 
-        Args:
-            channel_name: Name of the channel.
-            input: Input to send.
-            parser: How to parse the response.
-            timeout: Response timeout.
+        return result
+
+    def get_node_info(self) -> dict[str, NodeInfo]:
+        """Get info for all nodes.
 
         Returns:
-            Parsed response.
-
-        Raises:
-            KeyError: If channel not found.
+            Dict of node name -> NodeInfo.
         """
-        channel = self._channels.get(channel_name)
-        if not channel:
-            raise KeyError(f"Channel '{channel_name}' not found in session")
+        result = {}
+        for name, node in self._nodes.items():
+            if hasattr(node, "to_info"):
+                result[name] = node.to_info()
+        return result
 
-        return await channel.send(input, parser=parser, timeout=timeout)
+    async def start(self) -> None:
+        """Start all persistent nodes (including those inside graphs).
 
-    async def close(self, channel_name: str | None = None) -> None:
-        """Close channel(s).
-
-        Args:
-            channel_name: Specific channel to close, or None for all.
+        Persistent nodes (PTYNode, WezTermNode, etc.) need to be started
+        before they can execute. This method starts all persistent nodes
+        registered in the session.
         """
-        if channel_name:
-            channel = self._channels.get(channel_name)
-            if channel:
-                await channel.close()
-                del self._channels[channel_name]
-        else:
-            # Close all
-            for channel in self._channels.values():
-                await channel.close()
-            self._channels.clear()
+        for node in self._collect_persistent_nodes():
+            if hasattr(node, "start"):
+                await node.start()
+
+    async def stop(self) -> None:
+        """Stop all persistent nodes.
+
+        Stops all persistent nodes registered in the session.
+        After this, the nodes cannot be used until started again.
+        """
+        for node in self._collect_persistent_nodes():
+            if hasattr(node, "stop"):
+                await node.stop()
+
+    def _collect_persistent_nodes(self) -> list[Node]:
+        """Recursively find all persistent nodes.
+
+        Returns:
+            List of persistent nodes (including nested in graphs).
+        """
+        from nerve.core.nodes.graph import Graph
+
+        persistent: list[Any] = []
+        for node in self._nodes.values():
+            if hasattr(node, "persistent") and node.persistent:
+                persistent.append(node)
+            if isinstance(node, Graph):
+                persistent.extend(node.collect_persistent_nodes())
+        return persistent
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dict.
@@ -178,6 +191,11 @@ class Session:
         Returns:
             Dict representation of session.
         """
+        nodes_dict = {}
+        for name, node in self._nodes.items():
+            if hasattr(node, "to_info"):
+                nodes_dict[name] = node.to_info().to_dict()
+
         return {
             "id": self.id,
             "name": self.name,
@@ -185,19 +203,15 @@ class Session:
             "tags": self.tags,
             "created_at": self.created_at.isoformat(),
             "metadata": self.metadata,
-            "channels": {
-                name: channel.to_info().to_dict()
-                for name, channel in self._channels.items()
-                if hasattr(channel, "to_info")
-            },
+            "nodes": nodes_dict,
         }
 
     def __len__(self) -> int:
-        return len(self._channels)
+        return len(self._nodes)
 
     def __contains__(self, name: str) -> bool:
-        return name in self._channels
+        return name in self._nodes
 
     def __repr__(self) -> str:
-        channels = ", ".join(self._channels.keys())
-        return f"Session(id={self.id!r}, name={self.name!r}, channels=[{channels}])"
+        names = ", ".join(self._nodes.keys())
+        return f"Session(id={self.id!r}, name={self.name!r}, nodes=[{names}])"

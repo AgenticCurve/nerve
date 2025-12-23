@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Number loop DAG - Claude picks numbers, Python generates sequences.
+"""Number loop Graph - Claude picks numbers, Python generates sequences.
 
 Flow:
 1. Ask Claude for a number between 3 and 10
@@ -108,7 +108,7 @@ async def run_number_loop(
     transport: str = "unix",
     cwd: str = "/Users/pb/agentic-curve/projects/nerve",
 ):
-    """Run the number loop DAG."""
+    """Run the number loop Graph."""
 
     # Configure transport
     if transport == "http":
@@ -147,13 +147,13 @@ async def run_number_loop(
         print(f"Failed to connect: {e}")
         return
 
-    # Create Claude channel
-    print("\nCreating Claude channel...")
+    # Create Claude node
+    print("\nCreating Claude node...")
     result = await client.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={
-                "channel_id": "claude-loop",
+                "node_id": "claude-loop",
                 "command": "claude",
                 "cwd": cwd,
                 "backend": "claude-wezterm",
@@ -161,7 +161,7 @@ async def run_number_loop(
         )
     )
     if not result.success:
-        print(f"Failed to create channel: {result.error}")
+        print(f"Failed to create node: {result.error}")
         return
     print("  Created: claude-loop")
 
@@ -170,7 +170,7 @@ async def run_number_loop(
     await asyncio.sleep(5)
 
     print("\n" + "=" * 70)
-    print("NUMBER LOOP DAG")
+    print("NUMBER LOOP GRAPH")
     print("=" * 70)
 
     # Initial prompt
@@ -187,10 +187,10 @@ What number do you pick?"""
 
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": "claude-loop",
-                "text": initial_prompt,
+                "node_id": "claude-loop",
+                "input": initial_prompt,
                 "parser": "claude",
             },
         ),
@@ -204,16 +204,16 @@ What number do you pick?"""
     response = result.data.get("response", {})
 
     # Log file path (set up before first tee)
-    log_file = f"/tmp/nerve-{server_name}-dag.log"
+    log_file = f"/tmp/nerve-{server_name}-graph.log"
     print(f"\nLogging to: {log_file}")
 
     # Clear log file at start
     Path(log_file).unlink(missing_ok=True)
 
     # TEE TASK: Log initial response (passthrough)
-    print(f"\n[TEE TASK: Logging initial response to file]")
+    print("\n[TEE TASK: Logging initial response to file]")
     response = tee_task(response, log_file, "Initial - Claude picks first number")
-    print(f"  → Logged to {log_file}")
+    print(f"  -> Logged to {log_file}")
 
     text = extract_text_response(response)
     print(f"Claude: {text}")
@@ -238,13 +238,13 @@ What number do you pick?"""
         print(sequence_output)
 
         # TEE TASK: Log sequence output (passthrough)
-        print(f"\n[TEE TASK: Logging sequence to file]")
+        print("\n[TEE TASK: Logging sequence to file]")
         sequence_output = tee_task(
             sequence_output,
             log_file,
             f"Iteration {i+1} - Python sequence for {number}"
         )
-        print(f"  → Logged to {log_file}")
+        print(f"  -> Logged to {log_file}")
 
         # Task: Send back to Claude
         follow_up = f"""Here's what I computed for your number {number}:
@@ -254,15 +254,15 @@ What number do you pick?"""
 Interesting, right? Now pick another number between 3 and 10.
 Pick a different number than {number} this time. What's your choice?"""
 
-        print(f"\n[CLAUDE TASK: Process sequence and pick new number]")
+        print("\n[CLAUDE TASK: Process sequence and pick new number]")
         print("-" * 70)
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "claude-loop",
-                    "text": follow_up,
+                    "node_id": "claude-loop",
+                    "input": follow_up,
                     "parser": "claude",
                 },
             ),
@@ -276,13 +276,13 @@ Pick a different number than {number} this time. What's your choice?"""
         response = result.data.get("response", {})
 
         # TEE TASK: Log Claude's raw response (passthrough)
-        print(f"\n[TEE TASK: Logging Claude response to file]")
+        print("\n[TEE TASK: Logging Claude response to file]")
         response = tee_task(
             response,
             log_file,
             f"Iteration {i+1} - Claude response"
         )
-        print(f"  → Logged to {log_file}")
+        print(f"  -> Logged to {log_file}")
 
         text = extract_text_response(response)
         print(f"Claude: {text}")

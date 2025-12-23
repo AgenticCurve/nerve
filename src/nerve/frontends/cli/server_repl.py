@@ -1,8 +1,8 @@
 """Server-connected REPL for nerve.
 
-Unlike the standalone REPL which creates channels directly,
+Unlike the standalone REPL which creates nodes directly,
 this REPL connects to a running nerve server and operates
-on server-managed channels.
+on server-managed nodes.
 
 Usage:
     nerve server repl myproject           # Connect to server named 'myproject'
@@ -32,22 +32,22 @@ def print_help():
 Server REPL Commands:
 ---------------------
 
-Channel Management:
+Node Management:
   create <name> [--command cmd] [--cwd path]
-                    Create a new channel (name is required)
-  channels          List all channels on the server
+                    Create a new node (name is required)
+  nodes             List all nodes on the server
 
 Interaction:
   send <name> <prompt> [--parser claude|gemini|none]
-                    Send a prompt to a channel
+                    Send a prompt to a node
   stream <name> <prompt>
                     Send with streaming output
 
-DAG Execution:
-  dag load <file>   Load a DAG definition file
-  dag show          Show current DAG structure
-  dag dry           Show execution order
-  dag run           Execute the DAG
+Graph Execution:
+  graph load <file>   Load a Graph definition file
+  graph show          Show current Graph structure
+  graph dry           Show execution order
+  graph run           Execute the Graph
 
 Other:
   help              Show this help
@@ -57,39 +57,40 @@ Other:
 Examples:
 ---------
   >>> create my-claude --command claude
-  Created channel: my-claude
+  Created node: my-claude
 
   >>> send my-claude "Hello, how are you?" --parser claude
   [response...]
 
-  >>> dag load my_workflow.py
-  Loaded DAG with 3 tasks
+  >>> graph load my_workflow.py
+  Loaded Graph with 3 steps
 
-  >>> dag run
+  >>> graph run
   Executing...
 """)
 
 
-def print_channels(server_channels: list[str]):
-    """Print channels."""
-    print("\nChannels:")
+def print_nodes(server_nodes: list[str]):
+    """Print nodes."""
+    print("\nNodes:")
     print("-" * 50)
-    if server_channels:
-        for name in server_channels:
+    if server_nodes:
+        for name in server_nodes:
             print(f"  {name}")
     else:
-        print("  No active channels")
+        print("  No active nodes")
     print("-" * 50)
 
 
 async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
     """Run interactive server-connected REPL."""
     from nerve.server.protocols import Command, CommandType
+
     from nerve.transport import UnixSocketClient
 
     state = ServerREPLState(socket_path=socket_path)
-    current_dag: dict[str, Any] | None = None
-    dag_channels: dict[str, str] = {}  # DAG channel names -> server channel IDs
+    current_graph: dict[str, Any] | None = None
+    graph_nodes: dict[str, str] = {}  # Graph node names -> server node IDs
 
     # Set up readline
     try:
@@ -158,17 +159,17 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
             elif cmd == "status":
                 print(f"Connected to: {state.socket_path}")
 
-            # Channels list
-            elif cmd == "channels":
+            # Nodes list
+            elif cmd == "nodes":
                 result = await state.client.send_command(
-                    Command(type=CommandType.LIST_CHANNELS, params={})
+                    Command(type=CommandType.LIST_NODES, params={})
                 )
                 if result.success:
-                    print_channels(result.data.get("channels", []))
+                    print_nodes(result.data.get("nodes", []))
                 else:
                     print(f"Error: {result.error}")
 
-            # Create channel
+            # Create node
             elif cmd == "create":
                 if len(parts) < 2:
                     print("Usage: create <name> [--command cmd] [--cwd path]")
@@ -178,7 +179,7 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
 
                 name = parts[1]
                 try:
-                    validate_name(name, "channel")
+                    validate_name(name, "node")
                 except ValueError as e:
                     print(f"Error: {e}")
                     continue
@@ -200,17 +201,17 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
 
                 result = await state.client.send_command(
                     Command(
-                        type=CommandType.CREATE_CHANNEL,
-                        params={"channel_id": name, "command": command, "cwd": cwd},
+                        type=CommandType.CREATE_NODE,
+                        params={"node_id": name, "command": command, "cwd": cwd},
                     )
                 )
 
                 if result.success:
-                    print(f"Created channel: {name}")
+                    print(f"Created node: {name}")
                 else:
                     print(f"Error: {result.error}")
 
-            # Send to channel
+            # Send to node
             elif cmd in ("send", "stream"):
                 if len(parts) < 3:
                     print(f"Usage: {cmd} <name> <prompt>")
@@ -220,10 +221,10 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
 
                     result = await state.client.send_command(
                         Command(
-                            type=CommandType.SEND_INPUT,
+                            type=CommandType.EXECUTE_INPUT,
                             params={
-                                "channel_id": name,
-                                "text": prompt,
+                                "node_id": name,
+                                "input": prompt,
                                 "stream": cmd == "stream",
                             },
                         )
@@ -234,102 +235,102 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
                     else:
                         print(f"Error: {result.error}")
 
-            # DAG commands
-            elif cmd == "dag":
+            # Graph commands
+            elif cmd == "graph":
                 if len(parts) < 2:
-                    print("Usage: dag [load|show|dry|run] ...")
+                    print("Usage: graph [load|show|dry|run] ...")
                     continue
 
                 subcmd = parts[1].lower()
 
                 if subcmd == "load":
                     if len(parts) < 3:
-                        print("Usage: dag load <file.py>")
+                        print("Usage: graph load <file.py>")
                         continue
 
                     filepath = parts[2]
                     try:
-                        dag_def = load_dag_from_file(filepath)
-                        current_dag = dag_def
-                        dag_channels.clear()
-                        print(f"Loaded DAG with {len(dag_def.get('tasks', []))} tasks")
+                        graph_def = load_graph_from_file(filepath)
+                        current_graph = graph_def
+                        graph_nodes.clear()
+                        print(f"Loaded Graph with {len(graph_def.get('steps', []))} steps")
 
-                        # Show required channels
+                        # Show required nodes
                         required = set()
-                        for task in dag_def.get("tasks", []):
-                            if "channel" in task:
-                                required.add(task["channel"])
+                        for step in graph_def.get("steps", []):
+                            if "node" in step:
+                                required.add(step["node"])
                         if required:
-                            print(f"Required channels: {', '.join(required)}")
+                            print(f"Required nodes: {', '.join(required)}")
                             print("Use 'create <name>' to create them")
                     except Exception as e:
-                        print(f"Error loading DAG: {e}")
+                        print(f"Error loading Graph: {e}")
 
                 elif subcmd == "show":
-                    if not current_dag:
-                        print("No DAG loaded. Use 'dag load <file>'")
+                    if not current_graph:
+                        print("No Graph loaded. Use 'graph load <file>'")
                     else:
-                        print("\nDAG Structure:")
+                        print("\nGraph Structure:")
                         print("-" * 40)
-                        for task in current_dag.get("tasks", []):
-                            deps = task.get("depends_on", [])
-                            channel = task.get("channel", "?")
-                            print(f"  {task['id']} (channel: {channel})")
+                        for step in current_graph.get("steps", []):
+                            deps = step.get("depends_on", [])
+                            node = step.get("node", "?")
+                            print(f"  {step['id']} (node: {node})")
                             if deps:
                                 print(f"    depends on: {', '.join(deps)}")
                         print("-" * 40)
 
                 elif subcmd == "dry":
-                    if not current_dag:
-                        print("No DAG loaded. Use 'dag load <file>'")
+                    if not current_graph:
+                        print("No Graph loaded. Use 'graph load <file>'")
                     else:
                         # Simple topological sort for display
-                        tasks = current_dag.get("tasks", [])
+                        steps = current_graph.get("steps", [])
                         print("\nExecution order:")
-                        for i, task in enumerate(tasks, 1):
-                            print(f"  [{i}] {task['id']}")
+                        for i, step in enumerate(steps, 1):
+                            print(f"  [{i}] {step['id']}")
 
                 elif subcmd == "run":
-                    if not current_dag:
-                        print("No DAG loaded. Use 'dag load <file>'")
+                    if not current_graph:
+                        print("No Graph loaded. Use 'graph load <file>'")
                         continue
 
-                    # Build tasks using channel names directly
-                    tasks_for_server = []
+                    # Build steps using node names directly
+                    steps_for_server = []
 
-                    for task in current_dag.get("tasks", []):
-                        channel_name = task.get("channel")
+                    for step in current_graph.get("steps", []):
+                        node_name = step.get("node")
 
-                        tasks_for_server.append(
+                        steps_for_server.append(
                             {
-                                "id": task["id"],
-                                "channel_id": channel_name,  # Channel name IS the ID now
-                                "text": task.get("prompt", ""),
-                                "depends_on": task.get("depends_on", []),
+                                "id": step["id"],
+                                "node_id": node_name,  # Node name IS the ID now
+                                "input": step.get("prompt", ""),
+                                "depends_on": step.get("depends_on", []),
                             }
                         )
 
-                    print("\nExecuting DAG...")
+                    print("\nExecuting Graph...")
                     result = await state.client.send_command(
                         Command(
-                            type=CommandType.EXECUTE_DAG,
-                            params={"tasks": tasks_for_server},
+                            type=CommandType.EXECUTE_GRAPH,
+                            params={"steps": steps_for_server},
                         )
                     )
 
                     if result.success:
                         print("\nResults:")
-                        for tid, res in result.data.get("results", {}).items():
+                        for step_id, res in result.data.get("results", {}).items():
                             status = res.get("status", "?")
                             output = res.get("output", "")[:200]
-                            print(f"  {tid}: {status}")
+                            print(f"  {step_id}: {status}")
                             if output:
                                 print(f"    {output}...")
                     else:
                         print(f"Error: {result.error}")
 
                 else:
-                    print(f"Unknown dag command: {subcmd}")
+                    print(f"Unknown graph command: {subcmd}")
 
             # Exit
             elif cmd in ("exit", "quit"):
@@ -348,15 +349,15 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
         await state.client.disconnect()
 
 
-def load_dag_from_file(filepath: str) -> dict[str, Any]:
-    """Load a DAG definition from a Python file.
+def load_graph_from_file(filepath: str) -> dict[str, Any]:
+    """Load a Graph definition from a Python file.
 
-    The file should define a `dag` dict with structure:
+    The file should define a `graph` dict with structure:
     {
-        "tasks": [
+        "steps": [
             {
-                "id": "task1",
-                "channel": "claude1",  # channel name (alias)
+                "id": "step1",
+                "node": "claude1",  # node name (alias)
                 "prompt": "Hello!",
                 "depends_on": [],
             },
@@ -364,73 +365,74 @@ def load_dag_from_file(filepath: str) -> dict[str, Any]:
         ]
     }
 
-    Or use the DAG builder syntax which we'll convert.
+    Or use the Graph builder syntax which we'll convert.
     """
-    namespace: dict[str, Any] = {"__name__": "__nerve_dag__"}
+    namespace: dict[str, Any] = {"__name__": "__nerve_graph__"}
 
     with open(filepath) as f:
         code = f.read()
 
     exec(compile(code, filepath, "exec"), namespace)
 
-    # Check for dict-style dag
-    if "dag" in namespace and isinstance(namespace["dag"], dict):
-        return namespace["dag"]
+    # Check for dict-style graph
+    if "graph" in namespace and isinstance(namespace["graph"], dict):
+        return namespace["graph"]
 
-    # Check for DAG object and convert
-    if "dag" in namespace and hasattr(namespace["dag"], "list_tasks"):
-        dag_obj = namespace["dag"]
-        tasks = []
-        for task_id in dag_obj.list_tasks():
-            task = dag_obj.get_task(task_id)
-            if task:
-                tasks.append(
+    # Check for Graph object and convert
+    if "graph" in namespace and hasattr(namespace["graph"], "list_steps"):
+        graph_obj = namespace["graph"]
+        steps = []
+        for step_id in graph_obj.list_steps():
+            step = graph_obj.get_step(step_id)
+            if step:
+                steps.append(
                     {
-                        "id": task_id,
-                        "channel": getattr(task, "channel_name", None),
-                        "prompt": getattr(task, "prompt", ""),
-                        "depends_on": task.depends_on or [],
+                        "id": step_id,
+                        "node": getattr(step, "node_name", None),
+                        "prompt": getattr(step, "prompt", ""),
+                        "depends_on": step.depends_on or [],
                     }
                 )
-        return {"tasks": tasks}
+        return {"steps": steps}
 
-    raise ValueError("No 'dag' variable found in file")
+    raise ValueError("No 'graph' variable found in file")
 
 
-async def run_dag_file(
+async def run_graph_file(
     filepath: str,
     socket_path: str = "/tmp/nerve.sock",
     dry_run: bool = False,
-    channels: dict[str, str] | None = None,
+    nodes: dict[str, str] | None = None,
 ):
-    """Run a DAG file on the server.
+    """Run a Graph file on the server.
 
     Args:
-        filepath: Path to Python file defining the DAG
+        filepath: Path to Python file defining the Graph
         socket_path: Server socket path
         dry_run: If True, only show execution order
-        channels: Optional dict mapping channel names to IDs
+        nodes: Optional dict mapping node names to IDs
     """
     from nerve.server.protocols import Command, CommandType
+
     from nerve.transport import UnixSocketClient
 
     print(f"Loading: {filepath}")
 
     try:
-        dag_def = load_dag_from_file(filepath)
+        graph_def = load_graph_from_file(filepath)
     except Exception as e:
-        print(f"Error loading DAG: {e}")
+        print(f"Error loading Graph: {e}")
         return
 
-    tasks = dag_def.get("tasks", [])
-    print(f"Found {len(tasks)} tasks")
+    steps = graph_def.get("steps", [])
+    print(f"Found {len(steps)} steps")
 
     if dry_run:
         print("\n[DRY RUN] Execution order:")
-        for i, task in enumerate(tasks, 1):
-            deps = task.get("depends_on", [])
+        for i, step in enumerate(steps, 1):
+            deps = step.get("depends_on", [])
             dep_str = f" (after: {', '.join(deps)})" if deps else ""
-            print(f"  [{i}] {task['id']}{dep_str}")
+            print(f"  [{i}] {step['id']}{dep_str}")
         return
 
     # Connect to server
@@ -443,63 +445,63 @@ async def run_dag_file(
         print("Make sure the server is running: nerve server start")
         return
 
-    channel_map = channels or {}
+    node_map = nodes or {}
 
-    # Find required channels
-    required_channels = set()
-    for task in tasks:
-        if "channel" in task and task["channel"]:
-            required_channels.add(task["channel"])
+    # Find required nodes
+    required_nodes = set()
+    for step in steps:
+        if "node" in step and step["node"]:
+            required_nodes.add(step["node"])
 
-    # Create missing channels
-    for channel_name in required_channels:
-        if channel_name not in channel_map:
-            print(f"Creating channel: {channel_name}")
+    # Create missing nodes
+    for node_name in required_nodes:
+        if node_name not in node_map:
+            print(f"Creating node: {node_name}")
             result = await client.send_command(
                 Command(
-                    type=CommandType.CREATE_CHANNEL,
+                    type=CommandType.CREATE_NODE,
                     params={"command": "claude"},
                 )
             )
             if result.success:
-                channel_map[channel_name] = result.data["channel_id"]
-                print(f"  -> {result.data['channel_id']}")
+                node_map[node_name] = result.data["node_id"]
+                print(f"  -> {result.data['node_id']}")
             else:
                 print(f"  Error: {result.error}")
                 await client.disconnect()
                 return
 
-    # Build server tasks
-    tasks_for_server = []
-    for task in tasks:
-        channel_name = task.get("channel")
-        channel_id = channel_map.get(channel_name) if channel_name else None
+    # Build server steps
+    steps_for_server = []
+    for step in steps:
+        node_name = step.get("node")
+        node_id = node_map.get(node_name) if node_name else None
 
-        tasks_for_server.append(
+        steps_for_server.append(
             {
-                "id": task["id"],
-                "channel_id": channel_id,
-                "text": task.get("prompt", ""),
-                "depends_on": task.get("depends_on", []),
+                "id": step["id"],
+                "node_id": node_id,
+                "input": step.get("prompt", ""),
+                "depends_on": step.get("depends_on", []),
             }
         )
 
     # Execute
-    print("\nExecuting DAG...")
+    print("\nExecuting Graph...")
     result = await client.send_command(
         Command(
-            type=CommandType.EXECUTE_DAG,
-            params={"tasks": tasks_for_server},
+            type=CommandType.EXECUTE_GRAPH,
+            params={"steps": steps_for_server},
         )
     )
 
     if result.success:
         print("\nResults:")
         print("=" * 50)
-        for tid, res in result.data.get("results", {}).items():
+        for step_id, res in result.data.get("results", {}).items():
             status = res.get("status", "?")
             output = res.get("output", "")
-            print(f"\n[{tid}] {status}")
+            print(f"\n[{step_id}] {status}")
             if output:
                 print(f"{output[:500]}{'...' if len(output) > 500 else ''}")
         print("=" * 50)

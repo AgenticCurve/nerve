@@ -50,7 +50,7 @@ class TCPSocketServer:
             {
                 "type": "event",
                 "event_type": event.type.name,
-                "channel_id": event.channel_id,
+                "node_id": event.node_id,
                 "data": event.data,
                 "timestamp": event.timestamp,
             }
@@ -189,7 +189,7 @@ class TCPSocketClient:
         >>> await client.connect()
         >>>
         >>> result = await client.send_command(Command(
-        ...     type=CommandType.CREATE_CHANNEL,
+        ...     type=CommandType.CREATE_NODE,
         ...     params={"command": "claude"},
         ... ))
         >>>
@@ -290,7 +290,7 @@ class TCPSocketClient:
             if isinstance(item, dict) and item.get("type") == "event":
                 yield Event(
                     type=EventType[item["event_type"]],
-                    channel_id=item.get("channel_id"),
+                    node_id=item.get("node_id"),
                     data=item.get("data", {}),
                     timestamp=item.get("timestamp", 0),
                 )

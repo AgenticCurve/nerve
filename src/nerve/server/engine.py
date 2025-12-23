@@ -1,8 +1,13 @@
 """NerveEngine - Wraps core with event emission.
 
-The engine uses core primitives (Channels, DAG, etc.) and emits
+The engine uses core primitives (Nodes, Graphs, etc.) and emits
 events for state changes. It's the bridge between pure core
 and the event-driven server world.
+
+Node-based terminology (clean break from Channel/DAG):
+- Nodes replace Channels
+- Graphs replace DAGs
+- Steps replace Tasks
 """
 
 from __future__ import annotations
@@ -11,13 +16,17 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from nerve.core import DAG, ChannelManager, Task
-from nerve.core.channels import ChannelState
-from nerve.core.channels.claude_wezterm import ClaudeOnWezTermChannel
+from nerve.core.nodes import (
+    ExecutionContext,
+    Graph,
+    NodeFactory,
+    NodeState,
+    Step,
+    TerminalNode,
+)
 from nerve.core.channels.history import HistoryReader
-from nerve.core.channels.pty import PTYChannel
-from nerve.core.channels.wezterm import WezTermChannel
 from nerve.core.parsers import get_parser
+from nerve.core.session import Session
 from nerve.core.types import ParserType
 from nerve.server.protocols import (
     Command,
@@ -34,7 +43,7 @@ class NerveEngine:
     """Main nerve engine - wraps core with event emission.
 
     The engine:
-    - Uses core.ChannelManager, core.DAG, etc. for actual work
+    - Uses core.NodeFactory, core.Graph, etc. for actual work
     - Emits events through EventSink for state changes
     - Handles commands from transport layer
 
@@ -47,23 +56,27 @@ class NerveEngine:
         >>> engine = NerveEngine(event_sink=sink)
         >>>
         >>> result = await engine.execute(Command(
-        ...     type=CommandType.CREATE_CHANNEL,
-        ...     params={"channel_id": "my-claude", "command": "claude"},
+        ...     type=CommandType.CREATE_NODE,
+        ...     params={"node_id": "my-claude", "command": "claude"},
         ... ))
         >>>
-        >>> channel_id = result.data["channel_id"]  # "my-claude"
+        >>> node_id = result.data["node_id"]  # "my-claude"
     """
 
     event_sink: EventSink
     _server_name: str = field(default="default")
-    _channel_manager: ChannelManager | None = field(default=None, repr=False)
-    _running_dags: dict[str, asyncio.Task] = field(default_factory=dict)
+    _node_factory: NodeFactory | None = field(default=None, repr=False)
+    _nodes: dict[str, TerminalNode] = field(default_factory=dict, repr=False)
+    _session: Session | None = field(default=None, repr=False)
+    _running_graphs: dict[str, asyncio.Task] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
 
     def __post_init__(self):
-        """Initialize channel manager with server name."""
-        if self._channel_manager is None:
-            self._channel_manager = ChannelManager(_server_name=self._server_name)
+        """Initialize node factory and session."""
+        if self._node_factory is None:
+            self._node_factory = NodeFactory(server_name=self._server_name)
+        if self._session is None:
+            self._session = Session()
 
     @property
     def shutdown_requested(self) -> bool:
@@ -82,20 +95,21 @@ class NerveEngine:
             CommandResult with success/failure and data.
         """
         handlers = {
-            # Channel commands
-            CommandType.CREATE_CHANNEL: self._create_channel,
-            CommandType.CLOSE_CHANNEL: self._close_channel,
-            CommandType.LIST_CHANNELS: self._list_channels,
-            CommandType.GET_CHANNEL: self._get_channel,
+            # Node management
+            CommandType.CREATE_NODE: self._create_node,
+            CommandType.STOP_NODE: self._stop_node,
+            CommandType.LIST_NODES: self._list_nodes,
+            CommandType.GET_NODE: self._get_node,
+            # Interaction
             CommandType.RUN_COMMAND: self._run_command,
-            CommandType.SEND_INPUT: self._send_input,
+            CommandType.EXECUTE_INPUT: self._execute_input,
             CommandType.SEND_INTERRUPT: self._send_interrupt,
             CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
             CommandType.GET_HISTORY: self._get_history,
-            # DAG commands
-            CommandType.EXECUTE_DAG: self._execute_dag,
-            CommandType.CANCEL_DAG: self._cancel_dag,
+            # Graph execution
+            CommandType.EXECUTE_GRAPH: self._execute_graph,
+            CommandType.CANCEL_GRAPH: self._cancel_graph,
             # Server control
             CommandType.SHUTDOWN: self._shutdown,
             CommandType.PING: self._ping,
@@ -127,28 +141,38 @@ class NerveEngine:
         self,
         event_type: EventType,
         data: dict[str, Any] | None = None,
-        channel_id: str | None = None,
+        node_id: str | None = None,
     ) -> None:
-        """Emit an event through the sink."""
+        """Emit an event through the sink.
+
+        Args:
+            event_type: The type of event.
+            data: Event payload data.
+            node_id: Associated node ID.
+        """
         event = Event(
             type=event_type,
             data=data or {},
-            channel_id=channel_id,
+            node_id=node_id,
         )
         await self.event_sink.emit(event)
 
     # =========================================================================
-    # Channel Commands
+    # Node Commands
     # =========================================================================
 
-    async def _create_channel(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Create a new channel.
+    async def _create_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Create a new node.
 
-        Requires channel_id (name) in params. Names must be unique.
+        Requires node_id (name) in params. Names must be unique.
         """
-        channel_id = params.get("channel_id")
-        if not channel_id:
-            raise ValueError("Channel name is required")
+        node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("Node ID is required")
+
+        # Check for duplicate
+        if node_id in self._nodes:
+            raise ValueError(f"Node already exists: {node_id}")
 
         command = params.get("command")  # e.g., "claude" or ["claude", "--flag"]
         cwd = params.get("cwd")
@@ -156,9 +180,8 @@ class NerveEngine:
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
         history = params.get("history", True)  # Enable history by default
 
-        # ChannelManager.create_terminal enforces uniqueness
-        channel = await self._channel_manager.create_terminal(
-            channel_id=channel_id,
+        node = await self._node_factory.create_terminal(
+            node_id=node_id,
             command=command,
             backend=backend,
             cwd=cwd,
@@ -166,88 +189,82 @@ class NerveEngine:
             history=history,
         )
 
+        # Register with session and track locally
+        self._session.register(node)
+        self._nodes[node_id] = node
+
         await self._emit(
-            EventType.CHANNEL_CREATED,
+            EventType.NODE_CREATED,
             data={
                 "command": command,
                 "cwd": cwd,
                 "backend": backend,
-                "pane_id": getattr(channel, "pane_id", None),
+                "pane_id": getattr(node, "pane_id", None),
             },
-            channel_id=channel.id,
+            node_id=node.id,
         )
 
-        # Start monitoring the channel
-        asyncio.create_task(self._monitor_channel(channel))
+        # Start monitoring the node
+        asyncio.create_task(self._monitor_node(node))
 
-        return {"channel_id": channel.id}
+        return {"node_id": node.id}
 
-    async def _close_channel(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Close a channel."""
-        channel_id = params.get("channel_id")
+    async def _stop_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Stop a node."""
+        node_id = params.get("node_id")
 
-        closed = await self._channel_manager.close(channel_id)
-        if not closed:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
-        await self._emit(EventType.CHANNEL_CLOSED, channel_id=channel_id)
+        await node.stop()
+        del self._nodes[node_id]
 
-        return {"closed": True}
+        await self._emit(EventType.NODE_STOPPED, node_id=node_id)
 
-    async def _list_channels(self, params: dict[str, Any]) -> dict[str, Any]:
-        """List all channels."""
-        channel_ids = self._channel_manager.list()
-        channels_info = []
-        for cid in channel_ids:
-            channel = self._channel_manager.get(cid)
-            if channel:
-                # Use to_info() to get full channel metadata including last_input
-                if hasattr(channel, "to_info"):
-                    channel_info = channel.to_info()
-                    info = {
-                        "id": cid,
-                        "type": channel_info.channel_type.value,
-                        "state": channel_info.state.name,
-                        **channel_info.metadata,
-                    }
-                else:
-                    # Fallback for channels without to_info
-                    info = {
-                        "id": cid,
-                        "type": channel.channel_type.value,
-                        "state": channel.state.name,
-                    }
-                    if hasattr(channel, "backend_type"):
-                        bt = channel.backend_type
-                        info["backend"] = bt.value if hasattr(bt, "value") else bt
-                    if hasattr(channel, "command"):
-                        info["command"] = channel.command
-                    if hasattr(channel, "pane_id"):
-                        info["pane_id"] = channel.pane_id
-                channels_info.append(info)
+        return {"stopped": True}
+
+    async def _list_nodes(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List all nodes."""
+        node_ids = list(self._nodes.keys())
+        nodes_info = []
+
+        for nid in node_ids:
+            node = self._nodes.get(nid)
+            if node:
+                info = node.to_info()
+                nodes_info.append({
+                    "id": nid,
+                    "type": info.node_type,
+                    "state": info.state.name,
+                    **info.metadata,
+                })
 
         return {
-            "channels": channel_ids,
-            "channels_info": channels_info,
+            "nodes": node_ids,
+            "nodes_info": nodes_info,
         }
 
-    async def _get_channel(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get channel info."""
-        channel_id = params.get("channel_id")
-        channel = self._channel_manager.get(channel_id)
+    async def _get_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Get node info."""
+        node_id = params.get("node_id")
+        node = self._nodes.get(node_id)
 
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
+        info = node.to_info()
         result = {
-            "channel_id": channel.id,
-            "type": channel.channel_type.value,
-            "state": channel.state.name,
+            "node_id": node.id,
+            "type": info.node_type,
+            "state": info.state.name,
         }
-        if hasattr(channel, "backend_type"):
-            result["backend"] = channel.backend_type.value
-        if hasattr(channel, "pane_id"):
-            result["pane_id"] = channel.pane_id
+
+        # Add optional metadata
+        if "backend" in info.metadata:
+            result["backend"] = info.metadata["backend"]
+        if "pane_id" in info.metadata:
+            result["pane_id"] = info.metadata["pane_id"]
 
         return result
 
@@ -256,55 +273,67 @@ class NerveEngine:
     # =========================================================================
 
     async def _run_command(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Run a command in a channel (fire and forget).
+        """Run a command in a node (fire and forget).
 
         This starts a program that takes over the terminal (like claude, python, etc.)
-        without waiting for a response. Use SEND_INPUT to interact with it after.
+        without waiting for a response. Use EXECUTE_INPUT to interact with it after.
         """
-        channel_id = params.get("channel_id")
+        node_id = params.get("node_id")
         command = params["command"]
 
-        channel = self._channel_manager.get(channel_id)
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
-        await channel.run(command)
+        await node.run(command)
 
         return {"started": True, "command": command}
 
-    async def _send_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Send input to a channel."""
-        channel_id = params.get("channel_id")
+    async def _execute_input(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute input on a node and wait for response."""
+        node_id = params.get("node_id")
         text = params["text"]
-        parser_str = params.get("parser")  # None means use channel's default
+        parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
         submit = params.get("submit")  # Custom submit sequence (optional)
 
-        channel = self._channel_manager.get(channel_id)
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
-        # Convert parser string to ParserType, or None to use channel's default
+        # Convert parser string to ParserType, or None to use node's default
         parser_type = ParserType(parser_str) if parser_str else None
 
-        await self._emit(EventType.CHANNEL_BUSY, channel_id=channel_id)
+        await self._emit(EventType.NODE_BUSY, node_id=node_id)
+
+        # Create execution context
+        context = ExecutionContext(
+            session=self._session,
+            input=text,
+        )
 
         if stream:
             # Stream output chunks as events
-            actual_parser = parser_type or ParserType.NONE
-            async for chunk in channel.send_stream(text, parser=actual_parser):
+            stream_context = ExecutionContext(
+                session=self._session,
+                input=text,
+                parser=parser_type,
+            )
+            async for chunk in node.execute_stream(stream_context):
                 await self._emit(
                     EventType.OUTPUT_CHUNK,
                     data={"chunk": chunk},
-                    channel_id=channel_id,
+                    node_id=node_id,
                 )
 
             # Parse final response
+            actual_parser = parser_type or ParserType.NONE
             parser = get_parser(actual_parser)
-            response = parser.parse(channel.buffer)
+            response = parser.parse(node.buffer)
         else:
-            # Wait for complete response (channel uses its default parser if None)
-            response = await channel.send(text, parser=parser_type, submit=submit)
+            # Wait for complete response using ExecutionContext
+            context.parser = parser_type
+            response = await node.execute(context)
 
         await self._emit(
             EventType.OUTPUT_PARSED,
@@ -316,10 +345,10 @@ class NerveEngine:
                 ],
                 "tokens": response.tokens,
             },
-            channel_id=channel_id,
+            node_id=node_id,
         )
 
-        await self._emit(EventType.CHANNEL_READY, channel_id=channel_id)
+        await self._emit(EventType.NODE_READY, node_id=node_id)
 
         return {
             "response": {
@@ -335,64 +364,64 @@ class NerveEngine:
         }
 
     async def _send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Send interrupt to a channel."""
-        channel_id = params.get("channel_id")
+        """Send interrupt to a node."""
+        node_id = params.get("node_id")
 
-        channel = self._channel_manager.get(channel_id)
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
-        await channel.interrupt()
+        await node.interrupt()
 
         return {"interrupted": True}
 
     async def _write_data(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Write raw data to a channel (no waiting)."""
-        channel_id = params.get("channel_id")
+        """Write raw data to a node (no waiting)."""
+        node_id = params.get("node_id")
         data = params["data"]
 
-        channel = self._channel_manager.get(channel_id)
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
-        await channel.write(data)
+        await node.write(data)
 
         return {"written": len(data)}
 
     async def _get_buffer(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get channel buffer."""
-        channel_id = params.get("channel_id")
+        """Get node buffer."""
+        node_id = params.get("node_id")
         lines = params.get("lines")
 
-        channel = self._channel_manager.get(channel_id)
-        if not channel:
-            raise ValueError(f"Channel not found: {channel_id}")
+        node = self._nodes.get(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
 
         if lines:
-            buffer = channel.read_tail(lines)
+            buffer = node.read_tail(lines)
         else:
-            buffer = await channel.read()
+            buffer = await node.read()
 
         return {"buffer": buffer}
 
     async def _get_history(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Get channel history.
+        """Get node history.
 
-        Reads the JSONL history file for a channel.
+        Reads the JSONL history file for a node.
 
         Parameters:
-            channel_id: The channel ID (required)
+            node_id: The node ID (required)
             server_name: Server name (optional, defaults to engine's server name)
             last: Limit to last N entries (optional)
             op: Filter by operation type (optional)
             inputs_only: Filter to input operations only (optional)
 
         Returns:
-            Dict with channel_id, server_name, entries, and total count.
+            Dict with node_id, server_name, entries, and total count.
         """
-        channel_id = params.get("channel_id")
-        if not channel_id:
-            raise ValueError("channel_id is required")
+        node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
 
         server_name = params.get("server_name", self._server_name)
         last = params.get("last")
@@ -401,9 +430,9 @@ class NerveEngine:
 
         try:
             reader = HistoryReader.create(
-                channel_id=channel_id,
+                channel_id=node_id,  # HistoryReader still uses channel_id internally
                 server_name=server_name,
-                base_dir=self._channel_manager._history_base_dir,
+                base_dir=self._node_factory.history_base_dir,
             )
 
             # Apply filters
@@ -419,7 +448,7 @@ class NerveEngine:
                 entries = entries[-last:]
 
             return {
-                "channel_id": channel_id,
+                "node_id": node_id,
                 "server_name": server_name,
                 "entries": entries,
                 "total": len(entries),
@@ -428,93 +457,94 @@ class NerveEngine:
         except FileNotFoundError:
             # Fail soft - return empty results with note
             return {
-                "channel_id": channel_id,
+                "node_id": node_id,
                 "server_name": server_name,
                 "entries": [],
                 "total": 0,
-                "note": "No history found for this channel",
+                "note": "No history found for this node",
             }
 
     # =========================================================================
-    # DAG Commands
+    # Graph Commands
     # =========================================================================
 
-    async def _execute_dag(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute a DAG."""
-        dag_id = params.get("dag_id", "dag_0")
-        tasks_data = params["tasks"]
+    async def _execute_graph(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute a graph."""
+        graph_id = params.get("graph_id", "graph_0")
+        steps_data = params["steps"]
 
-        # Build DAG from task definitions
-        dag = DAG()
+        # Build Graph from step definitions
+        graph = self._node_factory.create_graph(graph_id)
 
-        for task_data in tasks_data:
-            task_id = task_data["id"]
-            channel_id = task_data.get("channel_id")
-            text = task_data.get("text", "")
-            parser_str = task_data.get("parser", "none")
-            depends_on = task_data.get("depends_on", [])
+        for step_data in steps_data:
+            step_id = step_data["id"]
+            node_id = step_data.get("node_id")
+            text = step_data.get("text", "")
+            parser_str = step_data.get("parser", "none")
+            depends_on = step_data.get("depends_on", [])
 
-            async def make_executor(cid: str, txt: str, parser: str):
-                async def execute(ctx: dict[str, Any]) -> Any:
-                    # Substitute variables
-                    formatted = txt.format(**ctx)
-                    channel = self._channel_manager.get(cid)
-                    if not channel:
-                        raise ValueError(f"Channel not found: {cid}")
-                    response = await channel.send(formatted, parser=ParserType(parser))
-                    return response.raw
+            # Get the node for this step
+            node = self._nodes.get(node_id)
+            if not node:
+                raise ValueError(f"Node not found: {node_id}")
 
-                return execute
-
-            dag.add_task(
-                Task(
-                    id=task_id,
-                    execute=await make_executor(channel_id, text, parser_str),
-                    depends_on=depends_on,
-                )
+            # Create step with input template
+            graph.add_step(
+                node=node,
+                step_id=step_id,
+                input=text,
+                depends_on=depends_on,
             )
 
-        await self._emit(EventType.DAG_STARTED, data={"dag_id": dag_id})
+        await self._emit(EventType.GRAPH_STARTED, data={"graph_id": graph_id})
 
-        # Execute with event callbacks
-        results = await dag.run(
-            on_task_start=lambda tid: asyncio.create_task(
-                self._emit(EventType.TASK_STARTED, data={"task_id": tid})
-            ),
-            on_task_complete=lambda r: asyncio.create_task(
-                self._emit(
-                    EventType.TASK_COMPLETED
-                    if r.status.name == "COMPLETED"
-                    else EventType.TASK_FAILED,
-                    data={"task_id": r.task_id, "output": str(r.output)[:500]},
+        # Create context with session
+        context = ExecutionContext(session=self._session)
+
+        # Execute graph with streaming
+        results = {}
+        async for event in graph.stream(context):
+            if event.event == "step_started":
+                await self._emit(
+                    EventType.STEP_STARTED,
+                    data={"step_id": event.step_id},
                 )
-            ),
-        )
+            elif event.event == "step_completed":
+                results[event.step_id] = event.output
+                await self._emit(
+                    EventType.STEP_COMPLETED,
+                    data={"step_id": event.step_id, "output": str(event.output)[:500]},
+                )
+            elif event.event == "step_failed":
+                await self._emit(
+                    EventType.STEP_FAILED,
+                    data={"step_id": event.step_id, "error": str(event.error)},
+                )
 
         await self._emit(
-            EventType.DAG_COMPLETED,
-            data={"dag_id": dag_id, "task_count": len(results)},
+            EventType.GRAPH_COMPLETED,
+            data={"graph_id": graph_id, "step_count": len(results)},
         )
 
         return {
-            "dag_id": dag_id,
+            "graph_id": graph_id,
             "results": {
-                tid: {"status": r.status.name, "output": str(r.output)[:500]}
-                for tid, r in results.items()
+                step_id: {"output": str(output)[:500]}
+                for step_id, output in results.items()
             },
         }
 
-    async def _cancel_dag(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Cancel a running DAG."""
-        dag_id = params["dag_id"]
+    async def _cancel_graph(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Cancel a running graph."""
+        graph_id = params["graph_id"]
 
-        task = self._running_dags.get(dag_id)
+        task = self._running_graphs.get(graph_id)
         if task:
             task.cancel()
-            del self._running_dags[dag_id]
+            del self._running_graphs[graph_id]
             return {"cancelled": True}
 
-        return {"cancelled": False, "error": "DAG not found"}
+        return {"cancelled": False, "error": "Graph not found"}
 
     # =========================================================================
     # Server Control Commands
@@ -538,41 +568,46 @@ class NerveEngine:
 
     async def _cleanup_on_shutdown(self) -> None:
         """Background cleanup during shutdown."""
-        # Cancel all running DAGs
-        for _dag_id, task in self._running_dags.items():
+        # Cancel all running graphs
+        for _graph_id, task in self._running_graphs.items():
             task.cancel()
-        self._running_dags.clear()
+        self._running_graphs.clear()
 
-        # Close all channels (this can take time)
-        await self._channel_manager.close_all()
+        # Stop all nodes
+        for node_id, node in list(self._nodes.items()):
+            try:
+                await node.stop()
+            except Exception:
+                pass  # Best effort cleanup
+        self._nodes.clear()
 
     async def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
         """Ping the server to check if it's alive."""
         return {
             "pong": True,
-            "channels": len(self._channel_manager.list()),
-            "dags": len(self._running_dags),
+            "nodes": len(self._nodes),
+            "graphs": len(self._running_graphs),
         }
 
     # =========================================================================
     # Internal
     # =========================================================================
 
-    async def _monitor_channel(self, channel: PTYChannel | WezTermChannel | ClaudeOnWezTermChannel) -> None:
-        """Monitor channel for state changes.
+    async def _monitor_node(self, node: TerminalNode) -> None:
+        """Monitor node for state changes.
 
         This runs in the background and emits events when
-        the channel state changes.
+        the node state changes.
         """
-        last_state = channel.state
+        last_state = node.state
 
-        while channel.state != ChannelState.CLOSED:
+        while node.state != NodeState.STOPPED:
             await asyncio.sleep(0.5)
 
-            if channel.state != last_state:
-                if channel.state == ChannelState.OPEN:
-                    await self._emit(EventType.CHANNEL_READY, channel_id=channel.id)
-                elif channel.state == ChannelState.BUSY:
-                    await self._emit(EventType.CHANNEL_BUSY, channel_id=channel.id)
+            if node.state != last_state:
+                if node.state == NodeState.READY:
+                    await self._emit(EventType.NODE_READY, node_id=node.id)
+                elif node.state == NodeState.BUSY:
+                    await self._emit(EventType.NODE_BUSY, node_id=node.id)
 
-                last_state = channel.state
+                last_state = node.state

@@ -1,6 +1,12 @@
 """Server protocols - Command/Event types and EventSink interface.
 
 These protocols define the contract between server and transport layers.
+
+Node-based terminology (clean break from Channel/DAG):
+- CREATE_NODE, STOP_NODE, LIST_NODES, GET_NODE (was CREATE_CHANNEL, etc.)
+- EXECUTE_GRAPH, CANCEL_GRAPH (was EXECUTE_DAG, CANCEL_DAG)
+- NODE_CREATED, NODE_STOPPED (was CHANNEL_CREATED, CHANNEL_CLOSED)
+- STEP_STARTED, STEP_COMPLETED (was TASK_STARTED, TASK_COMPLETED)
 """
 
 from __future__ import annotations
@@ -14,22 +20,22 @@ from typing import Any, Protocol
 class EventType(Enum):
     """Types of events emitted by the server."""
 
-    # Channel lifecycle
-    CHANNEL_CREATED = auto()
-    CHANNEL_READY = auto()
-    CHANNEL_BUSY = auto()
-    CHANNEL_CLOSED = auto()
+    # Node lifecycle
+    NODE_CREATED = auto()
+    NODE_READY = auto()
+    NODE_BUSY = auto()
+    NODE_STOPPED = auto()
 
     # Output
     OUTPUT_CHUNK = auto()  # Raw output chunk
     OUTPUT_PARSED = auto()  # Parsed response
 
-    # DAG execution
-    DAG_STARTED = auto()
-    TASK_STARTED = auto()
-    TASK_COMPLETED = auto()
-    TASK_FAILED = auto()
-    DAG_COMPLETED = auto()
+    # Graph execution
+    GRAPH_STARTED = auto()
+    STEP_STARTED = auto()
+    STEP_COMPLETED = auto()
+    STEP_FAILED = auto()
+    GRAPH_COMPLETED = auto()
 
     # Errors
     ERROR = auto()
@@ -41,21 +47,21 @@ class EventType(Enum):
 class CommandType(Enum):
     """Types of commands accepted by the server."""
 
-    # Channel management
-    CREATE_CHANNEL = auto()
-    CLOSE_CHANNEL = auto()
-    LIST_CHANNELS = auto()
-    GET_CHANNEL = auto()
+    # Node management
+    CREATE_NODE = auto()
+    STOP_NODE = auto()
+    LIST_NODES = auto()
+    GET_NODE = auto()
 
     # Interaction
     RUN_COMMAND = auto()  # Fire and forget - start a program
-    SEND_INPUT = auto()  # Send and wait for response
+    EXECUTE_INPUT = auto()  # Send and wait for response
     SEND_INTERRUPT = auto()
     WRITE_DATA = auto()  # Raw write (no waiting)
 
-    # DAG
-    EXECUTE_DAG = auto()
-    CANCEL_DAG = auto()
+    # Graph execution
+    EXECUTE_GRAPH = auto()
+    CANCEL_GRAPH = auto()
 
     # Query
     GET_BUFFER = auto()
@@ -72,14 +78,14 @@ class Event:
 
     Attributes:
         type: The event type.
-        channel_id: Associated channel ID (if applicable).
+        node_id: Associated node ID (if applicable).
         data: Event payload.
         timestamp: When the event occurred.
     """
 
     type: EventType
     data: dict[str, Any] = field(default_factory=dict)
-    channel_id: str | None = None
+    node_id: str | None = None
     timestamp: float = field(default_factory=time.time)
 
 

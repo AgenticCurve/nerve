@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Streaming output example - using core only.
 
-This demonstrates streaming output from a terminal channel.
+This demonstrates streaming output from a terminal node.
 
 Usage:
     python examples/core_only/streaming.py
@@ -9,34 +9,45 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, PTYChannel
+from nerve.core import ParserType
+from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.session import Session
 
 
 async def main():
-    print("Creating Claude channel...")
+    print("Creating Claude node...")
 
-    channel = await PTYChannel.create(
+    factory = NodeFactory()
+    node = await factory.create_terminal(
+        "claude",
         command="claude",
         cwd=".",
     )
 
-    print(f"Channel ready: {channel.id}")
+    # Register in session
+    session = Session()
+    session.register(node)
+
+    print(f"Node ready: {node.id}")
     print()
     print("Sending prompt and streaming response...")
     print("-" * 40)
 
     # Stream the response
-    async for chunk in channel.send_stream(
-        "Count from 1 to 5, one number per line.",
+    context = ExecutionContext(
+        session=session,
+        input="Count from 1 to 5, one number per line.",
         parser=ParserType.CLAUDE,
-    ):
+    )
+
+    async for chunk in node.execute_stream(context):
         print(chunk, end="", flush=True)
 
     print()
     print("-" * 40)
     print("Streaming complete.")
 
-    await channel.close()
+    await node.stop()
 
 
 if __name__ == "__main__":

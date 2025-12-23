@@ -164,7 +164,7 @@ def extract_text_response(response_data: dict) -> str:
     sections = response_data.get("sections", [])
     text_parts = []
     for section in sections:
-        if section.get("type") == "text":
+        if section.get("type") == "input":
             content = section.get("content", "").strip()
             if content:
                 text_parts.append(content)
@@ -245,9 +245,9 @@ async def run_dev_coach(
     print("\nCreating Developer agent...")
     result = await client.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={
-                "channel_id": "developer",
+                "node_id": "developer",
                 "command": "claude --dangerously-skip-permissions",
                 "cwd": DEV_CWD,
                 "backend": "claude-wezterm",
@@ -262,9 +262,9 @@ async def run_dev_coach(
     print("Creating Coach agent...")
     result = await client.send_command(
         Command(
-            type=CommandType.CREATE_CHANNEL,
+            type=CommandType.CREATE_NODE,
             params={
-                "channel_id": "coach",
+                "node_id": "coach",
                 "command": "claude --dangerously-skip-permissions",
                 "cwd": COACH_CWD,
                 "backend": "claude-wezterm",
@@ -297,10 +297,10 @@ async def run_dev_coach(
         print("\n[DEVELOPER: Warmup...]")
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "developer",
-                    "text": DEV_WARMUP,
+                    "node_id": "developer",
+                    "input": DEV_WARMUP,
                     "parser": "claude",
                 },
             ),
@@ -318,10 +318,10 @@ async def run_dev_coach(
         print("[COACH: Warmup...]")
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "coach",
-                    "text": COACH_WARMUP,
+                    "node_id": "coach",
+                    "input": COACH_WARMUP,
                     "parser": "claude",
                 },
             ),
@@ -350,10 +350,10 @@ async def run_dev_coach(
 
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": "developer",
-                "text": dev_initial,
+                "node_id": "developer",
+                "input": dev_initial,
                 "parser": "claude",
             },
         ),
@@ -390,10 +390,10 @@ async def run_dev_coach(
 
     result = await client.send_command(
         Command(
-            type=CommandType.SEND_INPUT,
+            type=CommandType.EXECUTE_INPUT,
             params={
-                "channel_id": "coach",
-                "text": coach_prompt,
+                "node_id": "coach",
+                "input": coach_prompt,
                 "parser": "claude",
             },
         ),
@@ -453,10 +453,10 @@ async def run_dev_coach(
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "developer",
-                    "text": dev_prompt,
+                    "node_id": "developer",
+                    "input": dev_prompt,
                     "parser": "claude",
                 },
             ),
@@ -490,10 +490,10 @@ async def run_dev_coach(
 
         result = await client.send_command(
             Command(
-                type=CommandType.SEND_INPUT,
+                type=CommandType.EXECUTE_INPUT,
                 params={
-                    "channel_id": "coach",
-                    "text": coach_prompt,
+                    "node_id": "coach",
+                    "input": coach_prompt,
                     "parser": "claude",
                 },
             ),

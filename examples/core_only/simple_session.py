@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simple channel example - using core only, no server.
+"""Simple node example - using core only, no server.
 
 This demonstrates using nerve.core directly for basic AI CLI interaction.
 No server, no transport, no events - just pure Python.
@@ -10,30 +10,40 @@ Usage:
 
 import asyncio
 
-from nerve.core import ParserType, PTYChannel
+from nerve.core import ParserType
+from nerve.core.nodes import ExecutionContext, NodeFactory
+from nerve.core.session import Session
 
 
 async def main():
-    print("Creating Claude channel...")
+    print("Creating Claude node...")
 
-    # Create a terminal channel directly using core
-    channel = await PTYChannel.create(
+    # Create a terminal node directly using core
+    factory = NodeFactory()
+    node = await factory.create_terminal(
+        "claude",
         command="claude",
         cwd=".",  # Current directory
     )
 
-    print(f"Channel created: {channel.id}")
-    print(f"State: {channel.state}")
+    # Register in session
+    session = Session()
+    session.register(node)
+
+    print(f"Node created: {node.id}")
+    print(f"State: {node.state}")
     print()
 
     # Send a simple message with Claude parsing
     print("Sending: 'What is 2 + 2?'")
     print("-" * 40)
 
-    response = await channel.send(
-        "What is 2 + 2? Reply with just the number.",
+    context = ExecutionContext(
+        session=session,
+        input="What is 2 + 2? Reply with just the number.",
         parser=ParserType.CLAUDE,
     )
+    response = await node.execute(context)
 
     print(f"Response ({len(response.sections)} sections):")
     for section in response.sections:
@@ -43,8 +53,8 @@ async def main():
         print(f"\nTokens used: {response.tokens}")
 
     # Clean up
-    await channel.close()
-    print("\nChannel closed.")
+    await node.stop()
+    print("\nNode stopped.")
 
 
 if __name__ == "__main__":

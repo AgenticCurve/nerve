@@ -4,41 +4,37 @@ Nerve provides a layered architecture for controlling AI CLI tools like
 Claude Code and Gemini CLI programmatically.
 
 Layers:
-    core/       Pure business logic (channels, parsers, DAG, sessions)
+    core/       Pure business logic (nodes, parsers, graphs, sessions)
     server/     Stateful wrapper with event emission
     transport/  Communication adapters (socket, HTTP, in-process)
     frontends/  User interfaces (CLI, SDK, MCP)
 
 Key Concepts:
-    Channel:    Something you can send input to (terminal pane, SQL conn, etc.)
-    Parser:     How to interpret output (specified per-command, not per-channel)
-    Session:    Optional grouping of channels with metadata
+    Node:       Executable unit (terminal, function, graph)
+    Graph:      Orchestrates node execution with dependencies
+    Parser:     How to interpret output (specified per-command)
+    Session:    Optional grouping of nodes with metadata
 
-Quick Start (PTY channel - you own the process):
-    >>> from nerve import PTYChannel, ParserType
+Quick Start (create a terminal node):
+    >>> from nerve.core.nodes import NodeFactory, ExecutionContext
+    >>> from nerve.core.session import Session
     >>>
-    >>> channel = await PTYChannel.create("my-claude", command="claude")
-    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
+    >>> factory = NodeFactory()
+    >>> node = await factory.create_terminal("my-node", command="claude")
+    >>> session = Session()
+    >>> session.register(node)
+    >>> context = ExecutionContext(session=session, input="Hello!")
+    >>> response = await node.execute(context)
     >>> print(response.sections)
-    >>> await channel.close()
+    >>> await node.stop()
 
-WezTerm channel (spawn new pane):
-    >>> from nerve import WezTermChannel, ParserType
+With Graph execution:
+    >>> from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
     >>>
-    >>> channel = await WezTermChannel.create("claude", command="claude")
-    >>> response = await channel.send("Hello!", parser=ParserType.CLAUDE)
-    >>> # Channel runs in a visible WezTerm pane
-
-Attach to existing WezTerm pane:
-    >>> channel = await WezTermChannel.attach("claude-pane", pane_id="4")
-
-With session grouping:
-    >>> from nerve import Session, PTYChannel, ParserType
-    >>>
-    >>> session = Session(name="my-project")
-    >>> claude = await PTYChannel.create("claude", command="claude")
-    >>> session.add("claude", claude)
-    >>> response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
+    >>> graph = Graph(id="pipeline")
+    >>> fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
+    >>> graph.add_step(fetch, step_id="fetch")
+    >>> results = await graph.execute(ExecutionContext(session=session))
 
 With server:
     >>> from nerve.server import NerveEngine
@@ -51,32 +47,42 @@ from nerve.__version__ import __version__
 # Re-export core for convenience
 from nerve.core import (
     BackendType,
-    Channel,
-    ChannelManager,
-    ChannelState,
-    ChannelType,
+    ClaudeWezTermNode,
+    ExecutionContext,
+    FunctionNode,
+    Graph,
+    Node,
+    NodeFactory,
+    NodeState,
     ParsedResponse,
     ParserType,
-    PTYChannel,
+    PTYNode,
     Section,
     Session,
     SessionManager,
     SessionState,
-    WezTermChannel,
+    Step,
+    WezTermNode,
 )
 
 __all__ = [
     "__version__",
-    # Channels
-    "Channel",
-    "ChannelState",
-    "ChannelType",
-    "PTYChannel",
-    "WezTermChannel",
+    # Nodes
+    "Node",
+    "NodeState",
+    "PTYNode",
+    "WezTermNode",
+    "ClaudeWezTermNode",
+    "FunctionNode",
+    "NodeFactory",
+    # Graph
+    "Graph",
+    "Step",
+    # Context
+    "ExecutionContext",
     # Session
     "Session",
     "SessionManager",
-    "ChannelManager",
     "SessionState",
     # Types
     "BackendType",

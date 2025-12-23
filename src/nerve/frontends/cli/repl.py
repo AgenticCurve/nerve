@@ -1,7 +1,7 @@
-"""Interactive DAG REPL for nerve.
+"""Interactive Graph REPL for nerve.
 
 Ported from wezterm's run_commands.py - provides an interactive
-environment for defining and executing DAGs.
+environment for defining and executing Graphs.
 
 Usage:
     nerve repl                    # Interactive mode
@@ -23,83 +23,89 @@ class REPLState:
 
     namespace: dict[str, Any] = field(default_factory=dict)
     history: list[str] = field(default_factory=list)
-    channels: dict[str, Any] = field(default_factory=dict)
+    nodes: dict[str, Any] = field(default_factory=dict)
 
 
 def print_help():
     """Print usage help."""
     print("""
-DAG Definition Syntax:
-----------------------
-  from nerve.core import PTYChannel, WezTermChannel, ParserType
-  from nerve.core.dag import DAG, Task
+Graph Definition Syntax:
+------------------------
+  from nerve.core import NodeFactory, ParserType
+  from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
+  from nerve.core.session import Session
 
-  # Create channels (PTY - you own the process)
-  claude = await PTYChannel.create("claude", command="claude")
-  gemini = await PTYChannel.create("gemini", command="gemini")
+  # Create nodes using factory
+  factory = NodeFactory()
+  claude = await factory.create_terminal("claude", command="claude")
+  gemini = await factory.create_terminal("gemini", command="gemini")
 
-  # Or use WezTerm (visible panes)
-  claude = await WezTermChannel.create("claude", command="claude")
+  # Register in session
+  session = Session()
+  session.register(claude)
+  session.register(gemini)
 
-  # Define tasks (parser specified per-send)
-  dag = DAG()
+  # Define graph with function nodes
+  graph = Graph(id="pipeline")
 
-  dag.add_task(Task(
-      id="ask",
-      execute=lambda ctx: claude.send("Hello!", parser=ParserType.CLAUDE),
-  ))
+  graph.add_step(
+      FunctionNode(id="ask", fn=lambda ctx: claude.execute(
+          ExecutionContext(session=session, input="Hello!", parser=ParserType.CLAUDE)
+      )),
+      step_id="ask",
+  )
 
-  dag.add_task(Task(
-      id="respond",
-      execute=lambda ctx: gemini.send(f"Reply to: {ctx['ask'].raw}", parser=ParserType.GEMINI),
+  graph.add_step(
+      FunctionNode(id="respond", fn=lambda ctx: gemini.execute(
+          ExecutionContext(session=session, input=f"Reply to: {ctx.upstream['ask'].raw}",
+                           parser=ParserType.GEMINI)
+      )),
+      step_id="respond",
       depends_on=["ask"],
-  ))
-
-  # Chain shorthand
-  dag.chain("ask", "respond")
+  )
 
   # Execute
-  results = await dag.run()
+  results = await graph.execute(ExecutionContext(session=session))
 
 Commands:
 ---------
   help      - Show this help
-  channels  - List active channels
-  clear     - Clear namespace and channels
-  show      - Show current DAG
-  validate  - Validate current DAG
+  nodes     - List active nodes
+  clear     - Clear namespace and nodes
+  show      - Show current Graph
+  validate  - Validate current Graph
   dry       - Dry run (show execution order)
-  run       - Execute the DAG
+  run       - Execute the Graph
   exit      - Exit the REPL
 """)
 
 
-def print_channels(state: REPLState):
-    """Print active channels."""
-    if not state.channels:
-        print("No active channels")
+def print_nodes(state: REPLState):
+    """Print active nodes."""
+    if not state.nodes:
+        print("No active nodes")
         return
 
-    print("\nActive Channels:")
+    print("\nActive Nodes:")
     print("-" * 40)
-    for name, channel in state.channels.items():
-        state_name = channel.state.name if hasattr(channel, "state") else "?"
+    for name, node in state.nodes.items():
+        state_name = node.state.name if hasattr(node, "state") else "?"
         print(f"  {name}: {state_name}")
     print("-" * 40)
 
 
-def print_dag(dag):
-    """Print DAG structure."""
-    if not dag or not dag.list_tasks():
-        print("No tasks defined")
+def print_graph(graph):
+    """Print Graph structure."""
+    if not graph or not graph.list_steps():
+        print("No steps defined")
         return
 
-    print("\nDAG Structure:")
+    print("\nGraph Structure:")
     print("-" * 40)
-    for task_id in dag.list_tasks():
-        task = dag.get_task(task_id)
-        deps = task.depends_on if task else []
-        print(f"  {task_id}")
+    for step_id in graph.list_steps():
+        step = graph.get_step(step_id)
+        deps = step.depends_on if step else []
+        print(f"  {step_id}")
         if deps:
             print(f"    depends on: {', '.join(deps)}")
     print("-" * 40)
@@ -108,7 +114,7 @@ def print_dag(dag):
 async def run_interactive(
     state: REPLState | None = None,
 ):
-    """Run interactive DAG definition mode.
+    """Run interactive Graph definition mode.
 
     Args:
         state: Optional REPL state to resume from.
@@ -137,31 +143,42 @@ async def run_interactive(
         pass
 
     # Lazy import to avoid circular deps
-    from nerve.core import BackendType, ParserType, PTYChannel, WezTermChannel
-    from nerve.core.dag import DAG, Task
+    from nerve.core import BackendType, ParserType
+    from nerve.core.nodes import (
+        ExecutionContext,
+        FunctionNode,
+        Graph,
+        NodeFactory,
+        PTYNode,
+        WezTermNode,
+    )
+    from nerve.core.session import Session
 
     # Initialize namespace with nerve imports
     state.namespace = {
         "asyncio": asyncio,
-        "DAG": DAG,
-        "Task": Task,
-        "PTYChannel": PTYChannel,
-        "WezTermChannel": WezTermChannel,
+        "Graph": Graph,
+        "FunctionNode": FunctionNode,
+        "ExecutionContext": ExecutionContext,
+        "NodeFactory": NodeFactory,
+        "PTYNode": PTYNode,
+        "WezTermNode": WezTermNode,
+        "Session": Session,
         "ParserType": ParserType,
         "BackendType": BackendType,
-        "channels": state.channels,  # Channel tracking dict
+        "nodes": state.nodes,  # Node tracking dict
         "_state": state,
     }
 
-    # Track current DAG
-    current_dag: DAG | None = None
+    # Track current Graph
+    current_graph: Graph | None = None
 
     print("=" * 50)
-    print("Nerve DAG REPL - Interactive Mode")
+    print("Nerve Graph REPL - Interactive Mode")
     print("=" * 50)
     print("\nType 'help' for syntax guide.")
-    print("Use PTYChannel or WezTermChannel to create channels")
-    print("Commands: help, channels, clear, show, validate, dry, run, exit")
+    print("Use NodeFactory to create terminal nodes")
+    print("Commands: help, nodes, clear, show, validate, dry, run, exit")
     print("-" * 50)
 
     buffer = ""
@@ -191,23 +208,23 @@ async def run_interactive(
             if cmd == "help":
                 print_help()
                 continue
-            elif cmd == "channels":
-                print_channels(state)
+            elif cmd == "nodes":
+                print_nodes(state)
                 continue
             elif cmd == "clear":
-                state.channels.clear()
-                state.namespace["channels"] = state.channels
-                current_dag = None
-                print("Cleared channels and DAG")
+                state.nodes.clear()
+                state.namespace["nodes"] = state.nodes
+                current_graph = None
+                print("Cleared nodes and Graph")
                 continue
             elif cmd == "show":
-                dag = state.namespace.get("dag") or current_dag
-                print_dag(dag)
+                graph = state.namespace.get("graph") or current_graph
+                print_graph(graph)
                 continue
             elif cmd == "validate":
-                dag = state.namespace.get("dag") or current_dag
-                if dag:
-                    errors = dag.validate()
+                graph = state.namespace.get("graph") or current_graph
+                if graph:
+                    errors = graph.validate()
                     if errors:
                         print("Validation FAILED:")
                         for e in errors:
@@ -215,40 +232,37 @@ async def run_interactive(
                     else:
                         print("Validation PASSED")
                 else:
-                    print("No DAG defined")
+                    print("No Graph defined")
                 continue
             elif cmd == "dry":
-                dag = state.namespace.get("dag") or current_dag
-                if dag:
+                graph = state.namespace.get("graph") or current_graph
+                if graph:
                     try:
-                        order = dag.execution_order()
+                        order = graph.execution_order()
                         print("\nExecution order:")
-                        for i, tid in enumerate(order, 1):
-                            print(f"  [{i}] {tid}")
+                        for i, step_id in enumerate(order, 1):
+                            print(f"  [{i}] {step_id}")
                     except ValueError as e:
                         print(f"Error: {e}")
                 else:
-                    print("No DAG defined")
+                    print("No Graph defined")
                 continue
             elif cmd == "run":
-                dag = state.namespace.get("dag") or current_dag
-                if dag:
+                graph = state.namespace.get("graph") or current_graph
+                if graph:
                     try:
-                        print("\nExecuting DAG...")
+                        print("\nExecuting Graph...")
+                        session = state.namespace.get("session") or Session()
+                        context = ExecutionContext(session=session)
                         results = asyncio.get_event_loop().run_until_complete(
-                            dag.run(
-                                on_task_start=lambda tid: print(f"  Starting: {tid}"),
-                                on_task_complete=lambda r: print(
-                                    f"  Completed: {r.task_id} ({r.status.name})"
-                                ),
-                            )
+                            graph.execute(context)
                         )
                         state.namespace["_results"] = results
                         print("\nResults stored in '_results'")
                     except Exception as e:
                         print(f"Error: {e}")
                 else:
-                    print("No DAG defined")
+                    print("No Graph defined")
                 continue
             elif cmd in ("exit", "quit"):
                 print("Exiting...")
@@ -285,15 +299,15 @@ async def run_interactive(
                 else:
                     exec(code, state.namespace)
 
-                # Track channels created
+                # Track nodes created
                 for name, value in state.namespace.items():
-                    if hasattr(value, "channel_type") and hasattr(value, "state"):
-                        if name not in ("PTYChannel", "WezTermChannel", "ParserType"):
-                            state.channels[name] = value
+                    if hasattr(value, "state") and hasattr(value, "execute"):
+                        if name not in ("PTYNode", "WezTermNode", "ParserType", "FunctionNode"):
+                            state.nodes[name] = value
 
-                # Track DAG
-                if "dag" in state.namespace:
-                    current_dag = state.namespace["dag"]
+                # Track Graph
+                if "graph" in state.namespace:
+                    current_graph = state.namespace["graph"]
 
             except Exception as e:
                 print(f"Error: {e}")
@@ -309,21 +323,32 @@ async def run_from_file(
     filepath: str,
     dry_run: bool = False,
 ):
-    """Load and run DAG from a Python file.
+    """Load and run Graph from a Python file.
 
     Args:
-        filepath: Path to Python file containing DAG definition.
+        filepath: Path to Python file containing Graph definition.
         dry_run: If True, only show execution order.
     """
-    from nerve.core import BackendType, ParserType, PTYChannel, WezTermChannel
-    from nerve.core.dag import DAG, Task
+    from nerve.core import BackendType, ParserType
+    from nerve.core.nodes import (
+        ExecutionContext,
+        FunctionNode,
+        Graph,
+        NodeFactory,
+        PTYNode,
+        WezTermNode,
+    )
+    from nerve.core.session import Session
 
     namespace = {
         "asyncio": asyncio,
-        "DAG": DAG,
-        "Task": Task,
-        "PTYChannel": PTYChannel,
-        "WezTermChannel": WezTermChannel,
+        "Graph": Graph,
+        "FunctionNode": FunctionNode,
+        "ExecutionContext": ExecutionContext,
+        "NodeFactory": NodeFactory,
+        "PTYNode": PTYNode,
+        "WezTermNode": WezTermNode,
+        "Session": Session,
         "ParserType": ParserType,
         "BackendType": BackendType,
         "__name__": "__nerve_repl__",
@@ -339,22 +364,21 @@ async def run_from_file(
         # Execute the file
         exec(compile(code, filepath, "exec"), namespace)
 
-        # Look for a DAG to run
-        dag = namespace.get("dag")
-        if dag:
+        # Look for a Graph to run
+        graph = namespace.get("graph")
+        if graph:
             if dry_run:
                 print("\n[DRY RUN]")
-                order = dag.execution_order()
-                for i, tid in enumerate(order, 1):
-                    print(f"  [{i}] {tid}")
+                order = graph.execution_order()
+                for i, step_id in enumerate(order, 1):
+                    print(f"  [{i}] {step_id}")
             else:
-                print("\nExecuting DAG...")
-                await dag.run(
-                    on_task_start=lambda tid: print(f"  Starting: {tid}"),
-                    on_task_complete=lambda r: print(f"  Completed: {r.task_id} ({r.status.name})"),
-                )
+                print("\nExecuting Graph...")
+                session = namespace.get("session") or Session()
+                context = ExecutionContext(session=session)
+                await graph.execute(context)
         else:
-            print("No 'dag' variable found in file")
+            print("No 'graph' variable found in file")
 
     except FileNotFoundError:
         print(f"Error: File not found: {filepath}")
@@ -367,12 +391,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Nerve DAG REPL - Interactive DAG definition and execution"
+        description="Nerve Graph REPL - Interactive Graph definition and execution"
     )
     parser.add_argument(
         "file",
         nargs="?",
-        help="Python file containing DAG definition",
+        help="Python file containing Graph definition",
     )
     parser.add_argument(
         "--dry-run",

@@ -12,69 +12,89 @@ It's just pure Python primitives that can be used anywhere:
 - As building blocks for servers
 
 Architecture:
-    channels/   Channel abstraction (PTY, WezTerm, SQL, HTTP)
-    pty/        PTY/WezTerm backends for terminal channels
+    nodes/      Node abstraction (PTYNode, WezTermNode, FunctionNode, Graph)
+    channels/   History persistence (HistoryWriter, HistoryReader)
+    pty/        PTY/WezTerm backends for terminal nodes
     parsers/    Output parsers (Claude, Gemini, None)
     session/    Session grouping and management
-    dag/        DAG task orchestration
     types       Pure data types
 
 Key Concepts:
-    Channel:    Something you can send input to (terminal pane, SQL conn, etc.)
-    Parser:     How to interpret output (specified per-command, not per-channel)
-    Session:    Optional grouping of channels with metadata
+    Node:       Executable unit (terminal, function, graph)
+    Graph:      Orchestrates node execution with dependencies
+    Parser:     How to interpret output (specified per-command)
+    Session:    Optional grouping of nodes with metadata
 
-Example (PTY channel - you own the process):
-    >>> from nerve.core import PTYChannel, ParserType
+Example (PTY node - you own the process):
+    >>> from nerve.core.nodes import NodeFactory, ExecutionContext
+    >>> from nerve.core.session import Session
     >>>
     >>> async def main():
-    ...     channel = await PTYChannel.create("my-claude", command="claude")
-    ...     response = await channel.send("Hello!", parser=ParserType.CLAUDE)
+    ...     factory = NodeFactory()
+    ...     node = await factory.create_terminal("my-node", command="claude")
+    ...     session = Session()
+    ...     session.register(node)
+    ...     context = ExecutionContext(session=session, input="Hello!")
+    ...     response = await node.execute(context)
     ...     print(response.sections)
-    ...     await channel.close()
+    ...     await node.stop()
 
-Example (WezTerm channel - attach to existing pane):
-    >>> from nerve.core import WezTermChannel, ParserType
+Example (Graph execution):
+    >>> from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
+    >>> from nerve.core.session import Session
     >>>
     >>> async def main():
-    ...     channel = await WezTermChannel.attach("claude-pane", pane_id="4")
-    ...     response = await channel.send("Hello!", parser=ParserType.CLAUDE)
-    ...     print(response.sections)
-    ...     await channel.close()
-
-Example (with session grouping):
-    >>> from nerve.core import Session, PTYChannel, ParserType
-    >>>
-    >>> async def main():
-    ...     session = Session(name="my-project")
-    ...
-    ...     claude = await PTYChannel.create("claude", command="claude")
-    ...     shell = await PTYChannel.create("shell", command="bash")
-    ...
-    ...     session.add("claude", claude)
-    ...     session.add("shell", shell)
-    ...
-    ...     response = await session.send("claude", "Hello!", parser=ParserType.CLAUDE)
-    ...     await session.close()
+    ...     graph = Graph(id="my-pipeline")
+    ...     fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
+    ...     graph.add_step(fetch, step_id="fetch")
+    ...     session = Session()
+    ...     results = await graph.execute(ExecutionContext(session=session))
 """
 
-from nerve.core.channels import (
-    Channel,
-    ChannelConfig,
-    ChannelInfo,
-    ChannelState,
-    ChannelType,
-    PTYChannel,
-    PTYConfig,
-    WezTermChannel,
-    WezTermConfig,
+# Nodes
+from nerve.core.nodes import (
+    BackendType,
+    Budget,
+    BudgetExceededError,
+    CancelledException,
+    CancellationToken,
+    ClaudeWezTermNode,
+    ErrorPolicy,
+    ExecutionContext,
+    ExecutionTrace,
+    FunctionNode,
+    Graph,
+    Node,
+    NodeConfig,
+    NodeFactory,
+    NodeInfo,
+    NodeState,
+    PersistentNode,
+    PTYNode,
+    ResourceUsage,
+    Step,
+    StepEvent,
+    StepTrace,
+    TerminalNode,
+    WezTermNode,
 )
-from nerve.core.dag import DAG, Task, TaskStatus
+
+# History
+from nerve.core.channels import (
+    HISTORY_BUFFER_LINES,
+    HistoryError,
+    HistoryReader,
+    HistoryWriter,
+)
+
+# Parsers
 from nerve.core.parsers import ClaudeParser, GeminiParser, NoneParser, get_parser
+
+# PTY backends
 from nerve.core.pty import (
     Backend,
     BackendConfig,
-    BackendType,
+    BackendType as PTYBackendType,
     PTYBackend,
     PTYConfig,
     PTYManager,
@@ -83,44 +103,68 @@ from nerve.core.pty import (
     get_backend,
     is_wezterm_available,
 )
+
+# Session
 from nerve.core.session import (
-    ChannelManager,
     Session,
     SessionManager,
     SessionMetadata,
     SessionStore,
     get_default_store,
 )
+
+# Types
 from nerve.core.types import (
     ParsedResponse,
     ParserType,
     Section,
     SessionState,
-    TaskResult,
 )
 
 
 __all__ = [
-    # Channel abstraction
-    "Channel",
-    "ChannelState",
-    "ChannelType",
-    "ChannelConfig",
-    "ChannelInfo",
-    # Channel types
-    "PTYChannel",
-    "PTYConfig",
-    "WezTermChannel",
-    "WezTermConfig",
+    # Node abstraction
+    "Node",
+    "NodeState",
+    "NodeConfig",
+    "NodeInfo",
+    "PersistentNode",
+    "FunctionNode",
+    # Graph
+    "Graph",
+    "Step",
+    "StepEvent",
+    # Terminal nodes
+    "PTYNode",
+    "WezTermNode",
+    "ClaudeWezTermNode",
+    "TerminalNode",
+    # Factory
+    "NodeFactory",
+    "BackendType",
+    # Context
+    "ExecutionContext",
+    # Agent capabilities
+    "ErrorPolicy",
+    "Budget",
+    "ResourceUsage",
+    "BudgetExceededError",
+    "CancellationToken",
+    "CancelledException",
+    "StepTrace",
+    "ExecutionTrace",
+    # History
+    "HistoryWriter",
+    "HistoryReader",
+    "HistoryError",
+    "HISTORY_BUFFER_LINES",
     # Types
     "ParserType",
     "SessionState",
     "Section",
     "ParsedResponse",
-    "TaskResult",
     # Session
     "Session",
-    "ChannelManager",
     "SessionManager",
     "SessionMetadata",
     "SessionStore",
@@ -128,7 +172,7 @@ __all__ = [
     # Backends
     "Backend",
     "BackendConfig",
-    "BackendType",
+    "PTYBackendType",
     "get_backend",
     "PTYBackend",
     "WezTermBackend",
@@ -142,8 +186,4 @@ __all__ = [
     "GeminiParser",
     "NoneParser",
     "get_parser",
-    # DAG
-    "DAG",
-    "Task",
-    "TaskStatus",
 ]
