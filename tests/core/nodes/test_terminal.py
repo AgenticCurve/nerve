@@ -440,8 +440,13 @@ class TestWezTermNode:
 
             await node.run("claude")
 
-            # run() should write command with newline
-            mock_backend.write.assert_called_with("claude\n")
+            # run() should write command, then \r separately (WezTerm pattern)
+            calls = mock_backend.write.call_args_list
+            assert len(calls) >= 2
+            # Find the command and \r calls (may have other writes before)
+            call_values = [c[0][0] for c in calls]
+            assert "claude" in call_values
+            assert "\r" in call_values
             await node.stop()
 
     @pytest.mark.asyncio
@@ -666,8 +671,13 @@ class TestClaudeWezTermNode:
 
             await node.run("python -m mymodule")
 
-            # run() should write command with newline
-            mock_backend.write.assert_called_with("python -m mymodule\n")
+            # run() should write command, then \r separately (WezTerm pattern)
+            calls = mock_backend.write.call_args_list
+            assert len(calls) >= 2
+            # Find the command and \r calls (may have other writes before)
+            call_values = [c[0][0] for c in calls]
+            assert "python -m mymodule" in call_values
+            assert "\r" in call_values
             await node.stop()
 
     @pytest.mark.asyncio

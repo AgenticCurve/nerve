@@ -822,7 +822,10 @@ class WezTermNode:
         Args:
             command: Command to start.
         """
-        await self.backend.write(command + "\n")
+        # WezTerm needs text and \r sent separately with a delay
+        await self.backend.write(command)
+        await asyncio.sleep(0.1)
+        await self.backend.write("\r")
 
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_run(command)
@@ -1178,7 +1181,10 @@ class ClaudeWezTermNode:
         Args:
             command: Command to start.
         """
-        await self._inner.backend.write(command + "\n")
+        # WezTerm needs text and \r sent separately with a delay
+        await self._inner.backend.write(command)
+        await asyncio.sleep(0.1)
+        await self._inner.backend.write("\r")
 
         if self._history_writer and self._history_writer.enabled:
             self._history_writer.log_run(command)
