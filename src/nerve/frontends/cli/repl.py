@@ -194,14 +194,14 @@ class RemoteSessionAdapter:
         return []
 
     async def get_graph(self, graph_id: str):
-        """Get graph from server - returns None (graphs are session-bound).
+        """Get graph - not supported in remote mode.
 
-        NOTE: Graphs cannot be transferred from server to client because they
-        must be bound to a session. Graphs exist only on the server.
-        Use server-side execution instead.
+        In remote mode, REPL commands (show, dry, validate) are executed
+        entirely on the server via EXECUTE_REPL_COMMAND. This method is
+        only used by local mode.
+
+        Returns None to indicate graphs are not accessible client-side.
         """
-        # Graphs are now session-bound and cannot be reconstructed client-side
-        # They must be accessed and executed on the server where they were created
         return None
 
     async def delete_node(self, node_id: str) -> bool:
@@ -602,64 +602,139 @@ async def run_interactive(
 
             elif cmd == "show":
                 # show [graph-name] - show specific graph or default 'graph' variable
-                graph = None
-                if len(parts) > 1:
-                    graph_name = parts[1]
-                    graph = await adapter.get_graph(graph_name)
-                    if not graph:
-                        print(f"Graph not found: {graph_name}")
+                if not python_exec_enabled:
+                    # SERVER MODE - Send to server
+                    from nerve.server.protocols import Command, CommandType
+
+                    if len(parts) < 2:
+                        print("Usage: show <graph-name>")
                         continue
+
+                    params = {"command": "show", "args": [parts[1]]}
+                    if adapter.session_id:
+                        params["session_id"] = adapter.session_id
+
+                    result = await adapter.client.send_command(
+                        Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
+                    )
+
+                    if result.success:
+                        if result.data.get("output"):
+                            print(result.data["output"], end="")
+                        if result.data.get("error"):
+                            print(f"Error: {result.data['error']}")
+                    else:
+                        print(f"Command failed: {result.error}")
                 else:
-                    graph = state.namespace.get("graph") or current_graph
-                print_graph(graph)
+                    # LOCAL MODE - Execute locally
+                    graph = None
+                    if len(parts) > 1:
+                        graph_name = parts[1]
+                        graph = await adapter.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                    else:
+                        graph = state.namespace.get("graph") or current_graph
+                    print_graph(graph)
                 continue
 
             elif cmd == "validate":
                 # validate [graph-name] - validate specific graph or default
-                graph = None
-                if len(parts) > 1:
-                    graph_name = parts[1]
-                    graph = await adapter.get_graph(graph_name)
-                    if not graph:
-                        print(f"Graph not found: {graph_name}")
-                        continue
-                else:
-                    graph = state.namespace.get("graph") or current_graph
+                if not python_exec_enabled:
+                    # SERVER MODE - Send to server
+                    from nerve.server.protocols import Command, CommandType
 
-                if graph:
-                    errors = graph.validate()
-                    if errors:
-                        print("Validation FAILED:")
-                        for e in errors:
-                            print(f"  - {e}")
+                    if len(parts) < 2:
+                        print("Usage: validate <graph-name>")
+                        continue
+
+                    params = {"command": "validate", "args": [parts[1]]}
+                    if adapter.session_id:
+                        params["session_id"] = adapter.session_id
+
+                    result = await adapter.client.send_command(
+                        Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
+                    )
+
+                    if result.success:
+                        if result.data.get("output"):
+                            print(result.data["output"], end="")
+                        if result.data.get("error"):
+                            print(f"Error: {result.data['error']}")
                     else:
-                        print("Validation PASSED")
+                        print(f"Command failed: {result.error}")
                 else:
-                    print("No Graph defined")
+                    # LOCAL MODE - Execute locally
+                    graph = None
+                    if len(parts) > 1:
+                        graph_name = parts[1]
+                        graph = await adapter.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                    else:
+                        graph = state.namespace.get("graph") or current_graph
+
+                    if graph:
+                        errors = graph.validate()
+                        if errors:
+                            print("Validation FAILED:")
+                            for e in errors:
+                                print(f"  - {e}")
+                        else:
+                            print("Validation PASSED")
+                    else:
+                        print("No Graph defined")
                 continue
 
             elif cmd == "dry":
                 # dry [graph-name] - dry run specific graph or default
-                graph = None
-                if len(parts) > 1:
-                    graph_name = parts[1]
-                    graph = await adapter.get_graph(graph_name)
-                    if not graph:
-                        print(f"Graph not found: {graph_name}")
-                        continue
-                else:
-                    graph = state.namespace.get("graph") or current_graph
+                if not python_exec_enabled:
+                    # SERVER MODE - Send to server
+                    from nerve.server.protocols import Command, CommandType
 
-                if graph:
-                    try:
-                        order = graph.execution_order()
-                        print("\nExecution order:")
-                        for i, step_id in enumerate(order, 1):
-                            print(f"  [{i}] {step_id}")
-                    except ValueError as e:
-                        print(f"Error: {e}")
+                    if len(parts) < 2:
+                        print("Usage: dry <graph-name>")
+                        continue
+
+                    params = {"command": "dry", "args": [parts[1]]}
+                    if adapter.session_id:
+                        params["session_id"] = adapter.session_id
+
+                    result = await adapter.client.send_command(
+                        Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
+                    )
+
+                    if result.success:
+                        if result.data.get("output"):
+                            print(result.data["output"], end="")
+                        if result.data.get("error"):
+                            print(f"Error: {result.data['error']}")
+                    else:
+                        print(f"Command failed: {result.error}")
                 else:
-                    print("No Graph defined")
+                    # LOCAL MODE - Execute locally
+                    graph = None
+                    if len(parts) > 1:
+                        graph_name = parts[1]
+                        graph = await adapter.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                    else:
+                        graph = state.namespace.get("graph") or current_graph
+
+                    if graph:
+                        try:
+                            order = graph.execution_order()
+                            print("\nExecution order:")
+                            for i, step_id in enumerate(order, 1):
+                                print(f"  [{i}] {step_id}")
+                        except ValueError as e:
+                            print(f"Error: {e}")
+                    else:
+                        print("No Graph defined")
                 continue
 
             elif cmd == "run":

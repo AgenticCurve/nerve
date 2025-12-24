@@ -118,6 +118,7 @@ class NerveEngine:
             CommandType.RUN_COMMAND: self._run_command,
             CommandType.EXECUTE_INPUT: self._execute_input,
             CommandType.EXECUTE_PYTHON: self._execute_python,
+            CommandType.EXECUTE_REPL_COMMAND: self._execute_repl_command,
             CommandType.SEND_INTERRUPT: self._send_interrupt,
             CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
@@ -518,6 +519,119 @@ class NerveEngine:
                 "output": "",
                 "error": f"SyntaxError: {e}",
             }
+        except Exception as e:
+            import traceback
+
+            return {
+                "output": "",
+                "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
+            }
+
+    async def _execute_repl_command(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute REPL command (show, dry, validate, etc.) on server.
+
+        Args:
+            params: Must contain "command" (command name like "show", "dry").
+                    May contain "args" (list of command arguments).
+                    May contain "session_id" (uses default if not provided).
+
+        Returns:
+            dict with "output" (formatted command output) and "error" (if any).
+        """
+        import io
+
+        session = self._get_session(params)
+        command = params.get("command", "")
+        args = params.get("args", [])
+
+        try:
+            output_buffer = io.StringIO()
+
+            if command == "show":
+                # show [graph-name]
+                graph_id = args[0] if args else None
+                graph = session.get_graph(graph_id) if graph_id else None
+
+                if not graph:
+                    return {"output": "", "error": f"Graph not found: {graph_id}"}
+
+                if not graph.list_steps():
+                    output_buffer.write("No steps defined\n")
+                else:
+                    output_buffer.write("\nGraph Structure:\n")
+                    output_buffer.write("-" * 40 + "\n")
+                    for step_id in graph.list_steps():
+                        step = graph.get_step(step_id)
+                        deps = step.depends_on if step else []
+                        output_buffer.write(f"  {step_id}\n")
+                        if deps:
+                            output_buffer.write(f"    depends on: {', '.join(deps)}\n")
+                    output_buffer.write("-" * 40 + "\n")
+
+            elif command == "dry":
+                # dry [graph-name]
+                graph_id = args[0] if args else None
+                graph = session.get_graph(graph_id) if graph_id else None
+
+                if not graph:
+                    return {"output": "", "error": f"Graph not found: {graph_id}"}
+
+                try:
+                    order = graph.execution_order()
+                    output_buffer.write("\nExecution order:\n")
+                    for i, step_id in enumerate(order, 1):
+                        output_buffer.write(f"  [{i}] {step_id}\n")
+                except ValueError as e:
+                    return {"output": "", "error": str(e)}
+
+            elif command == "validate":
+                # validate [graph-name]
+                graph_id = args[0] if args else None
+                graph = session.get_graph(graph_id) if graph_id else None
+
+                if not graph:
+                    return {"output": "", "error": f"Graph not found: {graph_id}"}
+
+                errors = graph.validate()
+                if errors:
+                    output_buffer.write("Validation FAILED:\n")
+                    for e in errors:
+                        output_buffer.write(f"  - {e}\n")
+                else:
+                    output_buffer.write("Validation PASSED\n")
+
+            elif command == "list":
+                # list [nodes|graphs]
+                what = args[0] if args else "nodes"
+
+                if what == "graphs":
+                    graphs = session.list_graphs()
+                    if graphs:
+                        output_buffer.write("\nGraphs:\n")
+                        for g in graphs:
+                            output_buffer.write(f"  - {g}\n")
+                    else:
+                        output_buffer.write("No graphs defined\n")
+                else:  # nodes
+                    if session.nodes:
+                        output_buffer.write("\nNodes:\n")
+                        for name, node in session.nodes.items():
+                            if hasattr(node, "state"):
+                                info = node.state.name
+                            else:
+                                info = type(node).__name__
+                            output_buffer.write(f"  {name}: {info}\n")
+                    else:
+                        output_buffer.write("No nodes defined\n")
+
+            else:
+                return {"output": "", "error": f"Unknown REPL command: {command}"}
+
+            return {
+                "output": output_buffer.getvalue(),
+                "error": None,
+            }
+
         except Exception as e:
             import traceback
 

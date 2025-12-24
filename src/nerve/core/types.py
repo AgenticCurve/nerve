@@ -60,6 +60,41 @@ class Section:
             return self.content if self.content else None
         return self.metadata.get("result")
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary with complete data (no truncation).
+
+        Returns:
+            Dict with all section data, suitable for JSON serialization.
+        """
+        return {
+            "type": self.type,
+            "content": self.content,
+            "metadata": self.metadata,
+        }
+
+    def __repr__(self) -> str:
+        """Compact representation for REPL display."""
+        # Truncate content for readability
+        max_len = 60
+        content_preview = self.content[:max_len]
+        if len(self.content) > max_len:
+            content_preview += "..."
+
+        # Show metadata if present
+        meta_str = ""
+        if self.metadata:
+            meta_keys = list(self.metadata.keys())
+            if len(meta_keys) <= 2:
+                meta_str = f", metadata={dict(self.metadata)}"
+            else:
+                meta_str = f", metadata={{{', '.join(meta_keys[:2])}, ...}}"
+
+        return f"Section(type={self.type!r}, content={content_preview!r}{meta_str})"
+
+    def __str__(self) -> str:
+        """Human-readable representation."""
+        return f"[{self.type}] {self.content[:100]}{'...' if len(self.content) > 100 else ''}"
+
 
 @dataclass(frozen=True)
 class ParsedResponse:
@@ -88,3 +123,55 @@ class ParsedResponse:
         """
         text_sections = [s.content for s in self.sections if s.type == "text"]
         return " ".join(text_sections).strip()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary with complete data (no truncation).
+
+        Returns:
+            Dict with all response data, suitable for JSON serialization.
+            Includes the computed 'text' property for convenience.
+        """
+        return {
+            "raw": self.raw,
+            "sections": [s.to_dict() for s in self.sections],
+            "is_complete": self.is_complete,
+            "is_ready": self.is_ready,
+            "tokens": self.tokens,
+            "text": self.text,  # Include computed property
+        }
+
+    def __repr__(self) -> str:
+        """Compact representation for REPL display."""
+        # Summarize sections
+        section_summary = {}
+        for s in self.sections:
+            section_summary[s.type] = section_summary.get(s.type, 0) + 1
+
+        sections_str = ", ".join(f"{count}×{stype}" for stype, count in section_summary.items())
+
+        # Truncate text preview
+        text_preview = self.text[:80]
+        if len(self.text) > 80:
+            text_preview += "..."
+
+        # Token info
+        token_str = f", tokens={self.tokens}" if self.tokens else ""
+
+        return (
+            f"ParsedResponse("
+            f"text={text_preview!r}, "
+            f"sections=[{sections_str}]"
+            f"{token_str})"
+        )
+
+    def __str__(self) -> str:
+        """Human-readable representation."""
+        lines = [
+            "ParsedResponse:",
+            f"  Text: {self.text[:150]}{'...' if len(self.text) > 150 else ''}",
+            f"  Sections: {len(self.sections)} ({', '.join(s.type for s in self.sections)})",
+            f"  Complete: {self.is_complete}, Ready: {self.is_ready}",
+        ]
+        if self.tokens:
+            lines.append(f"  Tokens: {self.tokens}")
+        return "\n".join(lines)
