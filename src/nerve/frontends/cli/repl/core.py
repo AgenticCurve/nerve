@@ -283,14 +283,14 @@ async def run_interactive(
                         if not node:
                             print(f"Node not found: {node_name}")
                             continue
-                        if hasattr(node, "read_buffer"):
+                        if hasattr(node, "read"):
                             try:
-                                buffer_content = await run_async_operation(node.read_buffer())
+                                buffer_content = await run_async_operation(node.read())
                                 print(buffer_content)
                             except Exception as e:
                                 print(f"Error: {e}")
                         else:
-                            print("Node does not support read_buffer")
+                            print("Node does not support read")
                     continue
 
                 elif cmd == "stop":
