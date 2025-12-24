@@ -91,7 +91,7 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
                         last_input = last_input[:30]
                     click.echo(f"{name:<20} {backend:<18} {state:<10} {last_input}")
             else:
-                session_name = result.data.get("name", "default") if result.data else "default"
+                session_name = result.data.get("name", "default")
                 click.echo(f"No nodes in session '{session_name}'")
         else:
             click.echo(f"Error: {result.error}", err=True)

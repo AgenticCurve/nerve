@@ -114,10 +114,6 @@ class OpenAITransformer:
                 else:
                     content = msg.content if msg.content else ""
 
-                # Ensure content is never an empty list (OpenAI rejects this)
-                if content == [] or content is None:
-                    content = ""
-
                 messages.append(
                     {
                         "role": msg.role,

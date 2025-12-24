@@ -147,10 +147,14 @@ class BashNode:
                 # Decode output
                 result["stdout"] = stdout_bytes.decode('utf-8', errors='replace')
                 result["stderr"] = stderr_bytes.decode('utf-8', errors='replace')
-                result["exit_code"] = proc.returncode or 0
+                result["exit_code"] = proc.returncode
 
-                # Check if interrupted (SIGINT exit codes: -2 or 130)
-                if proc.returncode in (-2, 130):
+                # Handle exit code
+                if proc.returncode is None:
+                    # Should not happen after communicate(), but handle explicitly
+                    result["error"] = "Process ended without exit code"
+                elif proc.returncode in (-2, 130):
+                    # Interrupted (SIGINT exit codes)
                     result["interrupted"] = True
                     result["error"] = "Command interrupted (Ctrl+C)"
                 elif proc.returncode == 0:

@@ -46,7 +46,7 @@ def get_parser(parser_type: ParserType) -> Parser:
     Raises:
         ValueError: If parser type is not supported.
     """
-    parsers: dict[ParserType, type[ClaudeParser] | type[GeminiParser] | type[NoneParser]] = {
+    parsers: dict[ParserType, type[Parser]] = {
         ParserType.CLAUDE: ClaudeParser,
         ParserType.GEMINI: GeminiParser,
         ParserType.NONE: NoneParser,

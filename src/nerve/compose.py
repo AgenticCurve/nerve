@@ -190,23 +190,48 @@ async def create_anthropic_proxy(
         port: Port to bind to.
         upstream_base_url: Upstream API URL.
         upstream_api_key: Upstream API key.
-        config_file: Path to YAML config.
+        config_file: Path to YAML config (or NERVE_PROXY_CONFIG env var).
     """
+    import os
+
     from nerve.gateway.anthropic_proxy import (
         AnthropicProxyConfig,
         AnthropicProxyServer,
     )
 
-    config_kwargs: dict[str, Any] = {
-        "host": host,
-        "port": port,
-    }
-    if upstream_base_url is not None:
-        config_kwargs["upstream_base_url"] = upstream_base_url
-    if upstream_api_key is not None:
-        config_kwargs["upstream_api_key"] = upstream_api_key
+    # Load config file if specified
+    file_config: dict[str, Any] = {}
+    config_path = config_file or os.environ.get("NERVE_PROXY_CONFIG")
+    if config_path:
+        try:
+            import yaml
 
-    config = AnthropicProxyConfig(**config_kwargs)
+            with open(config_path) as f:
+                file_config = yaml.safe_load(f) or {}
+        except ImportError:
+            # YAML not available, skip config file
+            pass
+        except FileNotFoundError:
+            pass
+
+    # Build config with priority: args > env > file > defaults
+    def get_value(arg: str | None, env_key: str, file_key: str, default: str) -> str:
+        if arg is not None:
+            return arg
+        env_val = os.environ.get(env_key)
+        if env_val:
+            return env_val
+        file_val = file_config.get(file_key)
+        if file_val:
+            return str(file_val)
+        return default
+
+    config = AnthropicProxyConfig(
+        host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
+        port=int(get_value(str(port) if port != 3457 else None, "PROXY_PORT", "port", "3457")),
+        upstream_base_url=get_value(upstream_base_url, "ANTHROPIC_BASE_URL", "upstream_base_url", ""),
+        upstream_api_key=get_value(upstream_api_key, "ANTHROPIC_API_KEY", "upstream_api_key", ""),
+    )
 
     server = AnthropicProxyServer(config=config)
     await server.serve()

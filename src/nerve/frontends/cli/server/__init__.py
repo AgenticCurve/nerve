@@ -268,7 +268,7 @@ def stop(name: str, stop_all: bool, force: bool, timeout: float) -> None:
                 timeout=timeout_secs,
             )
             await client.disconnect()
-            return bool(result.success)
+            return result.success
         except (ConnectionRefusedError, FileNotFoundError, OSError):
             return False
         except TimeoutError:
@@ -290,7 +290,7 @@ def stop(name: str, stop_all: bool, force: bool, timeout: float) -> None:
             ):
                 if response.status == 200:
                     data = await response.json()
-                    return bool(data.get("success", False))
+                    return data.get("success", False) is True
                 return False
         except (TimeoutError, Exception):
             return False
@@ -309,7 +309,7 @@ def stop(name: str, stop_all: bool, force: bool, timeout: float) -> None:
                 timeout=timeout_secs,
             )
             await client.disconnect()
-            return bool(result.success)
+            return result.success
         except (ConnectionRefusedError, OSError):
             return False
         except TimeoutError:
