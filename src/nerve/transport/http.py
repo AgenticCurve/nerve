@@ -38,7 +38,7 @@ class HTTPServer:
     _engine: NerveEngine | None = None
     _app: Any = None  # aiohttp.web.Application
     _runner: Any = None  # aiohttp.web.AppRunner
-    _websockets: list = field(default_factory=list)
+    _websockets: list[Any] = field(default_factory=list)
     _running: bool = False
 
     async def emit(self, event: Event) -> None:
@@ -216,7 +216,7 @@ class HTTPClient:
     _ws: Any = None  # aiohttp.ClientWebSocketResponse
     _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)  # type: ignore[type-arg]
     _connected: bool = False
-    _reader_task: asyncio.Task | None = None
+    _reader_task: asyncio.Task[Any] | None = None
     _last_error: Exception | None = field(default=None, repr=False)
     _error_count: int = field(default=0, repr=False)
 

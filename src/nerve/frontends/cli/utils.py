@@ -7,14 +7,17 @@ import re
 import signal
 import subprocess
 import time
+from collections.abc import Callable
 from glob import glob
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    pass
+    from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
 
 
-def get_server_client(server_name: str) -> tuple[type, str | tuple[str, int]]:
+def get_server_client(
+    server_name: str,
+) -> tuple[type[HTTPClient] | type[TCPSocketClient] | type[UnixSocketClient], str | tuple[str, int]]:
     """Get the appropriate client class and connection info for a server.
 
     Returns (ClientClass, connection_info) tuple where:
@@ -45,19 +48,25 @@ def get_server_client(server_name: str) -> tuple[type, str | tuple[str, int]]:
         return UnixSocketClient, socket_path
 
 
-def create_client(server_name: str):
+def create_client(server_name: str) -> HTTPClient | TCPSocketClient | UnixSocketClient:
     """Create and return a client instance for a server.
 
     This handles the TCP case where we need to unpack the tuple.
     """
-    from nerve.transport import TCPSocketClient
+    from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
 
     client_class, conn_info = get_server_client(server_name)
 
     if client_class is TCPSocketClient:
-        return TCPSocketClient(conn_info[0], conn_info[1])
+        assert isinstance(conn_info, tuple)
+        host, port = conn_info
+        return TCPSocketClient(host, port)
+    elif client_class is HTTPClient:
+        assert isinstance(conn_info, str)
+        return HTTPClient(conn_info)
     else:
-        return client_class(conn_info)
+        assert isinstance(conn_info, str)
+        return UnixSocketClient(conn_info)
 
 
 def get_server_transport(server_name: str) -> tuple[str, str | None]:
@@ -169,7 +178,7 @@ def wait_for_process_exit(pid: int, timeout: float = 5.0) -> bool:
     return False  # Still running after timeout
 
 
-def force_kill_server(server_name: str, echo_fn=print) -> bool:
+def force_kill_server(server_name: str, echo_fn: Callable[[str], Any] = print) -> bool:
     """Force kill a server and all its node processes.
 
     For PTY nodes: kills child processes directly.

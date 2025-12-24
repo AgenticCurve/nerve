@@ -69,7 +69,7 @@ class PTYManager:
         """
         return self._processes.get(process_id)
 
-    def list(self) -> list[str]:
+    def list_all(self) -> list[str]:
         """List all process IDs.
 
         Returns:

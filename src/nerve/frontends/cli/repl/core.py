@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from code import compile_command
+from typing import Any
 
 from nerve.frontends.cli.repl.adapters import (
     LocalSessionAdapter,
@@ -13,12 +14,15 @@ from nerve.frontends.cli.repl.adapters import (
 from nerve.frontends.cli.repl.display import print_graph, print_help, print_nodes
 from nerve.frontends.cli.repl.state import REPLState
 
+# Guard against registering atexit handler multiple times
+_atexit_registered = False
+
 
 async def run_interactive(
     state: REPLState | None = None,
     server_name: str | None = None,
     session_name: str | None = None,
-):
+) -> None:
     """Run interactive Graph definition mode.
 
     Args:
@@ -39,13 +43,28 @@ async def run_interactive(
         readline.parse_and_bind(r'"\e[1;3D": backward-word')
         readline.parse_and_bind(r'"\e[1;3C": forward-word')
 
+        # Limit history to prevent file from growing too large
+        readline.set_history_length(1000)
+
         # History file
         histfile = os.path.expanduser("~/.nerve_repl_history")
         try:
-            readline.read_history_file(histfile)
-        except FileNotFoundError:
+            # Check file size before reading - skip if too large (>1MB)
+            if os.path.exists(histfile):
+                size = os.path.getsize(histfile)
+                if size > 1_000_000:  # 1MB
+                    print(f"Warning: History file is too large ({size // 1_000_000}MB), skipping load")
+                    print(f"Consider removing: {histfile}")
+                else:
+                    readline.read_history_file(histfile)
+        except (FileNotFoundError, OSError):
             pass
-        atexit.register(readline.write_history_file, histfile)
+
+        # Only register atexit handler once per process
+        global _atexit_registered
+        if not _atexit_registered:
+            atexit.register(readline.write_history_file, histfile)
+            _atexit_registered = True
     except ImportError:
         pass
 
@@ -62,11 +81,16 @@ async def run_interactive(
     adapter: SessionAdapter
     session: Session | None = None
     python_exec_enabled: bool
+    # Remote mode variables (only set when server_name is provided)
+    from nerve.transport import UnixSocketClient
+
+    remote_client: UnixSocketClient | None = None
+    remote_session_id: str | None = None
+    remote_server_name: str | None = None
 
     if server_name:
         # Server mode - connect to existing server
         from nerve.frontends.cli.utils import get_server_transport
-        from nerve.transport import UnixSocketClient
 
         transport_type, socket_path = get_server_transport(server_name)
 
@@ -76,6 +100,9 @@ async def run_interactive(
             return
 
         print(f"Connecting to server '{server_name}'...")
+        if socket_path is None:
+            print("Error: Could not determine socket path for server")
+            return
         try:
             client = UnixSocketClient(socket_path)
             await client.connect()
@@ -85,7 +112,11 @@ async def run_interactive(
             print(f"Make sure server is running: nerve server start --name {server_name}")
             return
 
-        adapter = RemoteSessionAdapter(client, server_name, session_name)
+        remote_adapter = RemoteSessionAdapter(client, server_name, session_name)
+        adapter = remote_adapter
+        remote_client = client
+        remote_session_id = remote_adapter.session_id
+        remote_server_name = server_name
         session_display = session_name or "default"
         print(f"Using session: {session_display}")
         python_exec_enabled = False
@@ -124,7 +155,12 @@ async def run_interactive(
     buffer = ""
     interrupt_count = 0
 
-    async def run_async_operation(coro):
+    from collections.abc import Coroutine
+    from typing import TypeVar
+
+    T = TypeVar("T")
+
+    async def run_async_operation(coro: Coroutine[Any, Any, T]) -> T:
         """Helper to run async operations within the REPL."""
         return await coro
 
@@ -253,16 +289,17 @@ async def run_interactive(
                         # SERVER MODE - Send to server
                         from nerve.server.protocols import Command, CommandType
 
+                        assert remote_client is not None
                         try:
-                            params = {"command": "read", "args": [node_name]}
-                            if adapter.session_id:
-                                params["session_id"] = adapter.session_id
+                            params: dict[str, Any] = {"command": "read", "args": [node_name]}
+                            if remote_session_id:
+                                params["session_id"] = remote_session_id
 
-                            result = await adapter.client.send_command(
+                            result = await remote_client.send_command(
                                 Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
                             )
 
-                            if result.success:
+                            if result.success and result.data:
                                 if result.data.get("output"):
                                     print(result.data["output"], end="")
                                 if result.data.get("error"):
@@ -377,7 +414,7 @@ async def run_interactive(
                             sess = session.name if session else "default"
                         else:
                             # Server mode
-                            server = adapter.server_name
+                            server = remote_server_name or "unknown"
                             sess = adapter.name
 
                         # Try to read history
@@ -471,20 +508,21 @@ async def run_interactive(
                         # SERVER MODE - Send to server
                         from nerve.server.protocols import Command, CommandType
 
+                        assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: show <graph-name>")
                             continue
 
                         try:
                             params = {"command": "show", "args": [parts[1]]}
-                            if adapter.session_id:
-                                params["session_id"] = adapter.session_id
+                            if remote_session_id:
+                                params["session_id"] = remote_session_id
 
-                            result = await adapter.client.send_command(
+                            result = await remote_client.send_command(
                                 Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
                             )
 
-                            if result.success:
+                            if result.success and result.data:
                                 if result.data.get("output"):
                                     print(result.data["output"], end="")
                                 if result.data.get("error"):
@@ -519,20 +557,21 @@ async def run_interactive(
                         # SERVER MODE - Send to server
                         from nerve.server.protocols import Command, CommandType
 
+                        assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: validate <graph-name>")
                             continue
 
                         try:
                             params = {"command": "validate", "args": [parts[1]]}
-                            if adapter.session_id:
-                                params["session_id"] = adapter.session_id
+                            if remote_session_id:
+                                params["session_id"] = remote_session_id
 
-                            result = await adapter.client.send_command(
+                            result = await remote_client.send_command(
                                 Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
                             )
 
-                            if result.success:
+                            if result.success and result.data:
                                 if result.data.get("output"):
                                     print(result.data["output"], end="")
                                 if result.data.get("error"):
@@ -563,8 +602,8 @@ async def run_interactive(
                             errors = graph.validate()
                             if errors:
                                 print("Validation FAILED:")
-                                for e in errors:
-                                    print(f"  - {e}")
+                                for err in errors:
+                                    print(f"  - {err}")
                             else:
                                 print("Validation PASSED")
                         else:
@@ -577,20 +616,21 @@ async def run_interactive(
                         # SERVER MODE - Send to server
                         from nerve.server.protocols import Command, CommandType
 
+                        assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: dry <graph-name>")
                             continue
 
                         try:
                             params = {"command": "dry", "args": [parts[1]]}
-                            if adapter.session_id:
-                                params["session_id"] = adapter.session_id
+                            if remote_session_id:
+                                params["session_id"] = remote_session_id
 
-                            result = await adapter.client.send_command(
+                            result = await remote_client.send_command(
                                 Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
                             )
 
-                            if result.success:
+                            if result.success and result.data:
                                 if result.data.get("output"):
                                     print(result.data["output"], end="")
                                 if result.data.get("error"):
@@ -602,7 +642,7 @@ async def run_interactive(
                             ConnectionResetError,
                             BrokenPipeError,
                             RuntimeError,
-                        ) as e:
+                        ):
                             server_disconnected = True
                             break
                     else:
@@ -677,7 +717,10 @@ async def run_interactive(
                 buffer = line
 
             # Try to compile (skip if server mode with await)
-            code = None
+            from types import CodeType
+
+            code: CodeType | None = None
+            should_execute = False
             if python_exec_enabled or "await " not in buffer:
                 try:
                     code = compile_command(buffer, symbol="single")
@@ -685,18 +728,19 @@ async def run_interactive(
                     if code is None:
                         # Incomplete - need more input
                         continue
+                    should_execute = True
                 except SyntaxError:
                     # If in server mode, send to server anyway (it can handle await)
                     if not python_exec_enabled:
-                        code = True  # Dummy value to proceed
+                        should_execute = True  # Server can handle it
                     else:
                         raise
             else:
                 # Server mode with await - skip compilation, send to server
-                code = True  # Dummy value to proceed
+                should_execute = True
 
             # Execute based on mode
-            if code is not None:
+            if should_execute:
                 if python_exec_enabled:
                     # LOCAL MODE - Execute locally
                     try:
@@ -708,7 +752,7 @@ async def run_interactive(
                                 async_code += f"    {ln}\n"
                             async_code += "\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
                             exec(compile(async_code, "<repl>", "exec"), state.namespace)
-                        else:
+                        elif code is not None:
                             exec(code, state.namespace)
 
                         # Track nodes created
@@ -730,21 +774,22 @@ async def run_interactive(
                         print(f"Error: {e}")
                 else:
                     # SERVER MODE - Send to server for execution
+                    assert remote_client is not None
                     try:
                         from nerve.server.protocols import Command, CommandType
 
                         params = {"code": buffer}
-                        if adapter.session_id:
-                            params["session_id"] = adapter.session_id
+                        if remote_session_id:
+                            params["session_id"] = remote_session_id
 
-                        result = await adapter.client.send_command(
+                        result = await remote_client.send_command(
                             Command(
                                 type=CommandType.EXECUTE_PYTHON,
                                 params=params,
                             )
                         )
 
-                        if result.success:
+                        if result.success and result.data:
                             output = result.data.get("output", "")
                             error = result.data.get("error")
 

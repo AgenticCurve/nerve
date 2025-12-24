@@ -6,7 +6,7 @@ without manually wiring up all the layers.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.server import NerveEngine
@@ -123,11 +123,11 @@ async def create_openai_proxy(
     )
 
     # Load config file if specified
-    file_config: dict = {}
+    file_config: dict[str, Any] = {}
     config_path = config_file or os.environ.get("NERVE_PROXY_CONFIG")
     if config_path:
         try:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             with open(config_path) as f:
                 file_config = yaml.safe_load(f) or {}
@@ -197,12 +197,16 @@ async def create_anthropic_proxy(
         AnthropicProxyServer,
     )
 
-    config = AnthropicProxyConfig(
-        host=host,
-        port=port,
-        upstream_base_url=upstream_base_url,
-        upstream_api_key=upstream_api_key,
-    )
+    config_kwargs: dict[str, Any] = {
+        "host": host,
+        "port": port,
+    }
+    if upstream_base_url is not None:
+        config_kwargs["upstream_base_url"] = upstream_base_url
+    if upstream_api_key is not None:
+        config_kwargs["upstream_api_key"] = upstream_api_key
+
+    config = AnthropicProxyConfig(**config_kwargs)
 
     server = AnthropicProxyServer(config=config)
     await server.serve()

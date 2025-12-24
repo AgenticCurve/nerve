@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from nerve.core.nodes import Graph
     from nerve.frontends.cli.repl.adapters import SessionAdapter
 
 
-def print_help():
+def print_help() -> None:
     """Print usage help."""
     print("""
 Nerve REPL - Interactive Python environment for AI CLI orchestration
@@ -50,7 +51,7 @@ Commands:
 """)
 
 
-async def print_nodes(adapter: SessionAdapter):
+async def print_nodes(adapter: SessionAdapter) -> None:
     """Print active nodes."""
     nodes = await adapter.list_nodes()
 
@@ -65,7 +66,7 @@ async def print_nodes(adapter: SessionAdapter):
     print("-" * 40)
 
 
-def print_graph(graph):
+def print_graph(graph: Graph | None) -> None:
     """Print Graph structure."""
     if not graph or not graph.list_steps():
         print("No steps defined")

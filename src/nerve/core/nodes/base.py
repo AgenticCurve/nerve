@@ -117,6 +117,24 @@ class Node(Protocol):
         """
         ...
 
+    async def interrupt(self) -> None:
+        """Request interruption of current execution.
+
+        For ephemeral nodes (persistent=False):
+            Best-effort cancellation. May cancel the current async task.
+            No guarantee for sync operations.
+
+        For persistent nodes (persistent=True):
+            Should stop the current operation (e.g., send Ctrl+C to process).
+            Resources remain allocated; use stop() to release them.
+
+        This method should be safe to call:
+            - Multiple times
+            - When no execution is in progress
+            - From a different task/thread than execute()
+        """
+        ...
+
 
 class PersistentNode(Node, Protocol):
     """Protocol extension for nodes that maintain state.
@@ -176,6 +194,7 @@ class FunctionNode:
     fn: Callable[[ExecutionContext], Any]
     persistent: bool = field(default=False, init=False)
     metadata: dict[str, Any] = field(default_factory=dict)
+    _current_task: asyncio.Task[Any] | None = field(default=None, init=False, repr=False)
 
     async def execute(self, context: ExecutionContext) -> Any:
         """Execute the wrapped function.
@@ -188,10 +207,24 @@ class FunctionNode:
         Returns:
             The function's return value.
         """
-        result = self.fn(context)
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        self._current_task = asyncio.current_task()
+        try:
+            result = self.fn(context)
+            if asyncio.iscoroutine(result):
+                return await result
+            return result
+        finally:
+            self._current_task = None
+
+    async def interrupt(self) -> None:
+        """Request interruption of current execution.
+
+        Cancels the current async task if one is running.
+        For sync functions, this is best-effort - the function
+        will complete before cancellation takes effect.
+        """
+        if self._current_task is not None:
+            self._current_task.cancel()
 
     def to_info(self) -> NodeInfo:
         """Get node information.

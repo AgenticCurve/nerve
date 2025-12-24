@@ -36,7 +36,7 @@ def _run_cli() -> None:
     # =========================================================================
     @click.group()
     @click.version_option(package_name="nerve")
-    def cli():
+    def cli() -> None:
         """Nerve - Programmatic control for AI CLI agents.
 
         Nerve provides tools for controlling AI CLI tools like Claude Code
@@ -88,7 +88,7 @@ def _run_cli() -> None:
         last: bool,
         full: bool,
         cli_type: str,
-    ):
+    ) -> None:
         """Extract structured response from AI CLI output.
 
         Parse Claude Code or Gemini CLI output into structured sections
@@ -138,7 +138,7 @@ def _run_cli() -> None:
         default=None,
         help="Session to connect to (default: server's default session)",
     )
-    def repl(file: str | None, dry_run: bool, server_name: str | None, session_name: str | None):
+    def repl(file: str | None, dry_run: bool, server_name: str | None, session_name: str | None) -> None:
         """Interactive graph definition and execution.
 
         A REPL for defining and running graphs (node execution pipelines)

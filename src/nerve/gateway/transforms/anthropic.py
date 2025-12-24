@@ -13,7 +13,7 @@ Anthropic API Reference:
 import json
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, cast
 
 from .tool_id_mapper import ToolIDMapper
 from .types import (
@@ -25,6 +25,8 @@ from .types import (
     ToolCall,
     ToolDefinition,
 )
+
+RoleType = Literal["system", "user", "assistant", "tool_result"]
 
 
 def _generate_message_id() -> str:
@@ -48,7 +50,7 @@ class AnthropicTransformer:
         messages: list[InternalMessage] = []
 
         for msg in body.get("messages", []):
-            role = msg["role"]
+            role = cast(RoleType, msg["role"])
             content = msg.get("content")
 
             if content is None or content == "":
@@ -112,7 +114,7 @@ class AnthropicTransformer:
     def _process_content_blocks(
         self,
         messages: list[InternalMessage],
-        role: str,
+        role: RoleType,
         blocks: list[dict[str, Any]],
     ) -> None:
         """Process an array of content blocks from an Anthropic message.
@@ -267,7 +269,7 @@ class AnthropicTransformer:
 
         if chunk.type == "message_start":
             # First event of a streaming response
-            event_data = {
+            event_data: dict[str, Any] = {
                 "type": "message_start",
                 "message": {
                     "id": _generate_message_id(),
@@ -342,7 +344,7 @@ class AnthropicTransformer:
 
         elif chunk.type == "message_delta":
             # Message-level delta (typically stop_reason and usage)
-            event_data: dict[str, Any] = {
+            event_data = {
                 "type": "message_delta",
                 "delta": {"stop_reason": "end_turn", "stop_sequence": None},
             }

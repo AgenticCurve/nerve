@@ -8,7 +8,7 @@ import asyncio
 async def run_from_file(
     filepath: str,
     dry_run: bool = False,
-):
+) -> None:
     """Load and run Graph from a Python file.
 
     Args:
@@ -53,19 +53,21 @@ async def run_from_file(
         exec(compile(code, filepath, "exec"), namespace)
 
         # Look for a Graph to run
-        graph = namespace.get("graph")
-        if graph:
+        graph_obj = namespace.get("graph")
+        if graph_obj and isinstance(graph_obj, Graph):
             if dry_run:
                 print("\n[DRY RUN]")
-                order = graph.execution_order()
+                order = graph_obj.execution_order()
                 for i, step_id in enumerate(order, 1):
                     print(f"  [{i}] {step_id}")
             else:
                 print("\nExecuting Graph...")
                 # Use session from namespace (may have been replaced by file)
-                exec_session = namespace.get("session") or session
+                exec_session = namespace.get("session")
+                if not isinstance(exec_session, Session):
+                    exec_session = session
                 context = ExecutionContext(session=exec_session)
-                await graph.execute(context)
+                await graph_obj.execute(context)
         else:
             print("No 'graph' variable found in file")
 

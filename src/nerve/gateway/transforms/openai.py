@@ -95,11 +95,11 @@ class OpenAITransformer:
                 messages.append(msg_dict)
             else:
                 # Regular user/assistant message
-                content = msg.content
-                if isinstance(content, list):
+                content: str | list[dict[str, Any]]
+                if isinstance(msg.content, list):
                     # Convert content blocks to OpenAI format
-                    openai_content = []
-                    for block in content:
+                    openai_content: list[dict[str, Any]] = []
+                    for block in msg.content:
                         if block.type == "text" and block.text:
                             openai_content.append({"type": "text", "text": block.text})
                         elif block.type == "image" and block.image_url:
@@ -111,6 +111,8 @@ class OpenAITransformer:
                             )
                     # OpenAI rejects empty content arrays - convert to empty string
                     content = openai_content if openai_content else ""
+                else:
+                    content = msg.content if msg.content else ""
 
                 # Ensure content is never an empty list (OpenAI rejects this)
                 if content == [] or content is None:

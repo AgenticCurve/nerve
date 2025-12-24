@@ -50,7 +50,7 @@ class ExecutionContext:
         >>> next_result = await next_node.execute(next_context)
     """
 
-    session: Session
+    session: Session | None = None
     input: Any = None
     upstream: dict[str, Any] = field(default_factory=dict)
     parser: ParserType | None = None

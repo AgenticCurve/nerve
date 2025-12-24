@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.server import NerveEngine
@@ -46,8 +46,8 @@ class NerveMCPServer:
 
         server = Server("nerve")
 
-        @server.list_tools()
-        async def list_tools():
+        @server.list_tools()  # type: ignore[no-untyped-call, untyped-decorator]
+        async def list_tools() -> list[Tool]:
             """List available tools."""
             return [
                 Tool(
@@ -119,17 +119,17 @@ class NerveMCPServer:
                 ),
             ]
 
-        @server.call_tool()
-        async def call_tool(name: str, arguments: dict):
+        @server.call_tool()  # type: ignore[untyped-decorator]
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Handle tool calls."""
             from nerve.server.protocols import Command, CommandType
 
             if name == "nerve_create_node":
                 from nerve.core.validation import validate_name
 
-                node_name = arguments.get("name")
+                node_name = arguments.get("name", "")
                 try:
-                    validate_name(node_name, "node")
+                    validate_name(str(node_name), "node")
                 except ValueError as e:
                     return [TextContent(type="text", text=f"Error: {e}")]
 
@@ -164,10 +164,11 @@ class NerveMCPServer:
                     )
                 )
                 if result.success:
+                    data = result.data or {}
                     return [
                         TextContent(
                             type="text",
-                            text=result.data.get("response", ""),
+                            text=data.get("response", ""),
                         )
                     ]
                 return [TextContent(type="text", text=f"Error: {result.error}")]
@@ -180,7 +181,8 @@ class NerveMCPServer:
                     )
                 )
                 if result.success:
-                    nodes = result.data.get("nodes", [])
+                    data = result.data or {}
+                    nodes = data.get("nodes", [])
                     return [
                         TextContent(
                             type="text",
@@ -202,5 +204,10 @@ class NerveMCPServer:
 
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
-        async with stdio_server() as (read_stream, write_stream):
-            await server.run(read_stream, write_stream)
+        async with stdio_server() as streams:
+            read_stream, write_stream = streams
+            await server.run(
+                read_stream,
+                write_stream,
+                server.create_initialization_options(),
+            )

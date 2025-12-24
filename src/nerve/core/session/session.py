@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from nerve.core.nodes.base import FunctionNode, Node, NodeInfo
     from nerve.core.nodes.context import ExecutionContext
     from nerve.core.nodes.graph import Graph
+    from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
     from nerve.core.types import ParserType
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,7 @@ class BackendType(Enum):
 
 
 # Type alias for terminal nodes
-TerminalNode = "PTYNode | WezTermNode | ClaudeWezTermNode"
+type TerminalNode = "PTYNode | WezTermNode | ClaudeWezTermNode"
 
 
 @dataclass
@@ -172,6 +173,7 @@ class Session:
 
         try:
             # Create based on backend (using internal _create methods)
+            node: TerminalNode
             if backend == BackendType.CLAUDE_WEZTERM:
                 if not command:
                     raise ValueError("command is required for claude-wezterm backend")

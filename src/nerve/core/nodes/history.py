@@ -191,7 +191,7 @@ class HistoryWriter:
         """Get current timestamp in ISO format."""
         return datetime.now(UTC).isoformat()
 
-    def _write_entry(self, entry: dict) -> bool:
+    def _write_entry(self, entry: dict[str, Any]) -> bool:
         """Write entry to file.
 
         Args:
@@ -293,7 +293,7 @@ class HistoryWriter:
     def log_send(
         self,
         input: str,
-        response: dict,
+        response: dict[str, Any],
         preceding_buffer_seq: int | None,
         ts_start: str,
         ts_end: str | None = None,
@@ -437,7 +437,12 @@ class HistoryWriter:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
         """Context manager exit - ensures file is closed."""
         self.close()
 
@@ -501,7 +506,7 @@ class HistoryReader:
             file_path=file_path,
         )
 
-    def _load_entries(self) -> list[dict]:
+    def _load_entries(self) -> list[dict[str, Any]]:
         """Load all entries from file.
 
         Skips malformed lines with a warning.
@@ -517,16 +522,16 @@ class HistoryReader:
                         logger.warning(f"Malformed JSON at {self.file_path}:{line_num}, skipping")
         return entries
 
-    def get_all(self) -> list[dict]:
+    def get_all(self) -> list[dict[str, Any]]:
         """Get all history entries."""
         return self._load_entries()
 
-    def get_last(self, n: int) -> list[dict]:
+    def get_last(self, n: int) -> list[dict[str, Any]]:
         """Get last N entries."""
         entries = self._load_entries()
         return entries[-n:] if n < len(entries) else entries
 
-    def get_by_op(self, op: str) -> list[dict]:
+    def get_by_op(self, op: str) -> list[dict[str, Any]]:
         """Get entries filtered by operation type.
 
         Args:
@@ -537,7 +542,7 @@ class HistoryReader:
         """
         return [e for e in self._load_entries() if e.get("op") == op]
 
-    def get_by_seq(self, seq: int) -> dict | None:
+    def get_by_seq(self, seq: int) -> dict[str, Any] | None:
         """Get entry by sequence number.
 
         Args:
@@ -551,7 +556,7 @@ class HistoryReader:
                 return entry
         return None
 
-    def get_inputs_only(self) -> list[dict]:
+    def get_inputs_only(self) -> list[dict[str, Any]]:
         """Get only input operations (send, write, run)."""
         input_ops = {"send", "write", "run"}
         return [e for e in self._load_entries() if e.get("op") in input_ops]

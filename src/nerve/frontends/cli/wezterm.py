@@ -10,7 +10,7 @@ import rich_click as click
 
 
 @click.group()
-def wezterm():
+def wezterm() -> None:
     """Manage WezTerm panes directly.
 
     Control AI CLI nodes running in WezTerm panes without needing
@@ -33,7 +33,7 @@ def wezterm():
 
 @wezterm.command("list")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def wezterm_list(json_output: bool):
+def wezterm_list(json_output: bool) -> None:
     """List all WezTerm panes.
 
     Shows all panes in WezTerm with their IDs, titles, and working directories.
@@ -77,7 +77,7 @@ def wezterm_list(json_output: bool):
 )
 @click.option("--cwd", default=None, help="Working directory")
 @click.option("--name", "-n", default=None, help="Node name for reference")
-def wezterm_spawn(cmd: str, cwd: str | None, name: str | None):
+def wezterm_spawn(cmd: str, cwd: str | None, name: str | None) -> None:
     """Spawn a new CLI node in a WezTerm pane.
 
     Creates a new pane in WezTerm running the specified command.
@@ -99,7 +99,7 @@ def wezterm_spawn(cmd: str, cwd: str | None, name: str | None):
     command = cmd.split() if " " in cmd else [cmd]
     config = BackendConfig(cwd=cwd)
 
-    async def run():
+    async def run() -> str | None:
         backend = WezTermBackend(command, config)
         # start() will auto-launch WezTerm if not running
         await backend.start()
@@ -118,7 +118,7 @@ def wezterm_spawn(cmd: str, cwd: str | None, name: str | None):
 @wezterm.command("send")
 @click.argument("pane_id")
 @click.argument("text")
-def wezterm_send(pane_id: str, text: str):
+def wezterm_send(pane_id: str, text: str) -> None:
     """Send text to a WezTerm pane.
 
     **Arguments:**
@@ -150,7 +150,7 @@ def wezterm_send(pane_id: str, text: str):
 @click.argument("pane_id")
 @click.option("--lines", "-n", default=None, type=int, help="Number of lines from end")
 @click.option("--full", "-f", is_flag=True, help="Include scrollback")
-def wezterm_read(pane_id: str, lines: int | None, full: bool):
+def wezterm_read(pane_id: str, lines: int | None, full: bool) -> None:
     """Read content from a WezTerm pane.
 
     **Arguments:**
@@ -185,7 +185,7 @@ def wezterm_read(pane_id: str, lines: int | None, full: bool):
 
 @wezterm.command("kill")
 @click.argument("pane_id")
-def wezterm_kill(pane_id: str):
+def wezterm_kill(pane_id: str) -> None:
     """Kill a WezTerm pane.
 
     **Arguments:**

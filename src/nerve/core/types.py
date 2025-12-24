@@ -143,7 +143,7 @@ class ParsedResponse:
     def __repr__(self) -> str:
         """Compact representation for REPL display."""
         # Summarize sections
-        section_summary = {}
+        section_summary: dict[str, int] = {}
         for s in self.sections:
             section_summary[s.type] = section_summary.get(s.type, 0) + 1
 

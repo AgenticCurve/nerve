@@ -162,7 +162,7 @@ class DevCoachResult:
     rounds: int
     final_dev_message: str
     final_coach_message: str
-    history: list[dict[str, str]] = field(default_factory=list)
+    history: list[dict[str, str | int]] = field(default_factory=list)
 
 
 class DevCoachLoop:
@@ -203,7 +203,7 @@ class DevCoachLoop:
         self.developer = developer
         self.coach = coach
         self.config = config
-        self._history: list[dict[str, str]] = []
+        self._history: list[dict[str, str | int]] = []
 
     def _extract_response_text(self, response: ParsedResponse) -> str:
         """Extract text content from response."""

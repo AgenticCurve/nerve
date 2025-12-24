@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.core.types import ParsedResponse
-    from nerve.server.protocols import Event
+    from nerve.server.protocols import CommandResult, Event
 
 
 @dataclass
@@ -52,8 +52,9 @@ class RemoteNode:
             raise RuntimeError(result.error)
 
         # Convert to ParsedResponse
+        data = result.data or {}
         return ParsedResponse(
-            raw=result.data.get("response", ""),
+            raw=data.get("response", ""),
             sections=(),
             is_complete=True,
             is_ready=True,
@@ -72,7 +73,7 @@ class RemoteNode:
         from nerve.server.protocols import Command, CommandType
 
         # Subscribe to events for this node
-        async def get_chunks():
+        async def get_chunks() -> AsyncIterator[str]:
             async for event in self._client.events():
                 if event.node_id == self.id:
                     if event.type.name == "OUTPUT_CHUNK":
@@ -136,8 +137,8 @@ class NerveClient:
         ...     response = await node.send("Hello!", parser="claude")
     """
 
-    _transport: object = None
-    _standalone_session: object = None
+    _transport: Any = None
+    _standalone_session: Any = None
     _nodes: dict[str, RemoteNode] = field(default_factory=dict)
 
     @classmethod
@@ -203,7 +204,7 @@ class NerveClient:
     async def __aenter__(self) -> NerveClient:
         return self
 
-    async def __aexit__(self, *args) -> None:
+    async def __aexit__(self, *args: object) -> None:
         await self.disconnect()
 
     async def create_node(
@@ -298,7 +299,9 @@ class NerveClient:
         )
 
         if result.success:
-            return result.data.get("nodes", [])
+            data = result.data or {}
+            nodes: list[str] = data.get("nodes", [])
+            return nodes
         return []
 
     async def events(self) -> AsyncIterator[Event]:
@@ -311,8 +314,10 @@ class NerveClient:
             async for event in self._transport.events():
                 yield event
 
-    async def _send_command(self, command) -> object:
+    async def _send_command(self, command: Any) -> CommandResult:
         """Send a command via transport."""
+
         if self._transport:
-            return await self._transport.send_command(command)
+            result: CommandResult = await self._transport.send_command(command)
+            return result
         raise RuntimeError("No transport available")

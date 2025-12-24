@@ -1,8 +1,11 @@
 """Tests for nerve.core.nodes.graph module."""
 
+import asyncio
+
 import pytest
 
 from nerve.core.nodes.base import FunctionNode
+from nerve.core.nodes.cancellation import CancellationToken
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.graph import Graph, Step, StepEvent
 from nerve.core.session.session import Session
@@ -355,6 +358,135 @@ class TestGraph:
         persistent_nodes = graph.collect_persistent_nodes()
         assert len(persistent_nodes) == 1
         assert persistent_nodes[0] is persistent
+
+    @pytest.mark.asyncio
+    async def test_interrupt_sets_cancellation_token(self):
+        """Test interrupt() sets the cancellation token."""
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
+
+        step_started = asyncio.Event()
+
+        async def slow_step(ctx: ExecutionContext):
+            step_started.set()
+            await asyncio.sleep(10)
+            return "done"
+
+        graph.add_step(FunctionNode(id="slow", fn=slow_step), step_id="slow")
+
+        token = CancellationToken()
+        context = ExecutionContext(session=session, cancellation=token)
+
+        # Start graph execution in background
+        task = asyncio.create_task(graph.execute(context))
+
+        # Wait for step to start
+        await step_started.wait()
+
+        # Interrupt the graph
+        await graph.interrupt()
+
+        # Token should be cancelled
+        assert token.is_cancelled
+
+        # Task should raise CancelledError
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    @pytest.mark.asyncio
+    async def test_interrupt_stops_current_node(self):
+        """Test interrupt() interrupts the currently executing node."""
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
+
+        node_interrupted = False
+        step_started = asyncio.Event()
+
+        class InterruptableNode:
+            id = "interruptable"
+            persistent = False
+
+            async def execute(self, ctx):
+                step_started.set()
+                await asyncio.sleep(10)
+                return "done"
+
+            async def interrupt(self):
+                nonlocal node_interrupted
+                node_interrupted = True
+
+        graph.add_step(InterruptableNode(), step_id="step")
+
+        token = CancellationToken()
+        context = ExecutionContext(session=session, cancellation=token)
+
+        task = asyncio.create_task(graph.execute(context))
+
+        await step_started.wait()
+
+        # Interrupt should call node's interrupt()
+        await graph.interrupt()
+
+        assert node_interrupted
+
+        # Clean up
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_interrupt_when_not_executing(self):
+        """Test interrupt() is safe when graph is not executing."""
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
+
+        # Should not raise
+        await graph.interrupt()
+
+    @pytest.mark.asyncio
+    async def test_interrupt_prevents_next_steps(self):
+        """Test interrupt() prevents subsequent steps from executing."""
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
+
+        steps_executed = []
+        step1_started = asyncio.Event()
+
+        async def step1(ctx):
+            steps_executed.append("step1")
+            step1_started.set()
+            await asyncio.sleep(0.5)
+            return "step1"
+
+        def step2(ctx):
+            steps_executed.append("step2")
+            return "step2"
+
+        graph.add_step(FunctionNode(id="fn1", fn=step1), step_id="step1")
+        graph.add_step(FunctionNode(id="fn2", fn=step2), step_id="step2", depends_on=["step1"])
+
+        token = CancellationToken()
+        context = ExecutionContext(session=session, cancellation=token)
+
+        task = asyncio.create_task(graph.execute(context))
+
+        # Wait for step1 to start
+        await step1_started.wait()
+
+        # Interrupt before step2
+        await graph.interrupt()
+
+        # Wait for task to complete/fail
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Only step1 should have started
+        assert "step1" in steps_executed
+        assert "step2" not in steps_executed
 
 
 class TestStepEvent:

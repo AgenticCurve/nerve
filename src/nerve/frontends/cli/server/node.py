@@ -12,7 +12,7 @@ from nerve.frontends.cli.utils import create_client
 
 
 @server.group()
-def node():
+def node() -> None:
     """Manage nodes.
 
     Nodes are persistent execution contexts that maintain state across
@@ -36,7 +36,7 @@ def node():
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def node_list(server_name: str, session_id: str | None, json_output: bool):
+def node_list(server_name: str, session_id: str | None, json_output: bool) -> None:
     """List all nodes in a session.
 
     Shows nodes in the specified session (or default session).
@@ -53,7 +53,7 @@ def node_list(server_name: str, session_id: str | None, json_output: bool):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -72,7 +72,7 @@ def node_list(server_name: str, session_id: str | None, json_output: bool):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             nodes_info = result.data.get("nodes_info", [])
 
             if json_output:
@@ -91,7 +91,7 @@ def node_list(server_name: str, session_id: str | None, json_output: bool):
                         last_input = last_input[:30]
                     click.echo(f"{name:<20} {backend:<18} {state:<10} {last_input}")
             else:
-                session_name = result.data.get("name", "default")
+                session_name = result.data.get("name", "default") if result.data else "default"
                 click.echo(f"No nodes in session '{session_name}'")
         else:
             click.echo(f"Error: {result.error}", err=True)
@@ -136,7 +136,7 @@ def node_create(
     backend: str,
     pane_id: str | None,
     history: bool,
-):
+) -> None:
     """Create a new node.
 
     NAME is the node name (required, must be unique).
@@ -161,7 +161,7 @@ def node_create(
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -203,7 +203,7 @@ def node_create(
 @click.argument("node_name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def node_delete(node_name: str, server_name: str, session_id: str | None):
+def node_delete(node_name: str, server_name: str, session_id: str | None) -> None:
     """Delete a node.
 
     Stops the node, closes its terminal/pane, and removes it from the server.
@@ -222,7 +222,7 @@ def node_delete(node_name: str, server_name: str, session_id: str | None):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -255,7 +255,7 @@ def node_delete(node_name: str, server_name: str, session_id: str | None):
 @click.argument("node_name")
 @click.argument("command")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_run(node_name: str, command: str, server_name: str):
+def node_run(node_name: str, command: str, server_name: str) -> None:
     """Start a program in a node (fire and forget).
 
     Use this to launch programs that take over the terminal,
@@ -278,7 +278,7 @@ def node_run(node_name: str, command: str, server_name: str):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -310,7 +310,7 @@ def node_run(node_name: str, command: str, server_name: str):
 @click.argument("node_name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
 @click.option("--lines", "-n", default=None, type=int, help="Only show last N lines")
-def node_read(node_name: str, server_name: str, lines: int | None):
+def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     """Read the output buffer of a node.
 
     Shows all output from the node since it was created.
@@ -327,7 +327,7 @@ def node_read(node_name: str, server_name: str, lines: int | None):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -335,7 +335,7 @@ def node_read(node_name: str, server_name: str, lines: int | None):
             click.echo(f"Error: Server '{server_name}' not running", err=True)
             sys.exit(1)
 
-        params = {"node_id": node_name}
+        params: dict[str, str | int] = {"node_id": node_name}
         if lines:
             params["lines"] = lines
 
@@ -346,7 +346,7 @@ def node_read(node_name: str, server_name: str, lines: int | None):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             click.echo(result.data.get("buffer", ""))
         else:
             click.echo(f"Error: {result.error}", err=True)
@@ -372,7 +372,7 @@ def node_read(node_name: str, server_name: str, lines: int | None):
     default=None,
     help="Submit sequence (e.g., '\\n', '\\r', '\\x1b\\r'). Default: auto based on parser.",
 )
-def node_send(node_name: str, text: str, server_name: str, parser: str | None, submit: str | None):
+def node_send(node_name: str, text: str, server_name: str, parser: str | None, submit: str | None) -> None:
     """Send input to a node and get JSON response.
 
     **Arguments:**
@@ -391,7 +391,7 @@ def node_send(node_name: str, text: str, server_name: str, parser: str | None, s
 
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         client = create_client(server_name)
         await client.connect()
 
@@ -430,7 +430,7 @@ def node_send(node_name: str, text: str, server_name: str, parser: str | None, s
 @click.argument("node_name")
 @click.argument("data")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_write(node_name: str, data: str, server_name: str):
+def node_write(node_name: str, data: str, server_name: str) -> None:
     """Write raw data to a node (no waiting).
 
     Low-level write for testing and debugging. Does not wait for response.
@@ -455,7 +455,7 @@ def node_write(node_name: str, data: str, server_name: str):
     # Decode escape sequences
     decoded_data = data.encode().decode("unicode_escape")
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -486,7 +486,7 @@ def node_write(node_name: str, data: str, server_name: str):
 @node.command("interrupt")
 @click.argument("node_name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_interrupt(node_name: str, server_name: str):
+def node_interrupt(node_name: str, server_name: str) -> None:
     """Send interrupt (Ctrl+C) to a node.
 
     Cancels the current operation in the node.
@@ -501,7 +501,7 @@ def node_interrupt(node_name: str, server_name: str):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -552,7 +552,7 @@ def node_history(
     inputs_only: bool,
     json_output: bool,
     summary: bool,
-):
+) -> None:
     """View history for a node.
 
     Reads the JSONL history file for the specified node.
