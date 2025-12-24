@@ -59,8 +59,7 @@ class SessionManager:
             The created Session.
         """
         session = Session(
-            id=session_id or "",
-            name=name or "",
+            name=session_id or name or "default",
             description=description,
             tags=tags or [],
         )

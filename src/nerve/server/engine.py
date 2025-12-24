@@ -447,16 +447,14 @@ class NerveEngine:
 
             self._python_namespaces[session_id] = {
                 "asyncio": asyncio,
-                "Graph": Graph,
                 "FunctionNode": FunctionNode,
                 "ExecutionContext": ExecutionContext,
-                "PTYNode": PTYNode,
-                "WezTermNode": WezTermNode,
                 "Session": Session,
                 "ParserType": ParserType,
                 "BackendType": BackendType,
                 "session": session,  # The actual session
                 "context": ExecutionContext(session=session),  # Pre-configured context
+                # NOTE: Graph, PTYNode, WezTermNode removed - use session.create_*() instead
             }
 
         namespace = self._python_namespaces[session_id]

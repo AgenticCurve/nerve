@@ -66,7 +66,7 @@ class PTYNode:
     _history_writer: HistoryWriter | None = field(default=None, repr=False)
 
     @classmethod
-    async def create(
+    async def _create(
         cls,
         node_id: str,
         command: list[str] | str | None = None,
@@ -77,7 +77,10 @@ class PTYNode:
         history_writer: HistoryWriter | None = None,
         default_parser: ParserType = ParserType.NONE,
     ) -> PTYNode:
-        """Create and start a new PTY node.
+        """Internal: Create and start a new PTY node.
+
+        IMPORTANT: This is an internal method. Use session.create_node() instead.
+        Nodes must be created through a Session for proper lifecycle management.
 
         Args:
             node_id: Unique node identifier (required).
@@ -558,7 +561,7 @@ class WezTermNode:
     _history_writer: HistoryWriter | None = field(default=None, repr=False)
 
     @classmethod
-    async def create(
+    async def _create(
         cls,
         node_id: str,
         command: list[str] | str | None = None,
@@ -568,7 +571,10 @@ class WezTermNode:
         history_writer: HistoryWriter | None = None,
         default_parser: ParserType = ParserType.NONE,
     ) -> WezTermNode:
-        """Create a new WezTerm node by spawning a pane.
+        """Internal: Create a new WezTerm node by spawning a pane.
+
+        IMPORTANT: This is an internal method. Use session.create_node() instead.
+        Nodes must be created through a Session for proper lifecycle management.
 
         Args:
             node_id: Unique node identifier (required).
@@ -618,7 +624,7 @@ class WezTermNode:
         return node
 
     @classmethod
-    async def attach(
+    async def _attach(
         cls,
         node_id: str,
         pane_id: str,
@@ -627,7 +633,10 @@ class WezTermNode:
         history_writer: HistoryWriter | None = None,
         default_parser: ParserType = ParserType.NONE,
     ) -> WezTermNode:
-        """Attach to an existing WezTerm pane.
+        """Internal: Attach to an existing WezTerm pane.
+
+        IMPORTANT: This is an internal method. Use session.create_node() instead.
+        Nodes must be created through a Session for proper lifecycle management.
 
         Args:
             node_id: Unique node identifier (required).
@@ -1005,7 +1014,7 @@ class ClaudeWezTermNode:
     _history_writer: HistoryWriter | None = field(default=None, repr=False)
 
     @classmethod
-    async def create(
+    async def _create(
         cls,
         node_id: str,
         command: str,
@@ -1015,7 +1024,10 @@ class ClaudeWezTermNode:
         response_timeout: float = 1800.0,
         history_writer: HistoryWriter | None = None,
     ) -> ClaudeWezTermNode:
-        """Create a new ClaudeWezTerm node.
+        """Internal: Create a new ClaudeWezTerm node.
+
+        IMPORTANT: This is an internal method. Use session.create_node() instead.
+        Nodes must be created through a Session for proper lifecycle management.
 
         Args:
             node_id: Unique node identifier.
@@ -1039,7 +1051,7 @@ class ClaudeWezTermNode:
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
 
         # Create inner node WITHOUT history writer - wrapper owns history
-        inner = await WezTermNode.create(
+        inner = await WezTermNode._create(
             node_id=node_id,
             command=None,  # Use default shell
             cwd=cwd,

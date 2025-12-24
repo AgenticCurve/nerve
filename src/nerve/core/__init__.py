@@ -37,14 +37,14 @@ Example (PTY node - you own the process):
     ...     await node.stop()
 
 Example (Graph execution):
-    >>> from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
+    >>> from nerve.core.nodes import FunctionNode, ExecutionContext
     >>> from nerve.core.session import Session
     >>>
     >>> async def main():
-    ...     graph = Graph(id="my-pipeline")
+    ...     session = Session(name="my-session")
+    ...     graph = session.create_graph("my-pipeline")
     ...     fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
     ...     graph.add_step(fetch, step_id="fetch")
-    ...     session = Session()
     ...     results = await graph.execute(ExecutionContext(session=session))
 """
 

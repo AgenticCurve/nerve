@@ -27,9 +27,11 @@ Quick Start (create a terminal node):
     >>> await node.stop()
 
 With Graph execution:
-    >>> from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
+    >>> from nerve.core.nodes import FunctionNode, ExecutionContext
+    >>> from nerve.core.session import Session
     >>>
-    >>> graph = Graph(id="pipeline")
+    >>> session = Session(name="my-session")
+    >>> graph = session.create_graph("pipeline")
     >>> fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
     >>> graph.add_step(fetch, step_id="fetch")
     >>> results = await graph.execute(ExecutionContext(session=session))

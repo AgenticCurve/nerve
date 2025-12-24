@@ -39,18 +39,18 @@ Example:
     ...     FunctionNode, Graph, ExecutionContext, PTYNode
     ... )
     >>>
-    >>> # Create function nodes
+    >>> # Create session and function nodes
+    >>> from nerve.core.session import Session
+    >>> session = Session(name="my-session")
     >>> fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data(ctx.input))
     >>> process = FunctionNode(id="process", fn=lambda ctx: process_data(ctx.upstream["fetch"]))
     >>>
     >>> # Build graph
-    >>> graph = Graph(id="pipeline")
+    >>> graph = session.create_graph("pipeline")
     >>> graph.add_step(fetch, step_id="fetch", input="http://api")
     >>> graph.add_step(process, step_id="process", depends_on=["fetch"])
     >>>
     >>> # Execute
-    >>> from nerve.core.session import Session
-    >>> session = Session()
     >>> context = ExecutionContext(session=session)
     >>> results = await graph.execute(context)
 """

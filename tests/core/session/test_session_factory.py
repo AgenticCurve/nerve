@@ -20,7 +20,7 @@ class TestSessionCreateNode:
         with patch("nerve.core.nodes.terminal.PTYNode") as mock_pty:
             mock_node = MagicMock()
             mock_node.id = "test-node"
-            mock_pty.create = AsyncMock(return_value=mock_node)
+            mock_pty._create = AsyncMock(return_value=mock_node)
 
             node = await session.create_node("test-node", command="bash")
 
@@ -54,11 +54,11 @@ class TestSessionCreateNode:
         with patch("nerve.core.nodes.terminal.PTYNode") as mock_pty:
             mock_node = MagicMock()
             mock_node.id = "test"
-            mock_pty.create = AsyncMock(return_value=mock_node)
+            mock_pty._create = AsyncMock(return_value=mock_node)
 
             # String backend
             await session.create_node("test", command="bash", backend="pty")
-            mock_pty.create.assert_called()
+            mock_pty._create.assert_called()
 
     @pytest.mark.asyncio
     async def test_create_node_history_disabled(self):
@@ -68,12 +68,12 @@ class TestSessionCreateNode:
         with patch("nerve.core.nodes.terminal.PTYNode") as mock_pty:
             mock_node = MagicMock()
             mock_node.id = "test"
-            mock_pty.create = AsyncMock(return_value=mock_node)
+            mock_pty._create = AsyncMock(return_value=mock_node)
 
             await session.create_node("test", command="bash", history=False)
 
             # Verify history_writer is None in the call
-            call_kwargs = mock_pty.create.call_args[1]
+            call_kwargs = mock_pty._create.call_args[1]
             assert call_kwargs.get("history_writer") is None
 
     @pytest.mark.asyncio
@@ -84,11 +84,11 @@ class TestSessionCreateNode:
         with patch("nerve.core.nodes.terminal.PTYNode") as mock_pty:
             mock_node = MagicMock()
             mock_node.id = "test"
-            mock_pty.create = AsyncMock(return_value=mock_node)
+            mock_pty._create = AsyncMock(return_value=mock_node)
 
             await session.create_node("test", command="bash")
 
-            call_kwargs = mock_pty.create.call_args[1]
+            call_kwargs = mock_pty._create.call_args[1]
             assert call_kwargs.get("history_writer") is None
 
 

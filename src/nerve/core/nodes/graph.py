@@ -215,7 +215,8 @@ class Graph:
     - Execution tracing
 
     Example:
-        >>> graph = Graph(id="pipeline")
+        >>> session = Session(name="my-session")
+        >>> graph = session.create_graph("pipeline")
         >>>
         >>> # Add steps with nodes
         >>> graph.add_step(fetch_node, step_id="fetch", input="http://api")
@@ -227,16 +228,28 @@ class Graph:
         >>> print(results["process"])
     """
 
-    def __init__(self, id: str, max_parallel: int = 1) -> None:
-        """Initialize a graph.
+    def __init__(self, id: str, session: "Session", max_parallel: int = 1) -> None:
+        """Initialize a graph and register it with the session.
+
+        IMPORTANT: Graphs must be created through a Session for proper lifecycle management.
+        Use session.create_graph() instead of calling this directly.
 
         Args:
             id: Unique identifier for this graph.
+            session: Session to register this graph with.
             max_parallel: Maximum concurrent step executions (default 1 = sequential).
         """
+        if not id or not id.strip():
+            raise ValueError("graph_id cannot be empty")
+        if id in session.graphs:
+            raise ValueError(f"Graph '{id}' already exists in session")
+
         self._id = id
         self._steps: dict[str, Step] = {}
         self._max_parallel = max_parallel
+
+        # Auto-register with session
+        session.graphs[id] = self
 
     @property
     def id(self) -> str:

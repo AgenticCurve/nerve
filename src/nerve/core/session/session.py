@@ -76,7 +76,7 @@ class Session:
     """
 
     # Identity - name is the unique identifier
-    name: str
+    name: str = "default"
     description: str = ""
     tags: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
@@ -168,7 +168,7 @@ class Session:
             default_parser = ParserType.NONE
 
         try:
-            # Create based on backend
+            # Create based on backend (using internal _create methods)
             if backend == BackendType.CLAUDE_WEZTERM:
                 if not command:
                     raise ValueError("command is required for claude-wezterm backend")
@@ -177,7 +177,7 @@ class Session:
                     if default_parser != ParserType.NONE
                     else ParserType.CLAUDE
                 )
-                node = await ClaudeWezTermNode.create(
+                node = await ClaudeWezTermNode._create(
                     node_id=node_id,
                     command=command if isinstance(command, str) else " ".join(command),
                     cwd=cwd,
@@ -190,7 +190,7 @@ class Session:
             elif backend == BackendType.WEZTERM or pane_id is not None:
                 if pane_id:
                     # Attach to existing WezTerm pane
-                    node = await WezTermNode.attach(
+                    node = await WezTermNode._attach(
                         node_id=node_id,
                         pane_id=pane_id,
                         ready_timeout=ready_timeout,
@@ -200,7 +200,7 @@ class Session:
                     )
                 else:
                     # Spawn new WezTerm pane
-                    node = await WezTermNode.create(
+                    node = await WezTermNode._create(
                         node_id=node_id,
                         command=command,
                         cwd=cwd,
@@ -212,7 +212,7 @@ class Session:
 
             else:
                 # Default to PTY
-                node = await PTYNode.create(
+                node = await PTYNode._create(
                     node_id=node_id,
                     command=command,
                     cwd=cwd,
@@ -274,13 +274,8 @@ class Session:
         """
         from nerve.core.nodes.graph import Graph
 
-        if not graph_id:
-            raise ValueError("graph_id is required")
-        if graph_id in self.graphs:
-            raise ValueError(f"Graph already exists: {graph_id}")
-
-        graph = Graph(id=graph_id)
-        self.graphs[graph_id] = graph
+        # Graph constructor now requires session and auto-registers
+        graph = Graph(id=graph_id, session=self)
         return graph
 
     # =========================================================================

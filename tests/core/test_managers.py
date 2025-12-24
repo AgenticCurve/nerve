@@ -25,8 +25,8 @@ class TestSession:
         session = Session()
 
         assert session.id is not None
-        assert len(session.id) == 8  # UUID[:8]
-        assert session.name == session.id  # Name defaults to ID
+        assert session.id == "default"  # Default name
+        assert session.name == session.id  # Name and ID are the same
         assert session.description == ""
         assert session.tags == []
         assert session.created_at is not None
@@ -34,13 +34,12 @@ class TestSession:
     def test_session_creation_with_values(self):
         """Test creating session with specified values."""
         session = Session(
-            id="my-session",
             name="Test Session",
             description="A test session",
             tags=["test", "example"]
         )
 
-        assert session.id == "my-session"
+        assert session.id == "Test Session"
         assert session.name == "Test Session"
         assert session.description == "A test session"
         assert session.tags == ["test", "example"]
@@ -184,8 +183,7 @@ class TestSession:
     def test_to_dict(self):
         """Test converting session to dict."""
         session = Session(
-            id="test-id",
-            name="Test Name",
+            name="test-id",
             description="Test desc",
             tags=["tag1", "tag2"]
         )
@@ -201,7 +199,7 @@ class TestSession:
         result = session.to_dict()
 
         assert result["id"] == "test-id"
-        assert result["name"] == "Test Name"
+        assert result["name"] == "test-id"
         assert result["description"] == "Test desc"
         assert result["tags"] == ["tag1", "tag2"]
         assert "created_at" in result
@@ -235,14 +233,13 @@ class TestSession:
 
     def test_repr(self):
         """Test __repr__ format."""
-        session = Session(id="my-id", name="My Session")
+        session = Session(name="My Session")
         mock_node = MagicMock()
         mock_node.id = "node1"
         session.nodes["node1"] = mock_node
 
         repr_str = repr(session)
         assert "Session" in repr_str
-        assert "my-id" in repr_str
         assert "My Session" in repr_str
 
     def test_create_function(self):
@@ -316,13 +313,12 @@ class TestSessionManager:
 
         session = manager.create_session(
             session_id="my-id",
-            name="My Session",
             description="A test session",
             tags=["test"]
         )
 
         assert session.id == "my-id"
-        assert session.name == "My Session"
+        assert session.name == "my-id"
         assert session.description == "A test session"
         assert session.tags == ["test"]
 

@@ -195,33 +195,15 @@ class RemoteSessionAdapter:
         return []
 
     async def get_graph(self, graph_id: str):
-        """Get graph from server and reconstruct it locally."""
-        from nerve.core.nodes.graph import Graph
-        from nerve.server.protocols import Command, CommandType
+        """Get graph from server - returns None (graphs are session-bound).
 
-        result = await self.client.send_command(
-            Command(
-                type=CommandType.GET_GRAPH,
-                params=self._add_session_id({"graph_id": graph_id}),
-            )
-        )
-
-        if not result.success:
-            return None
-
-        data = result.data
-        graph = Graph(id=data["graph_id"])
-
-        # Reconstruct steps
-        for step_data in data.get("steps", []):
-            graph.add_step_ref(
-                node_id=step_data.get("node_id"),
-                step_id=step_data["id"],
-                input=step_data.get("input"),
-                depends_on=step_data.get("depends_on", []),
-            )
-
-        return graph
+        NOTE: Graphs cannot be transferred from server to client because they
+        must be bound to a session. Graphs exist only on the server.
+        Use server-side execution instead.
+        """
+        # Graphs are now session-bound and cannot be reconstructed client-side
+        # They must be accessed and executed on the server where they were created
+        return None
 
     async def delete_node(self, node_id: str) -> bool:
         """Delete node on server."""
@@ -426,11 +408,8 @@ async def run_interactive(
     if python_exec_enabled:
         state.namespace = {
             "asyncio": asyncio,
-            "Graph": Graph,
             "FunctionNode": FunctionNode,
             "ExecutionContext": ExecutionContext,
-            "PTYNode": PTYNode,
-            "WezTermNode": WezTermNode,
             "Session": Session,
             "ParserType": ParserType,
             "BackendType": BackendType,
@@ -438,6 +417,7 @@ async def run_interactive(
             "session": session,  # Default session
             "context": ExecutionContext(session=session),  # Pre-configured context
             "_state": state,
+            # NOTE: Graph, PTYNode, WezTermNode removed - use session.create_*() instead
         }
     else:
         state.namespace = {}

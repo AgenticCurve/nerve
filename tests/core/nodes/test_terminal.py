@@ -12,7 +12,7 @@ import pytest
 from nerve.core.nodes.base import NodeState
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
-from nerve.core.session.session import Session
+from nerve.core.session.session import BackendType, Session
 from nerve.core.types import ParsedResponse, ParserType, Section
 
 
@@ -68,7 +68,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             assert node.id == "test-node"
             assert node.persistent is True
@@ -101,12 +102,12 @@ class TestPTYNode:
             )
             mock_parser.return_value = parser_instance
 
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             # Update buffer to simulate response
             mock_backend.buffer = "hello\nHELLO\n$ "
 
-            session = Session()
             context = ExecutionContext(
                 session=session, input="echo hello", parser=ParserType.NONE
             )
@@ -131,9 +132,9 @@ class TestPTYNode:
             parser_instance.is_ready = MagicMock(return_value=True)
             mock_parser.return_value = parser_instance
 
-            node = await PTYNode.create("test-node", command="bash")
-
             session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
+
             context = ExecutionContext(session=session, input="ls")
 
             chunks = []
@@ -152,7 +153,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             await node.write("test data")
 
@@ -167,7 +169,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             await node.run("python script.py")
 
@@ -184,7 +187,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             result = await node.read()
 
@@ -199,7 +203,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             result = node.read_tail(10)
 
@@ -215,7 +220,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             await node.interrupt()
 
@@ -231,7 +237,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             await node.stop()
 
@@ -246,7 +253,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             info = node.to_info()
 
@@ -259,8 +267,9 @@ class TestPTYNode:
     @pytest.mark.asyncio
     async def test_pty_node_requires_id(self):
         """Test PTYNode.create() requires node_id."""
+        session = Session()
         with pytest.raises(ValueError, match="node_id is required"):
-            await PTYNode.create("")
+            await session.create_node("", backend=BackendType.PTY)
 
     @pytest.mark.asyncio
     async def test_pty_node_reset(self):
@@ -270,7 +279,8 @@ class TestPTYNode:
         with patch(
             "nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await PTYNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.PTY, command="bash")
 
             # Set some state
             node.backend.buffer = "some output"
@@ -297,7 +307,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             assert node.id == "test-node"
             assert node.persistent is True
@@ -329,9 +340,9 @@ class TestWezTermNode:
             )
             mock_parser.return_value = parser_instance
 
-            node = await WezTermNode.create("test-node", command="bash")
-
             session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
+
             context = ExecutionContext(
                 session=session, input="echo hello", parser=ParserType.NONE
             )
@@ -356,9 +367,9 @@ class TestWezTermNode:
             parser_instance.is_ready = MagicMock(return_value=True)
             mock_parser.return_value = parser_instance
 
-            node = await WezTermNode.create("test-node", command="bash")
-
             session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
+
             context = ExecutionContext(session=session, input="ls")
 
             chunks = []
@@ -376,7 +387,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ):
-            node = await WezTermNode.attach("test-node", pane_id="42")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, pane_id="42")
 
             assert node.id == "test-node"
             assert node.pane_id == "42"
@@ -391,7 +403,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             await node.focus()
 
@@ -406,7 +419,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             info = await node.get_pane_info()
 
@@ -421,7 +435,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             await node.write("test data")
 
@@ -436,7 +451,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             await node.run("claude")
 
@@ -458,7 +474,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             result = await node.read()
 
@@ -473,7 +490,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             result = node.read_tail(10)
 
@@ -488,7 +506,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             await node.interrupt()
 
@@ -503,7 +522,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             await node.stop()
 
@@ -518,7 +538,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             info = node.to_info()
 
@@ -531,8 +552,9 @@ class TestWezTermNode:
     @pytest.mark.asyncio
     async def test_wezterm_node_requires_id(self):
         """Test WezTermNode.create() requires node_id."""
+        session = Session()
         with pytest.raises(ValueError, match="node_id is required"):
-            await WezTermNode.create("")
+            await session.create_node("", backend=BackendType.WEZTERM)
 
     @pytest.mark.asyncio
     async def test_wezterm_node_reset(self):
@@ -542,7 +564,8 @@ class TestWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await WezTermNode.create("test-node", command="bash")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.WEZTERM, command="bash")
 
             # Set some state
             node._last_input = "echo hello"
@@ -568,8 +591,9 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create(
-                "test-node", command="claude --dangerously-skip-permissions"
+            session = Session()
+            node = await session.create_node(
+                "test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude --dangerously-skip-permissions"
             )
 
             assert node.id == "test-node"
@@ -582,8 +606,9 @@ class TestClaudeWezTermNode:
     @pytest.mark.asyncio
     async def test_claude_node_requires_claude_in_command(self):
         """Test ClaudeWezTermNode requires 'claude' in command."""
+        session = Session()
         with pytest.raises(ValueError, match="must contain 'claude'"):
-            await ClaudeWezTermNode.create("test", command="bash")
+            await session.create_node("test", backend=BackendType.CLAUDE_WEZTERM, command="bash")
 
     @pytest.mark.asyncio
     async def test_claude_node_execute(self):
@@ -608,9 +633,9 @@ class TestClaudeWezTermNode:
             )
             mock_parser.return_value = parser_instance
 
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
-
             session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
+
             context = ExecutionContext(session=session, input="Hello")
 
             result = await node.execute(context)
@@ -632,9 +657,9 @@ class TestClaudeWezTermNode:
             parser_instance.is_ready = MagicMock(return_value=True)
             mock_parser.return_value = parser_instance
 
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
-
             session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
+
             context = ExecutionContext(session=session, input="Hello")
 
             chunks = []
@@ -652,7 +677,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             await node.write("test data")
 
@@ -667,7 +693,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             await node.run("python -m mymodule")
 
@@ -689,7 +716,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             result = await node.read()
 
@@ -704,7 +732,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             result = node.read_tail(10)
 
@@ -719,7 +748,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             await node.interrupt()
 
@@ -734,7 +764,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             await node.focus()
 
@@ -749,7 +780,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             await node.stop()
 
@@ -763,7 +795,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude --skip")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude --skip")
 
             info = node.to_info()
 
@@ -776,8 +809,9 @@ class TestClaudeWezTermNode:
     @pytest.mark.asyncio
     async def test_claude_node_requires_id(self):
         """Test ClaudeWezTermNode.create() requires node_id."""
+        session = Session()
         with pytest.raises(ValueError, match="node_id is required"):
-            await ClaudeWezTermNode.create("", command="claude")
+            await session.create_node("", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
     @pytest.mark.asyncio
     async def test_claude_node_reset(self):
@@ -787,7 +821,8 @@ class TestClaudeWezTermNode:
         with patch(
             "nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend
         ), patch("asyncio.sleep", new_callable=AsyncMock):
-            node = await ClaudeWezTermNode.create("test-node", command="claude")
+            session = Session()
+            node = await session.create_node("test-node", backend=BackendType.CLAUDE_WEZTERM, command="claude")
 
             # Set some state
             node._last_input = "echo hello"

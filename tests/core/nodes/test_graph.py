@@ -38,14 +38,18 @@ class TestGraph:
 
     def test_init(self):
         """Test graph initialization."""
-        graph = Graph(id="test-graph")
+        session = Session(name="test")
+        graph = Graph(id="test-graph", session=session)
         assert graph.id == "test-graph"
         assert graph.persistent is False
         assert len(graph) == 0
+        # Verify auto-registration
+        assert "test-graph" in session.graphs
 
     def test_add_step(self):
         """Test adding steps."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="step1", input="hello")
@@ -58,7 +62,8 @@ class TestGraph:
 
     def test_add_step_duplicate_error(self):
         """Test duplicate step_id raises error."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="step1")
@@ -68,7 +73,8 @@ class TestGraph:
 
     def test_add_step_empty_id_error(self):
         """Test empty step_id raises error."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         with pytest.raises(ValueError, match="cannot be empty"):
@@ -76,7 +82,8 @@ class TestGraph:
 
     def test_add_step_ref(self):
         """Test adding step with node_ref."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
 
         graph.add_step_ref(node_id="registered-node", step_id="step1")
 
@@ -86,7 +93,8 @@ class TestGraph:
 
     def test_chain(self):
         """Test chain method sets dependencies."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="a")
@@ -100,7 +108,8 @@ class TestGraph:
 
     def test_validate_valid_graph(self):
         """Test validate with valid graph."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="a")
@@ -111,7 +120,8 @@ class TestGraph:
 
     def test_validate_self_dependency(self):
         """Test validate catches self-dependency."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="a", depends_on=["a"])
@@ -122,7 +132,8 @@ class TestGraph:
 
     def test_validate_missing_dependency(self):
         """Test validate catches missing dependency."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="a", depends_on=["nonexistent"])
@@ -133,7 +144,8 @@ class TestGraph:
 
     def test_validate_missing_node(self):
         """Test validate catches step without node or node_ref."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         graph._steps["a"] = Step()  # No node or node_ref
 
         errors = graph.validate()
@@ -142,7 +154,8 @@ class TestGraph:
 
     def test_validate_mutually_exclusive_input(self):
         """Test validate catches input and input_fn together."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph._steps["a"] = Step(
@@ -155,7 +168,8 @@ class TestGraph:
 
     def test_execution_order(self):
         """Test execution order respects dependencies."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
         graph.add_step(node, step_id="c", depends_on=["b"])
@@ -169,7 +183,8 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_execute_simple(self):
         """Test simple graph execution."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
 
         graph.add_step(
             FunctionNode(id="fn1", fn=lambda ctx: "result_a"),
@@ -181,7 +196,6 @@ class TestGraph:
             depends_on=["a"],
         )
 
-        session = Session()
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
@@ -191,7 +205,8 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_execute_with_static_input(self):
         """Test execution with static input."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
 
         graph.add_step(
             FunctionNode(id="fn", fn=lambda ctx: ctx.input.upper()),
@@ -199,7 +214,6 @@ class TestGraph:
             input="hello",
         )
 
-        session = Session()
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
@@ -208,7 +222,8 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_execute_with_input_fn(self):
         """Test execution with dynamic input_fn."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
 
         graph.add_step(
             FunctionNode(id="fn1", fn=lambda ctx: {"data": "value"}),
@@ -221,7 +236,6 @@ class TestGraph:
             input_fn=lambda u: u["a"]["data"].upper(),
         )
 
-        session = Session()
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
@@ -231,11 +245,11 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_execute_with_node_ref(self):
         """Test execution with node_ref resolved from session."""
-        session = Session()
+        session = Session(name="test")
         registered_node = FunctionNode(id="registered", fn=lambda ctx: "from_session")
         session.nodes["registered"] = registered_node
 
-        graph = Graph(id="test")
+        graph = Graph(id="test", session=session)
         graph.add_step_ref(node_id="registered", step_id="a")
 
         context = ExecutionContext(session=session)
@@ -246,13 +260,16 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_nested_graphs(self):
         """Test graphs containing graphs."""
-        inner = Graph(id="inner")
+        session = Session(name="test")
+        inner = Graph(id="inner", session=session)
         inner.add_step(
             FunctionNode(id="fn", fn=lambda ctx: "inner_result"),
             step_id="inner_step",
         )
 
-        outer = Graph(id="outer")
+        # Create outer graph in separate session to avoid ID conflict
+        session2 = Session(name="test2")
+        outer = Graph(id="outer", session=session2)
         outer.add_step(inner, step_id="nested")
         outer.add_step(
             FunctionNode(
@@ -262,8 +279,7 @@ class TestGraph:
             depends_on=["nested"],
         )
 
-        session = Session()
-        context = ExecutionContext(session=session)
+        context = ExecutionContext(session=session2)
         results = await outer.execute(context)
 
         assert results["nested"]["inner_step"] == "inner_result"
@@ -272,7 +288,8 @@ class TestGraph:
     @pytest.mark.asyncio
     async def test_execute_stream(self):
         """Test streaming execution."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
 
         graph.add_step(
             FunctionNode(id="fn1", fn=lambda ctx: "a"),
@@ -284,7 +301,6 @@ class TestGraph:
             depends_on=["a"],
         )
 
-        session = Session()
         context = ExecutionContext(session=session)
 
         events = []
@@ -300,7 +316,8 @@ class TestGraph:
 
     def test_to_info(self):
         """Test to_info method."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
         graph.add_step(node, step_id="a")
         graph.add_step(node, step_id="b")
@@ -313,7 +330,8 @@ class TestGraph:
 
     def test_repr(self):
         """Test repr."""
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
         graph.add_step(node, step_id="a")
 
@@ -330,7 +348,8 @@ class TestGraph:
             async def execute(self, ctx):
                 return "result"
 
-        graph = Graph(id="test")
+        session = Session(name="test")
+        graph = Graph(id="test", session=session)
         persistent = MockPersistentNode()
         ephemeral = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
