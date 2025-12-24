@@ -46,7 +46,7 @@ def server():
 
     **Interactive:**
 
-        nerve server repl      Server-connected REPL
+        nerve repl --server <name>    Connect to server REPL (unified command)
     """
     pass
 
