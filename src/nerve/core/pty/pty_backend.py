@@ -222,7 +222,16 @@ class PTYBackend(Backend):
                     # Process didn't exit, force kill
                     try:
                         os.kill(self._pid, signal.SIGKILL)
-                        os.waitpid(self._pid, 0)  # Reap zombie
+
+                        # Wait for SIGKILL to take effect (non-blocking)
+                        for _ in range(10):  # Max 1 second
+                            try:
+                                pid, _ = os.waitpid(self._pid, os.WNOHANG)
+                                if pid != 0:
+                                    break  # Process exited
+                            except ChildProcessError:
+                                break  # Already reaped
+                            await asyncio.sleep(0.1)
                     except (ProcessLookupError, ChildProcessError):
                         pass
 
