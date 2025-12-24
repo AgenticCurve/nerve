@@ -51,8 +51,9 @@ path = "src/nerve/__version__.py"
 
 [tool.hatch.envs.default.scripts]
 lint = "ruff check . --fix && ruff format ."
+typecheck = "mypy src/"
 test = "pytest"
-check = ["lint", "test"]
+check = ["lint", "typecheck", "test"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nerve"]
