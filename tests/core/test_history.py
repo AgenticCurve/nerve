@@ -24,11 +24,13 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
         assert writer.node_id == "test-node"
         assert writer.server_name == "test-server"
+        assert writer.session_name == "test-session"
         assert writer.enabled is True
         assert writer.file_path.exists()
 
@@ -39,6 +41,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
             enabled=False,
         )
@@ -53,6 +56,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -74,6 +78,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -92,6 +97,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -111,6 +117,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -146,6 +153,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -173,6 +181,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -191,6 +200,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -209,6 +219,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -227,6 +238,7 @@ class TestHistoryWriter:
         writer1 = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
         writer1.log_run("cmd1")  # seq 1
@@ -237,6 +249,7 @@ class TestHistoryWriter:
         writer2 = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
         seq = writer2.log_run("cmd3")  # Should be seq 3
@@ -249,6 +262,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -274,6 +288,7 @@ class TestHistoryWriter:
             HistoryWriter.create(
                 node_id="test-node",
                 server_name="test-server",
+                session_name="test-session",
                 base_dir=tmp_path,
             )
 
@@ -283,6 +298,7 @@ class TestHistoryWriter:
             HistoryWriter.create(
                 node_id="INVALID_NAME",  # Uppercase not allowed
                 server_name="test-server",
+                session_name="test-session",
                 base_dir=tmp_path,
             )
 
@@ -292,6 +308,7 @@ class TestHistoryWriter:
             HistoryWriter.create(
                 node_id="test-node",
                 server_name="../escape",  # Path traversal attempt
+                session_name="test-session",
                 base_dir=tmp_path,
             )
 
@@ -300,6 +317,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
             enabled=False,
         )
@@ -316,6 +334,7 @@ class TestHistoryWriter:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
         writer.close()
@@ -333,6 +352,7 @@ class TestHistoryReader:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -359,6 +379,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -373,6 +394,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -387,6 +409,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -400,6 +423,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -414,6 +438,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -426,6 +451,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=history_file,
         )
 
@@ -440,15 +466,16 @@ class TestHistoryReader:
             HistoryReader.create(
                 node_id="nonexistent",
                 server_name="test-server",
+                session_name="test-session",
                 base_dir=tmp_path,
             )
 
     def test_malformed_json_skipped(self, tmp_path: Path):
         """Test malformed lines are skipped."""
         # Create file with bad line
-        server_dir = tmp_path / "test-server"
-        server_dir.mkdir(parents=True)
-        file_path = server_dir / "test-node.jsonl"
+        session_dir = tmp_path / "test-server" / "test-session"
+        session_dir.mkdir(parents=True)
+        file_path = session_dir / "test-node.jsonl"
 
         with open(file_path, "w") as f:
             f.write('{"seq": 1, "op": "run", "ts": "2025-01-01T00:00:00Z", "input": "cmd"}\n')
@@ -458,6 +485,7 @@ class TestHistoryReader:
         reader = HistoryReader.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 
@@ -486,6 +514,7 @@ class TestInterleavedAccess:
         writer = HistoryWriter.create(
             node_id="test-node",
             server_name="test-server",
+            session_name="test-session",
             base_dir=tmp_path,
         )
 

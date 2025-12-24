@@ -61,6 +61,7 @@ class TestGetHistory:
         history_writer = HistoryWriter.create(
             node_id=node_id,
             server_name="test-server",
+            session_name="default",
             base_dir=tmp_path,
             enabled=True,
         )

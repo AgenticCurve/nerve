@@ -39,25 +39,25 @@ class TestRunInteractive:
     async def test_run_interactive_connects_to_server(self):
         """run_interactive connects to server when server_name provided."""
         # Mock the server connection
-        with patch("builtins.input", side_effect=["exit"]):
-            with patch(
+        with (
+            patch("builtins.input", side_effect=["exit"]),
+            patch(
                 "nerve.frontends.cli.utils.get_server_transport",
                 return_value=("unix", "/tmp/test.sock"),
-            ):
-                with patch(
-                    "nerve.transport.UnixSocketClient"
-                ) as MockClient:
-                    mock_client = Mock()
-                    mock_client.connect = AsyncMock()
-                    mock_client.disconnect = AsyncMock()
-                    MockClient.return_value = mock_client
+            ),
+            patch("nerve.transport.UnixSocketClient") as MockClient,
+        ):
+            mock_client = Mock()
+            mock_client.connect = AsyncMock()
+            mock_client.disconnect = AsyncMock()
+            MockClient.return_value = mock_client
 
-                    await run_interactive(server_name="test-server")
+            await run_interactive(server_name="test-server")
 
-                    # Verify client was created and connected
-                    MockClient.assert_called_once_with("/tmp/test.sock")
-                    mock_client.connect.assert_called_once()
-                    mock_client.disconnect.assert_called_once()
+            # Verify client was created and connected
+            MockClient.assert_called_once_with("/tmp/test.sock")
+            mock_client.connect.assert_called_once()
+            mock_client.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_run_interactive_handles_eof(self, capsys):
@@ -83,24 +83,24 @@ class TestRunInteractive:
     async def test_run_interactive_handles_keyboard_interrupt(self, capsys):
         """run_interactive handles KeyboardInterrupt (Ctrl-C)."""
         # First Ctrl-C shows message, second exits
-        with patch(
-            "builtins.input", side_effect=[KeyboardInterrupt, KeyboardInterrupt]
+        with (
+            patch("builtins.input", side_effect=[KeyboardInterrupt, KeyboardInterrupt]),
+            patch("nerve.core.session.Session") as MockSession,
         ):
-            with patch("nerve.core.session.Session") as MockSession:
-                mock_session = Mock()
-                mock_session.name = "repl"
-                mock_session.id = "repl"
-                mock_session.nodes = {}
-                mock_session.graphs = {}
-                mock_session.stop = AsyncMock()
-                mock_session.list_graphs.return_value = []
-                MockSession.return_value = mock_session
+            mock_session = Mock()
+            mock_session.name = "repl"
+            mock_session.id = "repl"
+            mock_session.nodes = {}
+            mock_session.graphs = {}
+            mock_session.stop = AsyncMock()
+            mock_session.list_graphs.return_value = []
+            MockSession.return_value = mock_session
 
-                await run_interactive()
+            await run_interactive()
 
-                captured = capsys.readouterr()
-                # Should show interrupt message
-                assert "Press Ctrl-C again to exit" in captured.out or "Exiting" in captured.out
+            captured = capsys.readouterr()
+            # Should show interrupt message
+            assert "Press Ctrl-C again to exit" in captured.out or "Exiting" in captured.out
 
     @pytest.mark.asyncio
     async def test_run_interactive_prints_startup_message(self, capsys):
@@ -156,23 +156,23 @@ class TestRunInteractive:
 
         state = REPLState()
 
-        with patch("builtins.input", side_effect=["exit"]):
-            with patch(
+        with (
+            patch("builtins.input", side_effect=["exit"]),
+            patch(
                 "nerve.frontends.cli.utils.get_server_transport",
                 return_value=("unix", "/tmp/test.sock"),
-            ):
-                with patch(
-                    "nerve.transport.UnixSocketClient"
-                ) as MockClient:
-                    mock_client = Mock()
-                    mock_client.connect = AsyncMock()
-                    mock_client.disconnect = AsyncMock()
-                    MockClient.return_value = mock_client
+            ),
+            patch("nerve.transport.UnixSocketClient") as MockClient,
+        ):
+            mock_client = Mock()
+            mock_client.connect = AsyncMock()
+            mock_client.disconnect = AsyncMock()
+            MockClient.return_value = mock_client
 
-                    await run_interactive(state=state, server_name="test-server")
+            await run_interactive(state=state, server_name="test-server")
 
-                    # Namespace should be empty in server mode
-                    assert state.namespace == {}
+            # Namespace should be empty in server mode
+            assert state.namespace == {}
 
     @pytest.mark.asyncio
     async def test_run_interactive_cleanup_on_exit(self):
@@ -224,9 +224,7 @@ class TestRunInteractive:
                 "nerve.frontends.cli.utils.get_server_transport",
                 return_value=("unix", "/tmp/test.sock"),
             ):
-                with patch(
-                    "nerve.transport.UnixSocketClient"
-                ) as MockClient:
+                with patch("nerve.transport.UnixSocketClient") as MockClient:
                     mock_client = Mock()
                     mock_client.connect = AsyncMock()
                     mock_client.disconnect = AsyncMock()

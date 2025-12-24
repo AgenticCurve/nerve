@@ -228,7 +228,12 @@ async def run_interactive(
                                     print(response)
                         else:
                             print(response)
-                    except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError) as e:
+                    except (
+                        ConnectionError,
+                        ConnectionResetError,
+                        BrokenPipeError,
+                        RuntimeError,
+                    ) as e:
                         if not python_exec_enabled:  # Only for remote mode
                             server_disconnected = True
                             break
@@ -343,7 +348,12 @@ async def run_interactive(
                                     print(f"Error: {result.data['error']}")
                             else:
                                 print(f"Command failed: {result.error}")
-                        except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError):
+                        except (
+                            ConnectionError,
+                            ConnectionResetError,
+                            BrokenPipeError,
+                            RuntimeError,
+                        ):
                             server_disconnected = True
                             break
                     else:
@@ -386,7 +396,12 @@ async def run_interactive(
                                     print(f"Error: {result.data['error']}")
                             else:
                                 print(f"Command failed: {result.error}")
-                        except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError):
+                        except (
+                            ConnectionError,
+                            ConnectionResetError,
+                            BrokenPipeError,
+                            RuntimeError,
+                        ):
                             server_disconnected = True
                             break
                     else:
@@ -439,7 +454,12 @@ async def run_interactive(
                                     print(f"Error: {result.data['error']}")
                             else:
                                 print(f"Command failed: {result.error}")
-                        except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError) as e:
+                        except (
+                            ConnectionError,
+                            ConnectionResetError,
+                            BrokenPipeError,
+                            RuntimeError,
+                        ) as e:
                             server_disconnected = True
                             break
                     else:
@@ -551,7 +571,12 @@ async def run_interactive(
                         # Track nodes created
                         for name, value in state.namespace.items():
                             if hasattr(value, "state") and hasattr(value, "execute"):
-                                if name not in ("PTYNode", "WezTermNode", "ParserType", "FunctionNode"):
+                                if name not in (
+                                    "PTYNode",
+                                    "WezTermNode",
+                                    "ParserType",
+                                    "FunctionNode",
+                                ):
                                     state.nodes[name] = value
 
                         # Track Graph

@@ -167,7 +167,6 @@ class TestLocalSessionAdapter:
     @pytest.mark.asyncio
     async def test_local_adapter_execute_on_node(self):
         """LocalSessionAdapter executes on node."""
-        from nerve.core.nodes.context import ExecutionContext
 
         # Mock node with execute method
         mock_result = Mock()
@@ -283,7 +282,7 @@ class TestRemoteSessionAdapter:
     @pytest.mark.asyncio
     async def test_remote_adapter_list_nodes_adds_session_id(self):
         """RemoteSessionAdapter adds session_id to params."""
-        from nerve.server.protocols import Command, CommandType, CommandResult
+        from nerve.server.protocols import Command, CommandResult
 
         client = Mock()
         client.send_command = AsyncMock(
@@ -335,9 +334,7 @@ class TestRemoteSessionAdapter:
         from nerve.server.protocols import CommandResult
 
         client = Mock()
-        client.send_command = AsyncMock(
-            return_value=CommandResult(success=True, data={})
-        )
+        client.send_command = AsyncMock(return_value=CommandResult(success=True, data={}))
 
         adapter = RemoteSessionAdapter(client, "test-server", "test-session")
         result = await adapter.delete_node("node1")

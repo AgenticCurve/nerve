@@ -712,6 +712,7 @@ class NerveEngine:
             reader = HistoryReader.create(
                 node_id=node_id,
                 server_name=server_name,
+                session_name=session.name,
                 base_dir=session.history_base_dir,
             )
 

@@ -156,6 +156,7 @@ class Session:
                 history_writer = HistoryWriter.create(
                     node_id=node_id,
                     server_name=self.server_name,
+                    session_name=self.name,
                     base_dir=self.history_base_dir,
                     enabled=True,
                 )

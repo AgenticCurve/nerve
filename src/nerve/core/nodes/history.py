@@ -53,7 +53,7 @@ class HistoryWriter:
     - Never raises exceptions to caller (except in create())
 
     Example:
-        >>> writer = HistoryWriter.create("my-node", server_name="test")
+        >>> writer = HistoryWriter.create("my-node", server_name="test", session_name="default")
         >>> writer.log_run("claude")
         >>> writer.log_read("Claude started...")
         >>> writer.log_send("Hello", response_data, preceding_buffer_seq=2)
@@ -62,6 +62,7 @@ class HistoryWriter:
 
     node_id: str
     server_name: str
+    session_name: str
     file_path: Path
     _seq: int = field(default=0, repr=False)
     _file: Any = field(default=None, repr=False)
@@ -74,6 +75,7 @@ class HistoryWriter:
         cls,
         node_id: str,
         server_name: str,
+        session_name: str,
         base_dir: Path | None = None,
         enabled: bool = True,
     ) -> HistoryWriter:
@@ -84,6 +86,7 @@ class HistoryWriter:
         Args:
             node_id: Unique node identifier.
             server_name: Server this node belongs to.
+            session_name: Session this node belongs to.
             base_dir: Base directory for history files (default: .nerve/history).
             enabled: Whether history logging is enabled.
 
@@ -92,22 +95,24 @@ class HistoryWriter:
 
         Raises:
             HistoryError: If directory creation or file access fails.
-            ValueError: If node_id or server_name is invalid.
+            ValueError: If node_id, server_name, or session_name is invalid.
         """
         # Validate names to prevent path traversal (raises ValueError)
         validate_name(node_id, "node")
         validate_name(server_name, "server")
+        validate_name(session_name, "session")
 
         if base_dir is None:
             base_dir = Path.cwd() / ".nerve" / "history"
 
-        server_dir = base_dir / server_name
-        file_path = server_dir / f"{node_id}.jsonl"
+        session_dir = base_dir / server_name / session_name
+        file_path = session_dir / f"{node_id}.jsonl"
 
         # Create instance first (before any file ops)
         writer = cls(
             node_id=node_id,
             server_name=server_name,
+            session_name=session_name,
             file_path=file_path,
             _enabled=enabled,
         )
@@ -117,7 +122,7 @@ class HistoryWriter:
 
         try:
             # Create directory
-            server_dir.mkdir(parents=True, exist_ok=True)
+            session_dir.mkdir(parents=True, exist_ok=True)
 
             # Recover sequence number from existing file
             if file_path.exists():
@@ -446,7 +451,7 @@ class HistoryReader:
     Consider streaming reads for v2 if files grow large.
 
     Example:
-        >>> reader = HistoryReader.create("my-node", server_name="test")
+        >>> reader = HistoryReader.create("my-node", server_name="test", session_name="default")
         >>> entries = reader.get_all()
         >>> sends = reader.get_by_op("send")
         >>> last_5 = reader.get_last(5)
@@ -454,6 +459,7 @@ class HistoryReader:
 
     node_id: str
     server_name: str
+    session_name: str
     file_path: Path
 
     @classmethod
@@ -461,6 +467,7 @@ class HistoryReader:
         cls,
         node_id: str,
         server_name: str,
+        session_name: str,
         base_dir: Path | None = None,
     ) -> HistoryReader:
         """Create a history reader.
@@ -468,6 +475,7 @@ class HistoryReader:
         Args:
             node_id: Node identifier.
             server_name: Server name.
+            session_name: Session name.
             base_dir: Base directory for history files.
 
         Returns:
@@ -479,14 +487,17 @@ class HistoryReader:
         if base_dir is None:
             base_dir = Path.cwd() / ".nerve" / "history"
 
-        file_path = base_dir / server_name / f"{node_id}.jsonl"
+        file_path = base_dir / server_name / session_name / f"{node_id}.jsonl"
 
         if not file_path.exists():
-            raise FileNotFoundError(f"No history for node '{node_id}' on server '{server_name}'")
+            raise FileNotFoundError(
+                f"No history for node '{node_id}' in session '{session_name}' on server '{server_name}'"
+            )
 
         return cls(
             node_id=node_id,
             server_name=server_name,
+            session_name=session_name,
             file_path=file_path,
         )
 

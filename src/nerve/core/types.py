@@ -157,12 +157,7 @@ class ParsedResponse:
         # Token info
         token_str = f", tokens={self.tokens}" if self.tokens else ""
 
-        return (
-            f"ParsedResponse("
-            f"text={text_preview!r}, "
-            f"sections=[{sections_str}]"
-            f"{token_str})"
-        )
+        return f"ParsedResponse(text={text_preview!r}, sections=[{sections_str}]{token_str})"
 
     def __str__(self) -> str:
         """Human-readable representation."""
