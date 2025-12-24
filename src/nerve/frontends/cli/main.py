@@ -124,14 +124,7 @@ def _run_cli() -> None:
     @cli.command()
     @click.argument("file", required=False)
     @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
-    @click.option(
-        "--backend",
-        "-b",
-        type=click.Choice(["pty", "wezterm"]),
-        default="pty",
-        help="Backend for nodes (pty or wezterm)",
-    )
-    def repl(file: str | None, dry_run: bool, backend: str):
+    def repl(file: str | None, dry_run: bool):
         """Interactive graph definition and execution.
 
         A REPL for defining and running graphs (node execution pipelines)
@@ -141,21 +134,16 @@ def _run_cli() -> None:
 
             nerve repl
 
-            nerve repl --backend wezterm
-
             nerve repl script.py
 
             nerve repl script.py --dry-run
         """
-        from nerve.core.pty import BackendType
         from nerve.frontends.cli.repl import run_from_file, run_interactive
 
-        backend_type = BackendType.WEZTERM if backend == "wezterm" else BackendType.PTY
-
         if file:
-            asyncio.run(run_from_file(file, dry_run=dry_run, backend_type=backend_type))
+            asyncio.run(run_from_file(file, dry_run=dry_run))
         else:
-            asyncio.run(run_interactive(backend_type=backend_type))
+            asyncio.run(run_interactive())
 
     cli()
 

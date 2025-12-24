@@ -279,8 +279,8 @@ def graph_run(file: str, server_name: str, dry_run: bool):
 
 
 @server.command("repl")
-@click.argument("name")
-def server_repl_cmd(name: str):
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+def server_repl_cmd(server_name: str):
     """Interactive REPL connected to the server.
 
     Unlike the standalone `nerve repl`, this REPL connects to a running
@@ -288,9 +288,11 @@ def server_repl_cmd(name: str):
 
     **Examples:**
 
-        nerve server repl myproject
+        nerve server repl
+
+        nerve server repl --server myproject
     """
     from nerve.frontends.cli.server.repl import run_server_repl
 
-    socket = f"/tmp/nerve-{name}.sock"
+    socket = f"/tmp/nerve-{server_name}.sock"
     asyncio.run(run_server_repl(socket_path=socket))

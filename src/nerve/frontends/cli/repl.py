@@ -29,49 +29,41 @@ class REPLState:
 def print_help():
     """Print usage help."""
     print("""
-Graph Definition Syntax:
-------------------------
-  from nerve.core import ParserType
-  from nerve.core.nodes import Graph, FunctionNode, ExecutionContext
-  from nerve.core.session import Session
+Nerve REPL - Interactive Python environment for AI CLI orchestration
 
-  # Create session and nodes
-  session = Session()
+Pre-loaded:
+  session     - Session named 'repl' (ready to use)
+  Session, Graph, FunctionNode, ExecutionContext
+  ParserType, BackendType, PTYNode, WezTermNode
+
+Python Examples:
   claude = await session.create_node("claude", command="claude")
-  gemini = await session.create_node("gemini", command="gemini")
-
-  # Define graph with function nodes
-  graph = session.create_graph("pipeline")
-
-  graph.add_step(
-      FunctionNode(id="ask", fn=lambda ctx: claude.execute(
-          ExecutionContext(session=session, input="Hello!", parser=ParserType.CLAUDE)
-      )),
-      step_id="ask",
-  )
-
-  graph.add_step(
-      FunctionNode(id="respond", fn=lambda ctx: gemini.execute(
-          ExecutionContext(session=session, input=f"Reply to: {ctx.upstream['ask'].raw}",
-                           parser=ParserType.GEMINI)
-      )),
-      step_id="respond",
-      depends_on=["ask"],
-  )
-
-  # Execute
+  graph = session.create_graph("my-pipeline")
+  graph.add_step(claude, step_id="q1", input="What is 2+2?")
   results = await graph.execute(ExecutionContext(session=session))
 
 Commands:
----------
-  help      - Show this help
-  nodes     - List active nodes
-  clear     - Clear namespace and nodes
-  show      - Show current Graph
-  validate  - Validate current Graph
-  dry       - Dry run (show execution order)
-  run       - Execute the Graph
-  exit      - Exit the REPL
+  Session:
+    session               Show session info
+    nodes                 List all nodes
+    graphs                List all graphs
+    reset                 Reset session (stop all nodes, clear graphs)
+
+  Nodes:
+    send <node> <text>    Send input to node and get response
+    read <node>           Read node's output buffer
+    stop <node>           Stop a node
+    delete <node>         Delete a node
+
+  Graphs:
+    show                  Show current graph structure
+    validate              Validate graph
+    dry                   Show execution order
+    run                   Execute the graph
+
+  Other:
+    help                  Show this help
+    exit                  Exit the REPL
 """)
 
 
@@ -148,7 +140,10 @@ async def run_interactive(
     )
     from nerve.core.session import BackendType, Session
 
-    # Initialize namespace with nerve imports
+    # Create default session named "repl"
+    session = Session(name="repl")
+
+    # Initialize namespace with nerve imports and default session
     state.namespace = {
         "asyncio": asyncio,
         "Graph": Graph,
@@ -160,19 +155,15 @@ async def run_interactive(
         "ParserType": ParserType,
         "BackendType": BackendType,
         "nodes": state.nodes,  # Node tracking dict
+        "session": session,  # Default session
         "_state": state,
     }
 
     # Track current Graph
     current_graph: Graph | None = None
 
-    print("=" * 50)
-    print("Nerve Graph REPL - Interactive Mode")
-    print("=" * 50)
-    print("\nType 'help' for syntax guide.")
-    print("Use Session to create nodes: session.create_node(...)")
-    print("Commands: help, nodes, clear, show, validate, dry, run, exit")
-    print("-" * 50)
+    print("Nerve REPL")
+    print(f"Session: {session.name} | Type 'help' for commands\n")
 
     buffer = ""
     interrupt_count = 0
@@ -196,24 +187,139 @@ async def run_interactive(
 
         # Handle REPL commands (only when not in multi-line mode)
         if not buffer:
-            cmd = line.strip().lower()
+            parts = line.strip().split(maxsplit=2)
+            cmd = parts[0].lower() if parts else ""
 
             if cmd == "help":
                 print_help()
                 continue
+
             elif cmd == "nodes":
                 print_nodes(state)
                 continue
-            elif cmd == "clear":
+
+            elif cmd == "graphs":
+                sess = state.namespace.get("session")
+                if sess:
+                    graph_ids = sess.list_graphs()
+                    if graph_ids:
+                        print("\nGraphs:")
+                        for gid in graph_ids:
+                            print(f"  {gid}")
+                    else:
+                        print("No graphs defined")
+                else:
+                    print("No session")
+                continue
+
+            elif cmd == "session":
+                sess = state.namespace.get("session")
+                if sess:
+                    print(f"\nSession: {sess.name}")
+                    print(f"  ID: {sess.id}")
+                    print(f"  Nodes: {len(sess.nodes)}")
+                    print(f"  Graphs: {len(sess.graphs)}")
+                else:
+                    print("No session")
+                continue
+
+            elif cmd == "send":
+                if len(parts) < 3:
+                    print("Usage: send <node> <text>")
+                    continue
+                node_name = parts[1]
+                text = parts[2]
+                node = state.nodes.get(node_name)
+                if not node:
+                    print(f"Node not found: {node_name}")
+                    continue
+                try:
+                    sess = state.namespace.get("session")
+                    ctx = ExecutionContext(session=sess, input=text)
+                    result = asyncio.get_event_loop().run_until_complete(
+                        node.execute(ctx)
+                    )
+                    print(result.raw if hasattr(result, "raw") else str(result))
+                except Exception as e:
+                    print(f"Error: {e}")
+                continue
+
+            elif cmd == "read":
+                if len(parts) < 2:
+                    print("Usage: read <node>")
+                    continue
+                node_name = parts[1]
+                node = state.nodes.get(node_name)
+                if not node:
+                    print(f"Node not found: {node_name}")
+                    continue
+                if hasattr(node, "read_buffer"):
+                    try:
+                        buffer_content = asyncio.get_event_loop().run_until_complete(
+                            node.read_buffer()
+                        )
+                        print(buffer_content)
+                    except Exception as e:
+                        print(f"Error: {e}")
+                else:
+                    print("Node does not support read_buffer")
+                continue
+
+            elif cmd == "stop":
+                if len(parts) < 2:
+                    print("Usage: stop <node>")
+                    continue
+                node_name = parts[1]
+                node = state.nodes.get(node_name)
+                if not node:
+                    print(f"Node not found: {node_name}")
+                    continue
+                if hasattr(node, "stop"):
+                    try:
+                        asyncio.get_event_loop().run_until_complete(node.stop())
+                        print(f"Stopped: {node_name}")
+                    except Exception as e:
+                        print(f"Error: {e}")
+                else:
+                    print("Node does not support stop")
+                continue
+
+            elif cmd == "delete":
+                if len(parts) < 2:
+                    print("Usage: delete <node>")
+                    continue
+                node_name = parts[1]
+                sess = state.namespace.get("session")
+                if sess and node_name in sess.nodes:
+                    try:
+                        asyncio.get_event_loop().run_until_complete(
+                            sess.delete_node(node_name)
+                        )
+                        state.nodes.pop(node_name, None)
+                        print(f"Deleted: {node_name}")
+                    except Exception as e:
+                        print(f"Error: {e}")
+                else:
+                    print(f"Node not found: {node_name}")
+                continue
+
+            elif cmd == "reset":
+                sess = state.namespace.get("session")
+                if sess:
+                    asyncio.get_event_loop().run_until_complete(sess.stop())
                 state.nodes.clear()
                 state.namespace["nodes"] = state.nodes
+                # Recreate session
+                state.namespace["session"] = Session(name="repl")
                 current_graph = None
-                print("Cleared nodes and Graph")
+                print("Session reset")
                 continue
+
             elif cmd == "show":
                 graph = state.namespace.get("graph") or current_graph
                 print_graph(graph)
                 continue
+
             elif cmd == "validate":
                 graph = state.namespace.get("graph") or current_graph
                 if graph:
@@ -227,6 +333,7 @@ async def run_interactive(
                 else:
                     print("No Graph defined")
                 continue
+
             elif cmd == "dry":
                 graph = state.namespace.get("graph") or current_graph
                 if graph:
@@ -240,13 +347,14 @@ async def run_interactive(
                 else:
                     print("No Graph defined")
                 continue
+
             elif cmd == "run":
                 graph = state.namespace.get("graph") or current_graph
                 if graph:
                     try:
                         print("\nExecuting Graph...")
-                        session = state.namespace.get("session") or Session()
-                        context = ExecutionContext(session=session)
+                        sess = state.namespace.get("session") or Session()
+                        context = ExecutionContext(session=sess)
                         results = asyncio.get_event_loop().run_until_complete(
                             graph.execute(context)
                         )
@@ -257,6 +365,7 @@ async def run_interactive(
                 else:
                     print("No Graph defined")
                 continue
+
             elif cmd in ("exit", "quit"):
                 print("Exiting...")
                 break
@@ -332,6 +441,9 @@ async def run_from_file(
     )
     from nerve.core.session import BackendType, Session
 
+    # Create default session named "repl"
+    session = Session(name="repl")
+
     namespace = {
         "asyncio": asyncio,
         "Graph": Graph,
@@ -342,6 +454,7 @@ async def run_from_file(
         "Session": Session,
         "ParserType": ParserType,
         "BackendType": BackendType,
+        "session": session,  # Default session
         "__name__": "__nerve_repl__",
     }
 
@@ -365,8 +478,9 @@ async def run_from_file(
                     print(f"  [{i}] {step_id}")
             else:
                 print("\nExecuting Graph...")
-                session = namespace.get("session") or Session()
-                context = ExecutionContext(session=session)
+                # Use session from namespace (may have been replaced by file)
+                exec_session = namespace.get("session") or session
+                context = ExecutionContext(session=exec_session)
                 await graph.execute(context)
         else:
             print("No 'graph' variable found in file")

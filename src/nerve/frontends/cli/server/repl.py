@@ -29,44 +29,32 @@ class ServerREPLState:
 def print_help():
     """Print usage help."""
     print("""
-Server REPL Commands:
----------------------
+Server REPL - Interactive interface to a running nerve server
 
-Node Management:
-  create <name> [--command cmd] [--cwd path]
-                    Create a new node (name is required)
-  nodes             List all nodes on the server
+Nodes:
+  create <name> --command <cmd>   Create a node
+  create <name> --command <cmd> --cwd <path>
+  nodes                           List all nodes
 
 Interaction:
-  send <name> <prompt> [--parser claude|gemini|none]
-                    Send a prompt to a node
-  stream <name> <prompt>
-                    Send with streaming output
+  send <name> <prompt>            Send input and get response
+  stream <name> <prompt>          Send with streaming output
 
-Graph Execution:
-  graph load <file>   Load a Graph definition file
-  graph show          Show current Graph structure
-  graph dry           Show execution order
-  graph run           Execute the Graph
+Graphs:
+  graph load <file>               Load graph definition file
+  graph show                      Show graph structure
+  graph dry                       Show execution order
+  graph run                       Execute the graph
 
 Other:
-  help              Show this help
-  status            Show connection status
-  exit              Exit the REPL
+  help                            Show this help
+  status                          Show connection status
+  exit                            Exit the REPL
 
 Examples:
----------
-  >>> create my-claude --command claude
-  Created node: my-claude
-
-  >>> send my-claude "Hello, how are you?" --parser claude
-  [response...]
-
-  >>> graph load my_workflow.py
-  Loaded Graph with 3 steps
-
-  >>> graph run
-  Executing...
+  create claude --command claude
+  send claude What is 2+2?
+  nodes
 """)
 
 
@@ -120,6 +108,9 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
         print(f"Failed to connect: {e}")
         print("Make sure the server is running: nerve server start")
         return
+
+    # Use server's default session (no session_id = default)
+    print("Using server's default session")
 
     print("=" * 50)
     print("Nerve Server REPL")
@@ -224,7 +215,7 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
                             type=CommandType.EXECUTE_INPUT,
                             params={
                                 "node_id": name,
-                                "input": prompt,
+                                "text": prompt,
                                 "stream": cmd == "stream",
                             },
                         )
