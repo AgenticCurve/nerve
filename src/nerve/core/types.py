@@ -78,3 +78,13 @@ class ParsedResponse:
     is_complete: bool
     is_ready: bool
     tokens: int | None = None
+
+    @property
+    def text(self) -> str:
+        """Get text content only (excludes thinking, tool calls).
+
+        Returns:
+            Combined text from all text sections, or empty string if none.
+        """
+        text_sections = [s.content for s in self.sections if s.type == "text"]
+        return " ".join(text_sections).strip()

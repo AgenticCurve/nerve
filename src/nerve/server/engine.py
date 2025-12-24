@@ -381,6 +381,32 @@ class NerveEngine:
             }
         }
 
+    def _pretty_print_value(self, value: Any) -> str:
+        """Pretty-print a value for REPL display.
+
+        Handles special cases like ParsedResponse objects and converts them to JSON.
+        """
+        import json
+        from dataclasses import asdict, is_dataclass
+
+        # Convert dataclasses to dicts for JSON serialization
+        def convert_to_serializable(obj):
+            if is_dataclass(obj):
+                return asdict(obj)
+            elif isinstance(obj, dict):
+                return {k: convert_to_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_to_serializable(item) for item in obj]
+            else:
+                return obj
+
+        try:
+            serializable = convert_to_serializable(value)
+            return json.dumps(serializable, indent=2)
+        except (TypeError, ValueError):
+            # Fall back to repr if JSON serialization fails
+            return repr(value)
+
     async def _execute_python(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute Python code in server's interpreter.
 
@@ -430,6 +456,7 @@ class NerveEngine:
                 "ParserType": ParserType,
                 "BackendType": BackendType,
                 "session": session,  # The actual session
+                "context": ExecutionContext(session=session),  # Pre-configured context
             }
 
         namespace = self._python_namespaces[session_id]
@@ -440,26 +467,39 @@ class NerveEngine:
 
         try:
             with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
-                # Try to compile as a complete statement
-                code_obj = compile_command(code_str, "<repl>", "single")
-
-                if code_obj is None:
-                    # Incomplete code
-                    return {
-                        "output": "",
-                        "error": "SyntaxError: unexpected EOF while parsing (incomplete code)",
-                    }
-
-                # Handle async code
-                if "await " in code_str or "async " in code_str:
-                    # Wrap in async function and run
+                # Handle async code (contains await)
+                if "await " in code_str:
+                    # Wrap in async function that returns local variables
                     async_code = "async def __repl_async__():\n"
                     for line in code_str.split("\n"):
                         async_code += f"    {line}\n"
-                    async_code += "\nimport asyncio\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
+                    async_code += "    return locals()\n"
 
+                    # Compile and execute the function definition
                     exec(compile(async_code, "<repl>", "exec"), namespace)
+
+                    # Call the async function and get its local variables
+                    func_locals = await namespace["__repl_async__"]()
+
+                    # Update namespace with variables from the function
+                    # (skip private variables and built-in names)
+                    for key, value in func_locals.items():
+                        if not key.startswith("_"):
+                            namespace[key] = value
+                            # Print value if it's a standalone expression result
+                            if key == "result" and value is not None:
+                                print(self._pretty_print_value(value))
                 else:
+                    # Try to compile as a complete statement
+                    code_obj = compile_command(code_str, "<repl>", "single")
+
+                    if code_obj is None:
+                        # Incomplete code
+                        return {
+                            "output": "",
+                            "error": "SyntaxError: unexpected EOF while parsing (incomplete code)",
+                        }
+
                     # Execute synchronous code
                     exec(code_obj, namespace)
 
@@ -913,9 +953,19 @@ class NerveEngine:
         for step_id in graph.list_steps():
             step = graph.get_step(step_id)
             if step is not None:
+                # Get node ID (from node_ref or from node.id)
+                node_id = None
+                if step.node_ref:
+                    node_id = step.node_ref
+                elif step.node:
+                    node_id = step.node.id
+
                 steps.append({
                     "id": step_id,
+                    "node_id": node_id,
+                    "input": step.input,
                     "depends_on": step.depends_on,
+                    # Note: input_fn, error_policy, parser are not serializable
                 })
 
         return {

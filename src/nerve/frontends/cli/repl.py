@@ -137,8 +137,9 @@ class RemoteSessionAdapter:
         self.client = client
         self.server_name = server_name
         self._name = session_name or "default"  # Use provided or default
-        self._id = f"{server_name}-{self._name}"
         self.session_id = session_name  # None means use server's default
+        self._cached_nodes_info: list[dict] = []
+        self._cached_graphs: list[dict] = []
 
     def _add_session_id(self, params: dict[str, Any]) -> dict[str, Any]:
         """Add session_id to params if specified."""
@@ -152,29 +153,32 @@ class RemoteSessionAdapter:
 
     @property
     def id(self) -> str:
-        return self._id
+        """Session ID (actual name on server)."""
+        return self._name
 
     @property
     def node_count(self) -> int:
-        # Would need to fetch from server, for now return 0
-        return 0
+        """Get node count from cached data."""
+        return len(self._cached_nodes_info)
 
     @property
     def graph_count(self) -> int:
-        # Would need to fetch from server, for now return 0
-        return 0
+        """Get graph count from cached data."""
+        return len(self._cached_graphs)
 
     async def list_nodes(self) -> list[tuple[str, str]]:
-        """List nodes from server."""
+        """List nodes from server with actual backend types."""
         from nerve.server.protocols import Command, CommandType
 
         result = await self.client.send_command(
             Command(type=CommandType.LIST_NODES, params=self._add_session_id({}))
         )
         if result.success:
-            nodes = result.data.get("nodes", [])
-            # Server returns list of node names, we return (name, "REMOTE") tuples
-            return [(name, "REMOTE") for name in nodes]
+            nodes_info = result.data.get("nodes_info", [])
+            self._cached_nodes_info = nodes_info  # Cache for node_count
+
+            # Return (name, backend_type) tuples
+            return [(info["id"], info.get("type", "UNKNOWN")) for info in nodes_info]
         return []
 
     async def list_graphs(self) -> list[str]:
@@ -185,14 +189,39 @@ class RemoteSessionAdapter:
             Command(type=CommandType.LIST_GRAPHS, params=self._add_session_id({}))
         )
         if result.success:
-            return result.data.get("graphs", [])
+            graphs = result.data.get("graphs", [])
+            self._cached_graphs = graphs  # Cache for graph_count
+            return [g["id"] for g in graphs]
         return []
 
     async def get_graph(self, graph_id: str):
-        """Get graph from server - returns None for now (graphs don't proxy well)."""
-        # Server graphs can't be returned as objects easily
-        # This would need more work to support properly
-        return None
+        """Get graph from server and reconstruct it locally."""
+        from nerve.core.nodes.graph import Graph
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.GET_GRAPH,
+                params=self._add_session_id({"graph_id": graph_id}),
+            )
+        )
+
+        if not result.success:
+            return None
+
+        data = result.data
+        graph = Graph(id=data["graph_id"])
+
+        # Reconstruct steps
+        for step_data in data.get("steps", []):
+            graph.add_step_ref(
+                node_id=step_data.get("node_id"),
+                step_id=step_data["id"],
+                input=step_data.get("input"),
+                depends_on=step_data.get("depends_on", []),
+            )
+
+        return graph
 
     async def delete_node(self, node_id: str) -> bool:
         """Delete node on server."""
@@ -407,6 +436,7 @@ async def run_interactive(
             "BackendType": BackendType,
             "nodes": state.nodes,  # Node tracking dict
             "session": session,  # Default session
+            "context": ExecutionContext(session=session),  # Pre-configured context
             "_state": state,
         }
     else:
@@ -468,8 +498,14 @@ async def run_interactive(
                 continue
 
             elif cmd == "session":
+                # Refresh cached data before displaying
+                await adapter.list_nodes()
+                await adapter.list_graphs()
+
                 print(f"\nSession: {adapter.name}")
                 print(f"  ID: {adapter.id}")
+                if hasattr(adapter, 'server_name'):
+                    print(f"  Server: {adapter.server_name}")
                 print(f"  Nodes: {adapter.node_count}")
                 print(f"  Graphs: {adapter.graph_count}")
                 continue
@@ -482,7 +518,27 @@ async def run_interactive(
                 text = parts[2]
                 try:
                     response = await adapter.execute_on_node(node_name, text)
-                    print(response)
+                    # Pretty print the response
+                    import json
+                    if isinstance(response, (dict, list)):
+                        print(json.dumps(response, indent=2))
+                    elif isinstance(response, str):
+                        # Try to parse as JSON/dict string
+                        try:
+                            # Try JSON first
+                            parsed = json.loads(response)
+                            print(json.dumps(parsed, indent=2))
+                        except (json.JSONDecodeError, ValueError):
+                            # Try eval as Python literal (safer than eval)
+                            try:
+                                import ast
+                                parsed = ast.literal_eval(response)
+                                print(json.dumps(parsed, indent=2))
+                            except (ValueError, SyntaxError):
+                                # Not JSON or dict, print as-is
+                                print(response)
+                    else:
+                        print(response)
                 except Exception as e:
                     print(f"Error: {e}")
                 continue
@@ -559,6 +615,7 @@ async def run_interactive(
                 # Recreate session
                 session = Session(name="repl")
                 state.namespace["session"] = session
+                state.namespace["context"] = ExecutionContext(session=session)
                 state.namespace["nodes"] = state.nodes
                 # Update adapter
                 adapter = LocalSessionAdapter(session)
@@ -675,15 +732,27 @@ async def run_interactive(
         else:
             buffer = line
 
-        # Try to compile
-        try:
-            code = compile_command(buffer, symbol="single")
+        # Try to compile (skip if server mode with await)
+        code = None
+        if python_exec_enabled or "await " not in buffer:
+            try:
+                code = compile_command(buffer, symbol="single")
 
-            if code is None:
-                # Incomplete - need more input
-                continue
+                if code is None:
+                    # Incomplete - need more input
+                    continue
+            except SyntaxError:
+                # If in server mode, send to server anyway (it can handle await)
+                if not python_exec_enabled:
+                    code = True  # Dummy value to proceed
+                else:
+                    raise
+        else:
+            # Server mode with await - skip compilation, send to server
+            code = True  # Dummy value to proceed
 
-            # Complete - execute based on mode
+        # Execute based on mode
+        if code is not None:
             if python_exec_enabled:
                 # LOCAL MODE - Execute locally
                 try:
@@ -740,10 +809,6 @@ async def run_interactive(
                 except Exception as e:
                     print(f"Error: {e}")
 
-            buffer = ""
-
-        except SyntaxError as e:
-            print(f"SyntaxError: {e}")
             buffer = ""
 
 
