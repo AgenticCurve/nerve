@@ -56,10 +56,10 @@ Commands:
     delete <node>         Delete a node
 
   Graphs:
-    show                  Show current graph structure
-    validate              Validate graph
-    dry                   Show execution order
-    run                   Execute the graph
+    show [name]           Show graph structure (default: 'graph' variable)
+    validate [name]       Validate graph
+    dry [name]            Show execution order
+    run [name]            Execute graph
 
   Other:
     help                  Show this help
@@ -69,15 +69,24 @@ Commands:
 
 def print_nodes(state: REPLState):
     """Print active nodes."""
-    if not state.nodes:
+    sess = state.namespace.get("session")
+    if sess is None:
+        print("No session")
+        return
+
+    if not sess.nodes:
         print("No active nodes")
         return
 
     print("\nActive Nodes:")
     print("-" * 40)
-    for name, node in state.nodes.items():
-        state_name = node.state.name if hasattr(node, "state") else "?"
-        print(f"  {name}: {state_name}")
+    for name, node in sess.nodes.items():
+        # Show state for terminal nodes, type for others
+        if hasattr(node, "state"):
+            info = node.state.name
+        else:
+            info = type(node).__name__
+        print(f"  {name}: {info}")
     print("-" * 40)
 
 
@@ -168,6 +177,10 @@ async def run_interactive(
     buffer = ""
     interrupt_count = 0
 
+    async def run_async_operation(coro):
+        """Helper to run async operations within the REPL."""
+        return await coro
+
     while True:
         try:
             prompt = "... " if buffer else ">>> "
@@ -236,9 +249,7 @@ async def run_interactive(
                 try:
                     sess = state.namespace.get("session")
                     ctx = ExecutionContext(session=sess, input=text)
-                    result = asyncio.get_event_loop().run_until_complete(
-                        node.execute(ctx)
-                    )
+                    result = await run_async_operation(node.execute(ctx))
                     print(result.raw if hasattr(result, "raw") else str(result))
                 except Exception as e:
                     print(f"Error: {e}")
@@ -255,9 +266,7 @@ async def run_interactive(
                     continue
                 if hasattr(node, "read_buffer"):
                     try:
-                        buffer_content = asyncio.get_event_loop().run_until_complete(
-                            node.read_buffer()
-                        )
+                        buffer_content = await run_async_operation(node.read_buffer())
                         print(buffer_content)
                     except Exception as e:
                         print(f"Error: {e}")
@@ -276,7 +285,7 @@ async def run_interactive(
                     continue
                 if hasattr(node, "stop"):
                     try:
-                        asyncio.get_event_loop().run_until_complete(node.stop())
+                        await run_async_operation(node.stop())
                         print(f"Stopped: {node_name}")
                     except Exception as e:
                         print(f"Error: {e}")
@@ -290,11 +299,9 @@ async def run_interactive(
                     continue
                 node_name = parts[1]
                 sess = state.namespace.get("session")
-                if sess and node_name in sess.nodes:
+                if sess is not None and node_name in sess.nodes:
                     try:
-                        asyncio.get_event_loop().run_until_complete(
-                            sess.delete_node(node_name)
-                        )
+                        await run_async_operation(sess.delete_node(node_name))
                         state.nodes.pop(node_name, None)
                         print(f"Deleted: {node_name}")
                     except Exception as e:
@@ -306,7 +313,7 @@ async def run_interactive(
             elif cmd == "reset":
                 sess = state.namespace.get("session")
                 if sess is not None:
-                    asyncio.get_event_loop().run_until_complete(sess.stop())
+                    await run_async_operation(sess.stop())
                 state.nodes.clear()
                 state.namespace["nodes"] = state.nodes
                 # Recreate session
@@ -316,12 +323,35 @@ async def run_interactive(
                 continue
 
             elif cmd == "show":
-                graph = state.namespace.get("graph") or current_graph
+                # show [graph-name] - show specific graph or default 'graph' variable
+                graph = None
+                if len(parts) > 1:
+                    graph_name = parts[1]
+                    sess = state.namespace.get("session")
+                    if sess is not None:
+                        graph = sess.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                else:
+                    graph = state.namespace.get("graph") or current_graph
                 print_graph(graph)
                 continue
 
             elif cmd == "validate":
-                graph = state.namespace.get("graph") or current_graph
+                # validate [graph-name] - validate specific graph or default
+                graph = None
+                if len(parts) > 1:
+                    graph_name = parts[1]
+                    sess = state.namespace.get("session")
+                    if sess is not None:
+                        graph = sess.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                else:
+                    graph = state.namespace.get("graph") or current_graph
+
                 if graph:
                     errors = graph.validate()
                     if errors:
@@ -335,7 +365,19 @@ async def run_interactive(
                 continue
 
             elif cmd == "dry":
-                graph = state.namespace.get("graph") or current_graph
+                # dry [graph-name] - dry run specific graph or default
+                graph = None
+                if len(parts) > 1:
+                    graph_name = parts[1]
+                    sess = state.namespace.get("session")
+                    if sess is not None:
+                        graph = sess.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                else:
+                    graph = state.namespace.get("graph") or current_graph
+
                 if graph:
                     try:
                         order = graph.execution_order()
@@ -349,15 +391,30 @@ async def run_interactive(
                 continue
 
             elif cmd == "run":
-                graph = state.namespace.get("graph") or current_graph
+                # run [graph-name] - run specific graph or default 'graph' variable
+                graph = None
+                if len(parts) > 1:
+                    # run <graph-name> - look up from session
+                    graph_name = parts[1]
+                    sess = state.namespace.get("session")
+                    if sess is not None:
+                        graph = sess.get_graph(graph_name)
+                        if not graph:
+                            print(f"Graph not found: {graph_name}")
+                            continue
+                    else:
+                        print("No session")
+                        continue
+                else:
+                    # run - use 'graph' variable or current_graph
+                    graph = state.namespace.get("graph") or current_graph
+
                 if graph:
                     try:
                         print("\nExecuting Graph...")
                         sess = state.namespace.get("session") or Session()
                         context = ExecutionContext(session=sess)
-                        results = asyncio.get_event_loop().run_until_complete(
-                            graph.execute(context)
-                        )
+                        results = await run_async_operation(graph.execute(context))
                         state.namespace["_results"] = results
                         print("\nResults stored in '_results'")
                     except Exception as e:

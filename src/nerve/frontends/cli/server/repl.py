@@ -110,13 +110,8 @@ async def run_server_repl(socket_path: str = "/tmp/nerve.sock"):
         return
 
     # Use server's default session (no session_id = default)
-    print("Using server's default session")
-
-    print("=" * 50)
     print("Nerve Server REPL")
-    print("=" * 50)
-    print("\nType 'help' for commands.")
-    print("-" * 50)
+    print(f"Connected to: {socket_path} | Type 'help' for commands\n")
 
     interrupt_count = 0
 
