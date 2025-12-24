@@ -243,26 +243,54 @@ async def run_interactive(
                     continue
 
                 elif cmd == "read":
-                    # Local mode only - needs direct node access
-                    if not python_exec_enabled:
-                        print("Command not available in server mode")
-                        continue
                     if len(parts) < 2:
                         print("Usage: read <node>")
                         continue
+
                     node_name = parts[1]
-                    node = session.get_node(node_name) if session else None
-                    if not node:
-                        print(f"Node not found: {node_name}")
-                        continue
-                    if hasattr(node, "read_buffer"):
+
+                    if not python_exec_enabled:
+                        # SERVER MODE - Send to server
+                        from nerve.server.protocols import Command, CommandType
+
                         try:
-                            buffer_content = await run_async_operation(node.read_buffer())
-                            print(buffer_content)
-                        except Exception as e:
-                            print(f"Error: {e}")
+                            params = {"command": "read", "args": [node_name]}
+                            if adapter.session_id:
+                                params["session_id"] = adapter.session_id
+
+                            result = await adapter.client.send_command(
+                                Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
+                            )
+
+                            if result.success:
+                                if result.data.get("output"):
+                                    print(result.data["output"], end="")
+                                if result.data.get("error"):
+                                    print(f"Error: {result.data['error']}")
+                            else:
+                                print(f"Command failed: {result.error}")
+                        except (
+                            ConnectionError,
+                            ConnectionResetError,
+                            BrokenPipeError,
+                            RuntimeError,
+                        ):
+                            server_disconnected = True
+                            break
                     else:
-                        print("Node does not support read_buffer")
+                        # LOCAL MODE - Execute locally
+                        node = session.get_node(node_name) if session else None
+                        if not node:
+                            print(f"Node not found: {node_name}")
+                            continue
+                        if hasattr(node, "read_buffer"):
+                            try:
+                                buffer_content = await run_async_operation(node.read_buffer())
+                                print(buffer_content)
+                            except Exception as e:
+                                print(f"Error: {e}")
+                        else:
+                            print("Node does not support read_buffer")
                     continue
 
                 elif cmd == "stop":

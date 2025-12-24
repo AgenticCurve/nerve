@@ -623,6 +623,22 @@ class NerveEngine:
                     else:
                         output_buffer.write("No nodes defined\n")
 
+            elif command == "read":
+                # read <node-name>
+                if not args:
+                    return {"output": "", "error": "Usage: read <node>"}
+
+                node_name = args[0]
+                node = session.get_node(node_name)
+                if not node:
+                    return {"output": "", "error": f"Node not found: {node_name}"}
+
+                if hasattr(node, "read"):
+                    buffer_content = await node.read()
+                    output_buffer.write(buffer_content)
+                else:
+                    return {"output": "", "error": "Node does not support read"}
+
             else:
                 return {"output": "", "error": f"Unknown REPL command: {command}"}
 
