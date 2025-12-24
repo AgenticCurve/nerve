@@ -3,3 +3,5 @@ __pycache__/
 .hide
 .rustignore
 .nerve
+.venv/
+.envrc.local

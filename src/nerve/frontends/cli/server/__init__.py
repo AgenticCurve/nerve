@@ -30,6 +30,8 @@ def server():
 
         nerve server status    Check if daemon is running
 
+        nerve server list      List all running servers
+
     **Session management:**
 
         nerve server session   Manage sessions (workspaces with nodes/graphs)
@@ -484,6 +486,94 @@ def status(name: str, show_all: bool):
             else:
                 click.echo(f"Server '{name}' not running")
                 sys.exit(1)
+
+    asyncio.run(run())
+
+
+@server.command("list")
+def server_list():
+    """List all running nerve servers.
+
+    Shows all nerve daemon instances currently running on this machine.
+
+    **Examples:**
+
+        nerve server list
+    """
+    from nerve.server.protocols import Command, CommandType
+    from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
+
+    async def get_server_status(server_name: str) -> dict | None:
+        """Get status of a server by name. Returns None if not running."""
+        transport_type, host_port = get_server_transport(server_name)
+
+        if transport_type == "http" and host_port:
+            try:
+                client = HTTPClient(f"http://{host_port}")
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.PING, params={}),
+                    timeout=5.0,
+                )
+                await client.disconnect()
+                if result.success:
+                    return {"transport": f"http://{host_port}", **result.data}
+            except Exception:
+                pass
+        elif transport_type == "tcp" and host_port:
+            try:
+                host, port_str = host_port.split(":")
+                port = int(port_str)
+                client = TCPSocketClient(host, port)
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.PING, params={}),
+                    timeout=5.0,
+                )
+                await client.disconnect()
+                if result.success:
+                    return {"transport": f"tcp://{host_port}", **result.data}
+            except Exception:
+                pass
+        else:
+            sock_path = f"/tmp/nerve-{server_name}.sock"
+            try:
+                client = UnixSocketClient(sock_path)
+                await client.connect()
+                result = await client.send_command(
+                    Command(type=CommandType.PING, params={})
+                )
+                await client.disconnect()
+                if result.success:
+                    return {"transport": sock_path, **result.data}
+            except Exception:
+                pass
+        return None
+
+    async def run():
+        server_names = find_all_servers()
+
+        if not server_names:
+            click.echo("No nerve servers running")
+            return
+
+        running = []
+        for server_name in sorted(server_names):
+            status_data = await get_server_status(server_name)
+            if status_data:
+                running.append({"name": server_name, **status_data})
+
+        if not running:
+            click.echo("No nerve servers running")
+            return
+
+        click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'NODES':<10} {'GRAPHS'}")
+        click.echo("-" * 70)
+        for s in running:
+            click.echo(
+                f"{s['name']:<20} {s['transport']:<30} "
+                f"{s.get('nodes', '?'):<10} {s.get('graphs', '?')}"
+            )
 
     asyncio.run(run())
 

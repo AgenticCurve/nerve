@@ -238,24 +238,8 @@ def session_info(session_id: str | None, server_name: str, json_output: bool):
                 if data.get("tags"):
                     click.echo(f"  Tags: {', '.join(data.get('tags', []))}")
                 click.echo(f"  Default: {'Yes' if data.get('is_default') else 'No'}")
-
-                # Show detailed node info
-                nodes_info = data.get("nodes_info", [])
-                if nodes_info:
-                    click.echo("  Nodes:")
-                    for info in nodes_info:
-                        backend = info.get("backend", info.get("type", "?"))
-                        state = info.get("state", "?")
-                        last_input = info.get("last_input", "")
-                        if last_input:
-                            last_input = last_input[:40]
-                            click.echo(f"    - {info['id']}: {backend} ({state}) - {last_input}")
-                        else:
-                            click.echo(f"    - {info['id']}: {backend} ({state})")
-                else:
-                    click.echo("  Nodes: None")
-
-                click.echo(f"  Graphs: {', '.join(data.get('graphs', [])) or 'None'}")
+                click.echo(f"  Nodes: {len(data.get('nodes_info', []))}")
+                click.echo(f"  Graphs: {len(data.get('graphs', []))}")
         else:
             click.echo(f"Error: {result.error}", err=True)
 

@@ -35,15 +35,27 @@ class TestNodeCLI:
         assert node_delete is not None
         assert callable(node_delete)
 
-    def test_node_create_has_session_option(self):
-        """Node create has --session option."""
-        params = node_create.params
-        param_names = [p.name for p in params]
-        assert "session_id" in param_names
-
     def test_node_list_has_session_option(self):
         """Node list has --session option."""
         params = node_list.params
+        param_names = [p.name for p in params]
+        assert "session_id" in param_names
+
+    def test_node_list_has_server_option(self):
+        """Node list has --server option."""
+        params = node_list.params
+        param_names = [p.name for p in params]
+        assert "server_name" in param_names
+
+    def test_node_list_server_defaults_to_local(self):
+        """Node list --server defaults to 'local'."""
+        params = node_list.params
+        server_param = next(p for p in params if p.name == "server_name")
+        assert server_param.default == "local"
+
+    def test_node_create_has_session_option(self):
+        """Node create has --session option."""
+        params = node_create.params
         param_names = [p.name for p in params]
         assert "session_id" in param_names
 
@@ -56,12 +68,6 @@ class TestNodeCLI:
     def test_node_create_has_server_option(self):
         """Node create has --server option."""
         params = node_create.params
-        param_names = [p.name for p in params]
-        assert "server_name" in param_names
-
-    def test_node_list_has_server_option(self):
-        """Node list has --server option."""
-        params = node_list.params
         param_names = [p.name for p in params]
         assert "server_name" in param_names
 

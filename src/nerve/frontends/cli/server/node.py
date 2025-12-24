@@ -19,9 +19,87 @@ def node():
     interactions. They can run any process: AI CLIs (Claude, Gemini),
     shells (bash, zsh), interpreters (Python, Node), or other programs.
 
-    To list nodes, use `nerve server session info --server NAME`.
+    **Commands:**
+
+        nerve server node list      List nodes in a session
+
+        nerve server node create    Create a new node
+
+        nerve server node delete    Delete a node
+
+        nerve server node send      Send input and get response
     """
     pass
+
+
+@node.command("list")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
+@click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
+def node_list(server_name: str, session_id: str | None, json_output: bool):
+    """List all nodes in a session.
+
+    Shows nodes in the specified session (or default session).
+
+    **Examples:**
+
+        nerve server node list
+
+        nerve server node list --server myproject
+
+        nerve server node list --server myproject --session my-workspace
+
+        nerve server node list --json
+    """
+    from nerve.server.protocols import Command, CommandType
+
+    async def run():
+        try:
+            client = create_client(server_name)
+            await client.connect()
+        except (ConnectionRefusedError, FileNotFoundError, OSError):
+            click.echo(f"Error: Server '{server_name}' not running", err=True)
+            sys.exit(1)
+
+        params = {}
+        if session_id:
+            params["session_id"] = session_id
+
+        result = await client.send_command(
+            Command(
+                type=CommandType.GET_SESSION,
+                params=params,
+            )
+        )
+
+        if result.success:
+            nodes_info = result.data.get("nodes_info", [])
+
+            if json_output:
+                import json
+
+                click.echo(json.dumps(nodes_info, indent=2))
+            elif nodes_info:
+                click.echo(f"{'NAME':<20} {'BACKEND':<18} {'STATE':<10} {'LAST INPUT'}")
+                click.echo("-" * 70)
+                for info in nodes_info:
+                    name = info.get("id", "?")
+                    backend = info.get("backend", info.get("type", "?"))
+                    state = info.get("state", "?")
+                    last_input = info.get("last_input", "")
+                    if last_input:
+                        last_input = last_input[:30]
+                    click.echo(f"{name:<20} {backend:<18} {state:<10} {last_input}")
+            else:
+                session_name = result.data.get("name", "default")
+                click.echo(f"No nodes in session '{session_name}'")
+        else:
+            click.echo(f"Error: {result.error}", err=True)
+            sys.exit(1)
+
+        await client.disconnect()
+
+    asyncio.run(run())
 
 
 @node.command("create")

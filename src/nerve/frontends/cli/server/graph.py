@@ -34,13 +34,15 @@ def graph():
 
 
 @graph.command("list")
-@click.option("--server", "-s", "server_name", required=True, help="Server name")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
 def graph_list(server_name: str, session_id: str | None, json_output: bool):
     """List registered graphs in a session.
 
     **Examples:**
+
+        nerve server graph list
 
         nerve server graph list --server myproject
 
@@ -91,7 +93,7 @@ def graph_list(server_name: str, session_id: str | None, json_output: bool):
 
 @graph.command("create")
 @click.argument("graph_id")
-@click.option("--server", "-s", "server_name", required=True, help="Server name")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 def graph_create(graph_id: str, server_name: str, session_id: str | None):
     """Create an empty graph.
@@ -103,6 +105,8 @@ def graph_create(graph_id: str, server_name: str, session_id: str | None):
         GRAPH_ID      Unique identifier for the graph
 
     **Examples:**
+
+        nerve server graph create my-workflow
 
         nerve server graph create my-workflow --server myproject
 
@@ -141,7 +145,7 @@ def graph_create(graph_id: str, server_name: str, session_id: str | None):
 
 @graph.command("delete")
 @click.argument("graph_id")
-@click.option("--server", "-s", "server_name", required=True, help="Server name")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 def graph_delete(graph_id: str, server_name: str, session_id: str | None):
     """Delete a graph.
@@ -151,6 +155,8 @@ def graph_delete(graph_id: str, server_name: str, session_id: str | None):
         GRAPH_ID      The graph to delete
 
     **Examples:**
+
+        nerve server graph delete my-workflow
 
         nerve server graph delete my-workflow --server myproject
     """
@@ -187,7 +193,7 @@ def graph_delete(graph_id: str, server_name: str, session_id: str | None):
 
 @graph.command("info")
 @click.argument("graph_id")
-@click.option("--server", "-s", "server_name", required=True, help="Server name")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
 def graph_info(graph_id: str, server_name: str, session_id: str | None, json_output: bool):
@@ -198,6 +204,8 @@ def graph_info(graph_id: str, server_name: str, session_id: str | None, json_out
         GRAPH_ID      The graph to get info for
 
     **Examples:**
+
+        nerve server graph info my-workflow
 
         nerve server graph info my-workflow --server myproject
     """
@@ -248,7 +256,7 @@ def graph_info(graph_id: str, server_name: str, session_id: str | None, json_out
 
 @graph.command("run")
 @click.argument("file")
-@click.option("--server", "-s", "server_name", required=True, help="Server name to run the graph on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
 def graph_run(file: str, server_name: str, dry_run: bool):
     """Run a graph definition file on the server.
@@ -257,6 +265,8 @@ def graph_run(file: str, server_name: str, dry_run: bool):
     Nodes are created automatically if needed.
 
     **Examples:**
+
+        nerve server graph run workflow.py
 
         nerve server graph run workflow.py --server myproject
 
