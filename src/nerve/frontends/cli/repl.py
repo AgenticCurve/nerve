@@ -14,7 +14,218 @@ from __future__ import annotations
 import asyncio
 from code import compile_command
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
+
+
+# =========================================================================
+# Session Adapter - Abstraction for local vs remote sessions
+# =========================================================================
+
+
+class SessionAdapter(Protocol):
+    """Protocol for session operations in both local and remote modes."""
+
+    @property
+    def name(self) -> str:
+        """Session name."""
+        ...
+
+    @property
+    def id(self) -> str:
+        """Session ID."""
+        ...
+
+    @property
+    def node_count(self) -> int:
+        """Number of nodes in session."""
+        ...
+
+    @property
+    def graph_count(self) -> int:
+        """Number of graphs in session."""
+        ...
+
+    async def list_nodes(self) -> list[tuple[str, str]]:
+        """List nodes as (name, info) tuples."""
+        ...
+
+    async def list_graphs(self) -> list[str]:
+        """List graph IDs."""
+        ...
+
+    async def get_graph(self, graph_id: str):
+        """Get graph by ID (returns Graph object or None)."""
+        ...
+
+    async def delete_node(self, node_id: str) -> bool:
+        """Delete a node."""
+        ...
+
+    async def execute_on_node(self, node_id: str, text: str) -> str:
+        """Execute input on a node and return response."""
+        ...
+
+    async def stop(self) -> None:
+        """Stop session and cleanup."""
+        ...
+
+
+class LocalSessionAdapter:
+    """Adapter for local in-memory session."""
+
+    def __init__(self, session: Any):  # Session type
+        self.session = session
+
+    @property
+    def name(self) -> str:
+        return self.session.name
+
+    @property
+    def id(self) -> str:
+        return self.session.id
+
+    @property
+    def node_count(self) -> int:
+        return len(self.session.nodes)
+
+    @property
+    def graph_count(self) -> int:
+        return len(self.session.graphs)
+
+    async def list_nodes(self) -> list[tuple[str, str]]:
+        """Return list of (name, info_string) tuples."""
+        result = []
+        for name, node in self.session.nodes.items():
+            if hasattr(node, "state"):
+                info = node.state.name
+            else:
+                info = type(node).__name__
+            result.append((name, info))
+        return result
+
+    async def list_graphs(self) -> list[str]:
+        return self.session.list_graphs()
+
+    async def get_graph(self, graph_id: str):
+        return self.session.get_graph(graph_id)
+
+    async def delete_node(self, node_id: str) -> bool:
+        return await self.session.delete_node(node_id)
+
+    async def execute_on_node(self, node_id: str, text: str) -> str:
+        """Execute on a node (for send command)."""
+        from nerve.core.nodes.context import ExecutionContext
+
+        node = self.session.get_node(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
+
+        ctx = ExecutionContext(session=self.session, input=text)
+        result = await node.execute(ctx)
+        return result.raw if hasattr(result, "raw") else str(result)
+
+    async def stop(self) -> None:
+        await self.session.stop()
+
+
+class RemoteSessionAdapter:
+    """Adapter for remote server session."""
+
+    def __init__(
+        self, client: Any, server_name: str, session_name: str | None = None
+    ):  # UnixSocketClient type
+        self.client = client
+        self.server_name = server_name
+        self._name = session_name or "default"  # Use provided or default
+        self._id = f"{server_name}-{self._name}"
+        self.session_id = session_name  # None means use server's default
+
+    def _add_session_id(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Add session_id to params if specified."""
+        if self.session_id:
+            params["session_id"] = self.session_id
+        return params
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def id(self) -> str:
+        return self._id
+
+    @property
+    def node_count(self) -> int:
+        # Would need to fetch from server, for now return 0
+        return 0
+
+    @property
+    def graph_count(self) -> int:
+        # Would need to fetch from server, for now return 0
+        return 0
+
+    async def list_nodes(self) -> list[tuple[str, str]]:
+        """List nodes from server."""
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(type=CommandType.LIST_NODES, params=self._add_session_id({}))
+        )
+        if result.success:
+            nodes = result.data.get("nodes", [])
+            # Server returns list of node names, we return (name, "REMOTE") tuples
+            return [(name, "REMOTE") for name in nodes]
+        return []
+
+    async def list_graphs(self) -> list[str]:
+        """List graphs from server."""
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(type=CommandType.LIST_GRAPHS, params=self._add_session_id({}))
+        )
+        if result.success:
+            return result.data.get("graphs", [])
+        return []
+
+    async def get_graph(self, graph_id: str):
+        """Get graph from server - returns None for now (graphs don't proxy well)."""
+        # Server graphs can't be returned as objects easily
+        # This would need more work to support properly
+        return None
+
+    async def delete_node(self, node_id: str) -> bool:
+        """Delete node on server."""
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.DELETE_NODE,
+                params=self._add_session_id({"node_id": node_id}),
+            )
+        )
+        return result.success
+
+    async def execute_on_node(self, node_id: str, text: str) -> str:
+        """Execute on a server node."""
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.EXECUTE_INPUT,
+                params=self._add_session_id(
+                    {"node_id": node_id, "text": text, "stream": False}
+                ),
+            )
+        )
+        if result.success:
+            return result.data.get("response", "")
+        else:
+            raise ValueError(result.error)
+
+    async def stop(self) -> None:
+        """Disconnect from server."""
+        await self.client.disconnect()
 
 
 @dataclass
@@ -67,25 +278,17 @@ Commands:
 """)
 
 
-def print_nodes(state: REPLState):
+async def print_nodes(adapter: SessionAdapter):
     """Print active nodes."""
-    sess = state.namespace.get("session")
-    if sess is None:
-        print("No session")
-        return
+    nodes = await adapter.list_nodes()
 
-    if not sess.nodes:
+    if not nodes:
         print("No active nodes")
         return
 
     print("\nActive Nodes:")
     print("-" * 40)
-    for name, node in sess.nodes.items():
-        # Show state for terminal nodes, type for others
-        if hasattr(node, "state"):
-            info = node.state.name
-        else:
-            info = type(node).__name__
+    for name, info in nodes:
         print(f"  {name}: {info}")
     print("-" * 40)
 
@@ -109,11 +312,15 @@ def print_graph(graph):
 
 async def run_interactive(
     state: REPLState | None = None,
+    server_name: str | None = None,
+    session_name: str | None = None,
 ):
     """Run interactive Graph definition mode.
 
     Args:
         state: Optional REPL state to resume from.
+        server_name: Optional server name to connect to (None = local mode).
+        session_name: Optional session name (only used with server_name).
     """
     if state is None:
         state = REPLState()
@@ -149,30 +356,69 @@ async def run_interactive(
     )
     from nerve.core.session import BackendType, Session
 
-    # Create default session named "repl"
-    session = Session(name="repl")
+    # Determine mode and create adapter
+    adapter: SessionAdapter
+    session: Session | None = None
+    python_exec_enabled: bool
 
-    # Initialize namespace with nerve imports and default session
-    state.namespace = {
-        "asyncio": asyncio,
-        "Graph": Graph,
-        "FunctionNode": FunctionNode,
-        "ExecutionContext": ExecutionContext,
-        "PTYNode": PTYNode,
-        "WezTermNode": WezTermNode,
-        "Session": Session,
-        "ParserType": ParserType,
-        "BackendType": BackendType,
-        "nodes": state.nodes,  # Node tracking dict
-        "session": session,  # Default session
-        "_state": state,
-    }
+    if server_name:
+        # Server mode - connect to existing server
+        from nerve.frontends.cli.utils import get_server_transport
+        from nerve.transport import UnixSocketClient
+
+        transport_type, socket_path = get_server_transport(server_name)
+
+        if transport_type != "unix":
+            print(f"Error: Only unix socket servers supported for REPL")
+            print(f"Server '{server_name}' uses {transport_type}")
+            return
+
+        print(f"Connecting to server '{server_name}'...")
+        try:
+            client = UnixSocketClient(socket_path)
+            await client.connect()
+            print("Connected!")
+        except Exception as e:
+            print(f"Failed to connect: {e}")
+            print(f"Make sure server is running: nerve server start --name {server_name}")
+            return
+
+        adapter = RemoteSessionAdapter(client, server_name, session_name)
+        session_display = session_name or "default"
+        print(f"Using session: {session_display}")
+        python_exec_enabled = False
+    else:
+        # Local mode - create in-memory session (NO server)
+        session = Session(name="repl")
+        adapter = LocalSessionAdapter(session)
+        python_exec_enabled = True
+
+    # Initialize namespace (only in local mode for Python REPL features)
+    if python_exec_enabled:
+        state.namespace = {
+            "asyncio": asyncio,
+            "Graph": Graph,
+            "FunctionNode": FunctionNode,
+            "ExecutionContext": ExecutionContext,
+            "PTYNode": PTYNode,
+            "WezTermNode": WezTermNode,
+            "Session": Session,
+            "ParserType": ParserType,
+            "BackendType": BackendType,
+            "nodes": state.nodes,  # Node tracking dict
+            "session": session,  # Default session
+            "_state": state,
+        }
+    else:
+        state.namespace = {}
 
     # Track current Graph
     current_graph: Graph | None = None
 
+    # Print startup message
+    mode_str = f"Server: {server_name}" if server_name else f"Session: {adapter.name}"
     print("Nerve REPL")
-    print(f"Session: {session.name} | Type 'help' for commands\n")
+    print(f"{mode_str} | Type 'help' for commands\n")
 
     buffer = ""
     interrupt_count = 0
@@ -208,32 +454,24 @@ async def run_interactive(
                 continue
 
             elif cmd == "nodes":
-                print_nodes(state)
+                await print_nodes(adapter)
                 continue
 
             elif cmd == "graphs":
-                sess = state.namespace.get("session")
-                if sess is not None:
-                    graph_ids = sess.list_graphs()
-                    if graph_ids:
-                        print("\nGraphs:")
-                        for gid in graph_ids:
-                            print(f"  {gid}")
-                    else:
-                        print("No graphs defined")
+                graph_ids = await adapter.list_graphs()
+                if graph_ids:
+                    print("\nGraphs:")
+                    for gid in graph_ids:
+                        print(f"  {gid}")
                 else:
-                    print("No session")
+                    print("No graphs defined")
                 continue
 
             elif cmd == "session":
-                sess = state.namespace.get("session")
-                if sess is not None:
-                    print(f"\nSession: {sess.name}")
-                    print(f"  ID: {sess.id}")
-                    print(f"  Nodes: {len(sess.nodes)}")
-                    print(f"  Graphs: {len(sess.graphs)}")
-                else:
-                    print("No session")
+                print(f"\nSession: {adapter.name}")
+                print(f"  ID: {adapter.id}")
+                print(f"  Nodes: {adapter.node_count}")
+                print(f"  Graphs: {adapter.graph_count}")
                 continue
 
             elif cmd == "send":
@@ -242,25 +480,23 @@ async def run_interactive(
                     continue
                 node_name = parts[1]
                 text = parts[2]
-                node = state.nodes.get(node_name)
-                if not node:
-                    print(f"Node not found: {node_name}")
-                    continue
                 try:
-                    sess = state.namespace.get("session")
-                    ctx = ExecutionContext(session=sess, input=text)
-                    result = await run_async_operation(node.execute(ctx))
-                    print(result.raw if hasattr(result, "raw") else str(result))
+                    response = await adapter.execute_on_node(node_name, text)
+                    print(response)
                 except Exception as e:
                     print(f"Error: {e}")
                 continue
 
             elif cmd == "read":
+                # Local mode only - needs direct node access
+                if not python_exec_enabled:
+                    print("Command not available in server mode")
+                    continue
                 if len(parts) < 2:
                     print("Usage: read <node>")
                     continue
                 node_name = parts[1]
-                node = state.nodes.get(node_name)
+                node = session.get_node(node_name) if session else None
                 if not node:
                     print(f"Node not found: {node_name}")
                     continue
@@ -275,11 +511,15 @@ async def run_interactive(
                 continue
 
             elif cmd == "stop":
+                # Local mode only - needs direct node access
+                if not python_exec_enabled:
+                    print("Command not available in server mode")
+                    continue
                 if len(parts) < 2:
                     print("Usage: stop <node>")
                     continue
                 node_name = parts[1]
-                node = state.nodes.get(node_name)
+                node = session.get_node(node_name) if session else None
                 if not node:
                     print(f"Node not found: {node_name}")
                     continue
@@ -298,26 +538,30 @@ async def run_interactive(
                     print("Usage: delete <node>")
                     continue
                 node_name = parts[1]
-                sess = state.namespace.get("session")
-                if sess is not None and node_name in sess.nodes:
-                    try:
-                        await run_async_operation(sess.delete_node(node_name))
-                        state.nodes.pop(node_name, None)
+                try:
+                    success = await adapter.delete_node(node_name)
+                    if success:
                         print(f"Deleted: {node_name}")
-                    except Exception as e:
-                        print(f"Error: {e}")
-                else:
-                    print(f"Node not found: {node_name}")
+                    else:
+                        print(f"Node not found: {node_name}")
+                except Exception as e:
+                    print(f"Error: {e}")
                 continue
 
             elif cmd == "reset":
-                sess = state.namespace.get("session")
-                if sess is not None:
-                    await run_async_operation(sess.stop())
+                # Local mode only
+                if not python_exec_enabled:
+                    print("Command not available in server mode")
+                    continue
+                if session:
+                    await run_async_operation(session.stop())
                 state.nodes.clear()
-                state.namespace["nodes"] = state.nodes
                 # Recreate session
-                state.namespace["session"] = Session(name="repl")
+                session = Session(name="repl")
+                state.namespace["session"] = session
+                state.namespace["nodes"] = state.nodes
+                # Update adapter
+                adapter = LocalSessionAdapter(session)
                 current_graph = None
                 print("Session reset")
                 continue
@@ -327,12 +571,10 @@ async def run_interactive(
                 graph = None
                 if len(parts) > 1:
                     graph_name = parts[1]
-                    sess = state.namespace.get("session")
-                    if sess is not None:
-                        graph = sess.get_graph(graph_name)
-                        if not graph:
-                            print(f"Graph not found: {graph_name}")
-                            continue
+                    graph = await adapter.get_graph(graph_name)
+                    if not graph:
+                        print(f"Graph not found: {graph_name}")
+                        continue
                 else:
                     graph = state.namespace.get("graph") or current_graph
                 print_graph(graph)
@@ -343,12 +585,10 @@ async def run_interactive(
                 graph = None
                 if len(parts) > 1:
                     graph_name = parts[1]
-                    sess = state.namespace.get("session")
-                    if sess is not None:
-                        graph = sess.get_graph(graph_name)
-                        if not graph:
-                            print(f"Graph not found: {graph_name}")
-                            continue
+                    graph = await adapter.get_graph(graph_name)
+                    if not graph:
+                        print(f"Graph not found: {graph_name}")
+                        continue
                 else:
                     graph = state.namespace.get("graph") or current_graph
 
@@ -369,12 +609,10 @@ async def run_interactive(
                 graph = None
                 if len(parts) > 1:
                     graph_name = parts[1]
-                    sess = state.namespace.get("session")
-                    if sess is not None:
-                        graph = sess.get_graph(graph_name)
-                        if not graph:
-                            print(f"Graph not found: {graph_name}")
-                            continue
+                    graph = await adapter.get_graph(graph_name)
+                    if not graph:
+                        print(f"Graph not found: {graph_name}")
+                        continue
                 else:
                     graph = state.namespace.get("graph") or current_graph
 
@@ -392,18 +630,19 @@ async def run_interactive(
 
             elif cmd == "run":
                 # run [graph-name] - run specific graph or default 'graph' variable
+                # Only works in local mode (needs to execute graph)
+                if not python_exec_enabled:
+                    print("Graph execution not available in server mode")
+                    print("Use server REPL commands instead")
+                    continue
+
                 graph = None
                 if len(parts) > 1:
-                    # run <graph-name> - look up from session
+                    # run <graph-name> - look up from adapter
                     graph_name = parts[1]
-                    sess = state.namespace.get("session")
-                    if sess is not None:
-                        graph = sess.get_graph(graph_name)
-                        if not graph:
-                            print(f"Graph not found: {graph_name}")
-                            continue
-                    else:
-                        print("No session")
+                    graph = await adapter.get_graph(graph_name)
+                    if not graph:
+                        print(f"Graph not found: {graph_name}")
                         continue
                 else:
                     # run - use 'graph' variable or current_graph
@@ -412,8 +651,7 @@ async def run_interactive(
                 if graph:
                     try:
                         print("\nExecuting Graph...")
-                        sess = state.namespace.get("session") or Session()
-                        context = ExecutionContext(session=sess)
+                        context = ExecutionContext(session=session)
                         results = await run_async_operation(graph.execute(context))
                         state.namespace["_results"] = results
                         print("\nResults stored in '_results'")
@@ -445,31 +683,62 @@ async def run_interactive(
                 # Incomplete - need more input
                 continue
 
-            # Complete - execute
-            try:
-                # Handle async code
-                if "await " in buffer:
-                    # Wrap in async function and run
-                    async_code = "async def __repl_async__():\n"
-                    for ln in buffer.split("\n"):
-                        async_code += f"    {ln}\n"
-                    async_code += "\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
-                    exec(compile(async_code, "<repl>", "exec"), state.namespace)
-                else:
-                    exec(code, state.namespace)
+            # Complete - execute based on mode
+            if python_exec_enabled:
+                # LOCAL MODE - Execute locally
+                try:
+                    # Handle async code
+                    if "await " in buffer:
+                        # Wrap in async function and run
+                        async_code = "async def __repl_async__():\n"
+                        for ln in buffer.split("\n"):
+                            async_code += f"    {ln}\n"
+                        async_code += "\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
+                        exec(compile(async_code, "<repl>", "exec"), state.namespace)
+                    else:
+                        exec(code, state.namespace)
 
-                # Track nodes created
-                for name, value in state.namespace.items():
-                    if hasattr(value, "state") and hasattr(value, "execute"):
-                        if name not in ("PTYNode", "WezTermNode", "ParserType", "FunctionNode"):
-                            state.nodes[name] = value
+                    # Track nodes created
+                    for name, value in state.namespace.items():
+                        if hasattr(value, "state") and hasattr(value, "execute"):
+                            if name not in ("PTYNode", "WezTermNode", "ParserType", "FunctionNode"):
+                                state.nodes[name] = value
 
-                # Track Graph
-                if "graph" in state.namespace:
-                    current_graph = state.namespace["graph"]
+                    # Track Graph
+                    if "graph" in state.namespace:
+                        current_graph = state.namespace["graph"]
 
-            except Exception as e:
-                print(f"Error: {e}")
+                except Exception as e:
+                    print(f"Error: {e}")
+            else:
+                # SERVER MODE - Send to server for execution
+                try:
+                    from nerve.server.protocols import Command, CommandType
+
+                    params = {"code": buffer}
+                    if adapter.session_id:
+                        params["session_id"] = adapter.session_id
+
+                    result = await adapter.client.send_command(
+                        Command(
+                            type=CommandType.EXECUTE_PYTHON,
+                            params=params,
+                        )
+                    )
+
+                    if result.success:
+                        output = result.data.get("output", "")
+                        error = result.data.get("error")
+
+                        if error:
+                            print(f"Error: {error}")
+                        elif output:
+                            print(output, end="")
+                    else:
+                        print(f"Error: {result.error}")
+
+                except Exception as e:
+                    print(f"Error: {e}")
 
             buffer = ""
 

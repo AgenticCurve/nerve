@@ -70,12 +70,12 @@ def session_list(server_name: str, json_output: bool):
 
                 click.echo(json.dumps(result.data, indent=2))
             elif sessions:
-                click.echo(f"{'ID':<10} {'NAME':<20} {'NODES':<8} {'GRAPHS':<8} {'DEFAULT'}")
+                click.echo(f"{'NAME':<20} {'NODES':<8} {'GRAPHS':<8} {'DEFAULT'}")
                 click.echo("-" * 60)
                 for s in sessions:
                     default_marker = "*" if s.get("is_default") else ""
                     click.echo(
-                        f"{s['id']:<10} {s['name'][:20]:<20} "
+                        f"{s['name'][:20]:<20} "
                         f"{s.get('node_count', 0):<8} {s.get('graph_count', 0):<8} "
                         f"{default_marker}"
                     )
@@ -90,22 +90,20 @@ def session_list(server_name: str, json_output: bool):
 
 
 @session.command("create")
-@click.argument("name", required=False)
+@click.argument("name")
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
 @click.option("--description", "-d", default="", help="Session description")
 @click.option("--tags", "-t", multiple=True, help="Session tags")
-def session_create(name: str | None, server_name: str, description: str, tags: tuple):
+def session_create(name: str, server_name: str, description: str, tags: tuple):
     """Create a new session.
 
-    NAME is optional. If not provided, a unique ID will be generated.
+    NAME is required and serves as the unique session identifier.
 
     **Examples:**
 
         nerve server session create my-workspace --server myproject
 
-        nerve server session create --server myproject -d "Testing workspace"
-
-        nerve server session create dev --server myproject -t dev -t testing
+        nerve server session create dev --server myproject -d "Development" -t dev -t testing
     """
     from nerve.server.protocols import Command, CommandType
 
@@ -117,9 +115,7 @@ def session_create(name: str | None, server_name: str, description: str, tags: t
             click.echo(f"Error: Server '{server_name}' not running", err=True)
             sys.exit(1)
 
-        params = {}
-        if name:
-            params["name"] = name
+        params = {"name": name}
         if description:
             params["description"] = description
         if tags:
@@ -133,9 +129,8 @@ def session_create(name: str | None, server_name: str, description: str, tags: t
         )
 
         if result.success:
-            session_id = result.data.get("session_id")
-            session_name = result.data.get("name", session_id)
-            click.echo(f"Created session: {session_name} (id: {session_id})")
+            session_name = result.data.get("name")
+            click.echo(f"Created session: {session_name}")
         else:
             click.echo(f"Error: {result.error}", err=True)
 

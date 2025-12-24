@@ -124,26 +124,42 @@ def _run_cli() -> None:
     @cli.command()
     @click.argument("file", required=False)
     @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
-    def repl(file: str | None, dry_run: bool):
+    @click.option("--server", "-s", "server_name", default=None, help="Connect to server (default: local mode)")
+    @click.option("--session", "session_name", default=None, help="Session to connect to (default: server's default session)")
+    def repl(file: str | None, dry_run: bool, server_name: str | None, session_name: str | None):
         """Interactive graph definition and execution.
 
         A REPL for defining and running graphs (node execution pipelines)
-        of AI CLI tasks. Works standalone without a server.
+        of AI CLI tasks.
+
+        **Local mode** (default - no server):
+            Creates in-memory session, full Python REPL, ephemeral
+
+        **Server mode** (--server):
+            Connects to running server, command-based only, persistent
 
         **Examples:**
 
-            nerve repl
-
-            nerve repl script.py
-
+            nerve repl                              # Local mode
+            nerve repl --server local               # Connect to server (default session)
+            nerve repl --server local --session my-project  # Connect to specific session
+            nerve repl script.py                    # Load from file (local)
             nerve repl script.py --dry-run
         """
         from nerve.frontends.cli.repl import run_from_file, run_interactive
 
         if file:
+            if server_name:
+                print("Error: File mode not supported with --server")
+                print("Use interactive mode or remove --server flag")
+                sys.exit(1)
             asyncio.run(run_from_file(file, dry_run=dry_run))
         else:
-            asyncio.run(run_interactive())
+            if session_name and not server_name:
+                print("Error: --session requires --server")
+                print("Use --server to specify which server to connect to")
+                sys.exit(1)
+            asyncio.run(run_interactive(server_name=server_name, session_name=session_name))
 
     cli()
 

@@ -61,10 +61,12 @@ def create_client(server_name: str):
 
 
 def get_server_transport(server_name: str) -> tuple[str, str | None]:
-    """Get server transport type and host:port info.
+    """Get server transport type and connection info.
 
-    Returns (type, host:port or None).
-    Types: "http", "tcp", "unix"
+    Returns (type, connection_info).
+    - For "http": connection_info is the base URL
+    - For "tcp": connection_info is "host:port"
+    - For "unix": connection_info is the socket path
     """
     http_file = f"/tmp/nerve-{server_name}.http"
     tcp_file = f"/tmp/nerve-{server_name}.tcp"
@@ -75,7 +77,9 @@ def get_server_transport(server_name: str) -> tuple[str, str | None]:
     if os.path.exists(tcp_file):
         with open(tcp_file) as f:
             return "tcp", f.read().strip()
-    return "unix", None
+    # Default to unix socket
+    socket_path = f"/tmp/nerve-{server_name}.sock"
+    return "unix", socket_path
 
 
 def get_server_name_from_socket(sock_path: str) -> str:

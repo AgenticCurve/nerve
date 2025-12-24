@@ -27,7 +27,6 @@ Example:
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -64,8 +63,7 @@ class Session:
     It creates, registers, and manages the lifecycle of nodes and graphs.
 
     Attributes:
-        id: Unique session identifier.
-        name: Human-readable session name.
+        name: Unique session name (used as identifier).
         description: Session description.
         tags: Session tags for categorization.
         created_at: Session creation timestamp.
@@ -77,9 +75,8 @@ class Session:
         history_base_dir: Base directory for history files.
     """
 
-    # Identity
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    name: str = ""
+    # Identity - name is the unique identifier
+    name: str
     description: str = ""
     tags: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
@@ -94,9 +91,10 @@ class Session:
     history_enabled: bool = True
     history_base_dir: Path | None = None
 
-    def __post_init__(self):
-        if not self.name:
-            self.name = self.id
+    @property
+    def id(self) -> str:
+        """Session ID (same as name for compatibility)."""
+        return self.name
 
     # =========================================================================
     # Node Factory Methods

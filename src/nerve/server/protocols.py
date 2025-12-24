@@ -58,6 +58,7 @@ class CommandType(Enum):
     # Interaction
     RUN_COMMAND = auto()  # Fire and forget - start a program
     EXECUTE_INPUT = auto()  # Send and wait for response
+    EXECUTE_PYTHON = auto()  # Execute Python code in server's interpreter
     SEND_INTERRUPT = auto()
     WRITE_DATA = auto()  # Raw write (no waiting)
 

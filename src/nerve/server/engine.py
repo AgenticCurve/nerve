@@ -57,6 +57,7 @@ class NerveEngine:
     _server_name: str = field(default="default")
     _default_session: Session | None = field(default=None, repr=False)
     _sessions: dict[str, Session] = field(default_factory=dict, repr=False)
+    _python_namespaces: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # session_id -> namespace
     _running_graphs: dict[str, asyncio.Task] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
 
@@ -64,9 +65,10 @@ class NerveEngine:
         """Initialize default session."""
         if self._default_session is None:
             self._default_session = Session(
+                name="default",
                 server_name=self._server_name,
             )
-        self._sessions[self._default_session.id] = self._default_session
+        self._sessions[self._default_session.name] = self._default_session
 
     @property
     def shutdown_requested(self) -> bool:
@@ -77,7 +79,7 @@ class NerveEngine:
         """Get session from params or return default.
 
         Args:
-            params: Command parameters (may contain session_id).
+            params: Command parameters (may contain session_id which is actually the session name).
 
         Returns:
             The requested session or default session.
@@ -85,11 +87,11 @@ class NerveEngine:
         Raises:
             ValueError: If session_id is provided but not found.
         """
-        session_id = params.get("session_id")
-        if session_id:
-            session = self._sessions.get(session_id)
+        session_name = params.get("session_id")  # session_id param is actually the name
+        if session_name:
+            session = self._sessions.get(session_name)
             if session is None:
-                raise ValueError(f"Session not found: {session_id}")
+                raise ValueError(f"Session not found: {session_name}")
             return session
         return self._default_session
 
@@ -113,6 +115,7 @@ class NerveEngine:
             # Interaction
             CommandType.RUN_COMMAND: self._run_command,
             CommandType.EXECUTE_INPUT: self._execute_input,
+            CommandType.EXECUTE_PYTHON: self._execute_python,
             CommandType.SEND_INTERRUPT: self._send_interrupt,
             CommandType.WRITE_DATA: self._write_data,
             CommandType.GET_BUFFER: self._get_buffer,
@@ -378,6 +381,112 @@ class NerveEngine:
             }
         }
 
+    async def _execute_python(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Execute Python code in server's interpreter.
+
+        The code executes in a namespace associated with the session.
+        This allows REPL clients to maintain Python state across commands.
+
+        Args:
+            params: Must contain "code" (Python code string).
+                    May contain "session_id" (uses default if not provided).
+
+        Returns:
+            dict with "output" (captured stdout/result) and "error" (if any).
+        """
+        import io
+        import sys
+        from contextlib import redirect_stdout, redirect_stderr
+        from code import compile_command
+
+        session = self._get_session(params)
+        code_str = params.get("code", "")
+
+        if not code_str.strip():
+            return {"output": "", "error": None}
+
+        # Get or create namespace for this session
+        session_id = session.name
+        if session_id not in self._python_namespaces:
+            # Initialize namespace with nerve imports and session
+            from nerve.core import ParserType
+            from nerve.core.nodes import (
+                ExecutionContext,
+                FunctionNode,
+                Graph,
+                PTYNode,
+                WezTermNode,
+            )
+            from nerve.core.session import BackendType
+
+            self._python_namespaces[session_id] = {
+                "asyncio": asyncio,
+                "Graph": Graph,
+                "FunctionNode": FunctionNode,
+                "ExecutionContext": ExecutionContext,
+                "PTYNode": PTYNode,
+                "WezTermNode": WezTermNode,
+                "Session": Session,
+                "ParserType": ParserType,
+                "BackendType": BackendType,
+                "session": session,  # The actual session
+            }
+
+        namespace = self._python_namespaces[session_id]
+
+        # Capture output
+        stdout_capture = io.StringIO()
+        stderr_capture = io.StringIO()
+
+        try:
+            with redirect_stdout(stdout_capture), redirect_stderr(stderr_capture):
+                # Try to compile as a complete statement
+                code_obj = compile_command(code_str, "<repl>", "single")
+
+                if code_obj is None:
+                    # Incomplete code
+                    return {
+                        "output": "",
+                        "error": "SyntaxError: unexpected EOF while parsing (incomplete code)",
+                    }
+
+                # Handle async code
+                if "await " in code_str or "async " in code_str:
+                    # Wrap in async function and run
+                    async_code = "async def __repl_async__():\n"
+                    for line in code_str.split("\n"):
+                        async_code += f"    {line}\n"
+                    async_code += "\nimport asyncio\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
+
+                    exec(compile(async_code, "<repl>", "exec"), namespace)
+                else:
+                    # Execute synchronous code
+                    exec(code_obj, namespace)
+
+            # Get captured output
+            output = stdout_capture.getvalue()
+            error_output = stderr_capture.getvalue()
+
+            if error_output:
+                output = error_output if not output else output + "\n" + error_output
+
+            return {
+                "output": output,
+                "error": None,
+            }
+
+        except SyntaxError as e:
+            return {
+                "output": "",
+                "error": f"SyntaxError: {e}",
+            }
+        except Exception as e:
+            import traceback
+            return {
+                "output": "",
+                "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
+            }
+
     async def _send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         """Send interrupt to a node."""
         session = self._get_session(params)
@@ -574,41 +683,42 @@ class NerveEngine:
         """Create a new session.
 
         Parameters:
-            name: Session name (optional)
+            name: Session name (required)
             description: Session description (optional)
             tags: Session tags (optional)
 
         Returns:
-            Dict with session_id.
+            Dict with session_id (which is the name).
         """
         name = params.get("name")
+        if not name:
+            raise ValueError("Session name is required")
+
         description = params.get("description", "")
         tags = params.get("tags", [])
 
         # Check for duplicate session name
-        if name:
-            for existing in self._sessions.values():
-                if existing.name == name:
-                    raise ValueError(f"Session with name '{name}' already exists")
+        if name in self._sessions:
+            raise ValueError(f"Session with name '{name}' already exists")
 
         session = Session(
-            name=name or "",
+            name=name,
             description=description,
             tags=tags,
             server_name=self._server_name,
         )
-        self._sessions[session.id] = session
+        self._sessions[session.name] = session
 
         await self._emit(
             EventType.SESSION_CREATED,
             data={
-                "session_id": session.id,
+                "session_id": session.name,
                 "name": session.name,
             },
         )
 
         return {
-            "session_id": session.id,
+            "session_id": session.name,
             "name": session.name,
         }
 
@@ -625,7 +735,7 @@ class NerveEngine:
         if not session_id:
             raise ValueError("session_id is required")
 
-        if session_id == self._default_session.id:
+        if session_id == self._default_session.name:
             raise ValueError("Cannot delete the default session")
 
         session = self._sessions.pop(session_id, None)
@@ -650,18 +760,18 @@ class NerveEngine:
         sessions = []
         for session in self._sessions.values():
             sessions.append({
-                "id": session.id,
+                "id": session.name,  # id is the name
                 "name": session.name,
                 "description": session.description,
                 "tags": session.tags,
                 "node_count": len(session.nodes),
                 "graph_count": len(session.graphs),
-                "is_default": session.id == self._default_session.id,
+                "is_default": session.name == self._default_session.name,
             })
 
         return {
             "sessions": sessions,
-            "default_session_id": self._default_session.id,
+            "default_session_id": self._default_session.name,
         }
 
     async def _get_session_info(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -690,14 +800,14 @@ class NerveEngine:
                 })
 
         return {
-            "session_id": session.id,
+            "session_id": session.name,  # session_id is the name
             "name": session.name,
             "description": session.description,
             "tags": session.tags,
             "nodes": node_ids,
             "nodes_info": nodes_info,
             "graphs": session.list_graphs(),
-            "is_default": session.id == self._default_session.id,
+            "is_default": session.name == self._default_session.name,
         }
 
     # =========================================================================
