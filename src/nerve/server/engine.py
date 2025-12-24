@@ -585,6 +585,12 @@ class NerveEngine:
         description = params.get("description", "")
         tags = params.get("tags", [])
 
+        # Check for duplicate session name
+        if name:
+            for existing in self._sessions.values():
+                if existing.name == name:
+                    raise ValueError(f"Session with name '{name}' already exists")
+
         session = Session(
             name=name or "",
             description=description,
@@ -665,16 +671,31 @@ class NerveEngine:
             session_id: Session ID (optional, defaults to default session)
 
         Returns:
-            Dict with session info.
+            Dict with session info including detailed node info.
         """
         session = self._get_session(params)
+
+        # Get detailed node info
+        node_ids = session.list_nodes()
+        nodes_info = []
+        for nid in node_ids:
+            node = session.get_node(nid)
+            if node and hasattr(node, "to_info"):
+                info = node.to_info()
+                nodes_info.append({
+                    "id": nid,
+                    "type": info.node_type,
+                    "state": info.state.name,
+                    **info.metadata,
+                })
 
         return {
             "session_id": session.id,
             "name": session.name,
             "description": session.description,
             "tags": session.tags,
-            "nodes": session.list_nodes(),
+            "nodes": node_ids,
+            "nodes_info": nodes_info,
             "graphs": session.list_graphs(),
             "is_default": session.id == self._default_session.id,
         }

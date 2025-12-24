@@ -30,9 +30,13 @@ def server():
 
         nerve server status    Check if daemon is running
 
+    **Session management:**
+
+        nerve server session   Manage sessions (workspaces with nodes/graphs)
+
     **Node management:**
 
-        nerve server node      Create, list, and send to nodes
+        nerve server node      Create and interact with nodes
 
     **Graph execution:**
 
@@ -46,7 +50,7 @@ def server():
 
 
 @server.command()
-@click.argument("name")
+@click.argument("name", default="local")
 @click.option("--host", default=None, help="Host to bind (enables network transport)")
 @click.option("--port", default=8080, help="Port for network transport")
 @click.option("--tcp", "use_tcp", is_flag=True, help="Use TCP socket transport (requires --host)")
@@ -54,7 +58,7 @@ def server():
 def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool):
     """Start the nerve daemon.
 
-    NAME is required and determines the socket path (/tmp/nerve-NAME.sock).
+    NAME determines the socket path (/tmp/nerve-NAME.sock). Defaults to "local".
     Names must be lowercase alphanumeric with dashes, 1-32 characters.
 
     **Transports:**
@@ -67,11 +71,11 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
 
     **Examples:**
 
+        nerve server start
+
         nerve server start myproject
 
         nerve server start myproject --tcp --host 0.0.0.0 --port 8080
-
-        nerve server start myproject --http --host 0.0.0.0 --port 8080
     """
     import os
     import signal as sig
@@ -96,6 +100,20 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
     pid_file = f"/tmp/nerve-{name}.pid"
     http_file = f"/tmp/nerve-{name}.http"
     tcp_file = f"/tmp/nerve-{name}.tcp"
+
+    # Check if server with this name is already running
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file) as f:
+                pid = int(f.read().strip())
+            # Check if process is still running
+            os.kill(pid, 0)
+            click.echo(f"Error: Server '{name}' is already running (pid {pid})", err=True)
+            sys.exit(1)
+        except (ProcessLookupError, ValueError):
+            # Process not running, clean up stale files
+            pass
+
     click.echo(f"Starting nerve daemon '{name}'...")
 
     from nerve.server import NerveEngine
@@ -211,11 +229,11 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
 
 
 @server.command()
-@click.argument("name", required=False)
+@click.argument("name", default="local")
 @click.option("--all", "stop_all", is_flag=True, help="Stop all nerve servers")
 @click.option("--force", "-f", is_flag=True, help="Force kill (SIGKILL) without graceful shutdown")
 @click.option("--timeout", "-t", default=5.0, help="Graceful shutdown timeout in seconds (default: 5)")
-def stop(name: str | None, stop_all: bool, force: bool, timeout: float):
+def stop(name: str, stop_all: bool, force: bool, timeout: float):
     """Stop the nerve daemon.
 
     Sends a shutdown command to the running daemon, which will:
@@ -227,20 +245,14 @@ def stop(name: str | None, stop_all: bool, force: bool, timeout: float):
 
     **Examples:**
 
-        nerve server stop myproject
+        nerve server stop
 
         nerve server stop myproject --force
-
-        nerve server stop myproject --timeout 10
 
         nerve server stop --all
     """
     from nerve.server.protocols import Command, CommandType
     from nerve.transport import UnixSocketClient
-
-    if not name and not stop_all:
-        click.echo("Error: Provide server NAME or use --all", err=True)
-        sys.exit(1)
 
     async def graceful_stop_socket(sock_path: str, timeout_secs: float) -> bool:
         """Try graceful shutdown via Unix socket. Returns True if successful."""
@@ -350,12 +362,14 @@ def stop(name: str | None, stop_all: bool, force: bool, timeout: float):
 
 
 @server.command()
-@click.argument("name", required=False)
+@click.argument("name", default="local")
 @click.option("--all", "show_all", is_flag=True, help="Show all nerve servers")
-def status(name: str | None, show_all: bool):
+def status(name: str, show_all: bool):
     """Check if the nerve daemon is running.
 
     **Examples:**
+
+        nerve server status
 
         nerve server status myproject
 
@@ -363,10 +377,6 @@ def status(name: str | None, show_all: bool):
     """
     from nerve.server.protocols import Command, CommandType
     from nerve.transport import UnixSocketClient
-
-    if not name and not show_all:
-        click.echo("Error: Provide server NAME or use --all", err=True)
-        sys.exit(1)
 
     async def get_socket_status(sock_path: str) -> dict | None:
         """Get status via Unix socket. Returns None if not running."""

@@ -13,23 +13,13 @@ from nerve.frontends.cli.utils import create_client
 
 @server.group()
 def node():
-    """Manage AI CLI nodes.
+    """Manage nodes.
 
-    Nodes are connections to AI CLI tools (Claude, Gemini) running
-    in the daemon. Each node represents a terminal pane or other
-    connection type.
+    Nodes are persistent execution contexts that maintain state across
+    interactions. They can run any process: AI CLIs (Claude, Gemini),
+    shells (bash, zsh), interpreters (Python, Node), or other programs.
 
-    **Commands:**
-
-        nerve server node create    Create a new node
-
-        nerve server node list      List active nodes
-
-        nerve server node run       Start a program (fire and forget)
-
-        nerve server node read      Read the output buffer
-
-        nerve server node send      Send input and wait for response
+    To list nodes, use `nerve server session info --server NAME`.
     """
     pass
 
@@ -63,7 +53,7 @@ def node_create(
     pane_id: str | None,
     history: bool,
 ):
-    """Create a new AI CLI node.
+    """Create a new node.
 
     NAME is the node name (required, must be unique).
     Names must be lowercase alphanumeric with dashes, 1-32 characters.
@@ -117,70 +107,6 @@ def node_create(
 
         if result.success:
             click.echo(f"Created node: {name}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
-
-
-@node.command("list")
-@click.option("--server", "-s", "server_name", required=True, help="Server name to list nodes from")
-@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-@click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def node_list(server_name: str, session_id: str | None, json_output: bool):
-    """List active nodes on a server.
-
-    **Examples:**
-
-        nerve server node list --server myproject
-
-        nerve server node list --server myproject --json
-
-        nerve server node list --server myproject --session my-workspace
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run():
-        client = create_client(server_name)
-        await client.connect()
-
-        params = {}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.LIST_NODES,
-                params=params,
-            )
-        )
-
-        if result.success:
-            nodes_info = result.data.get("nodes_info", [])
-            nodes = result.data.get("nodes", [])
-
-            if json_output:
-                import json
-
-                click.echo(json.dumps(nodes_info, indent=2))
-            elif nodes_info:
-                click.echo(f"{'ID':<12} {'LAST INPUT':<30} {'BACKEND':<14} {'STATE'}")
-                click.echo("-" * 65)
-                for info in nodes_info:
-                    last_input = info.get("last_input") or info.get("command") or "-"
-                    last_input = last_input[:29]
-                    click.echo(
-                        f"{info['id']:<12} {last_input:<30} "
-                        f"{info['backend']:<14} {info['state']}"
-                    )
-            elif nodes:
-                # Fallback for older server
-                for nid in nodes:
-                    click.echo(nid)
-            else:
-                click.echo("No active nodes")
         else:
             click.echo(f"Error: {result.error}", err=True)
 
