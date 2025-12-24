@@ -91,7 +91,7 @@ async def run_interactive(
         python_exec_enabled = False
     else:
         # Local mode - create in-memory session (NO server)
-        session = Session(name="repl")
+        session = Session(name="default", server_name="repl")
         adapter = LocalSessionAdapter(session)
         python_exec_enabled = True
 
@@ -303,6 +303,121 @@ async def run_interactive(
                         print(f"Error: {e}")
                     continue
 
+                elif cmd == "history":
+                    # Works in both local and server mode
+                    if len(parts) < 2:
+                        print("Usage: history <node> [--last N] [--op TYPE] [--summary]")
+                        continue
+
+                    node_name = parts[1]
+
+                    # Parse optional flags
+                    args = parts[2:] if len(parts) > 2 else []
+                    last = None
+                    op = None
+                    summary = False
+
+                    i = 0
+                    while i < len(args):
+                        if args[i] == "--last" and i + 1 < len(args):
+                            try:
+                                last = int(args[i + 1])
+                                i += 2
+                            except ValueError:
+                                print(f"Invalid --last value: {args[i + 1]}")
+                                break
+                        elif args[i] == "--op" and i + 1 < len(args):
+                            op = args[i + 1]
+                            i += 2
+                        elif args[i] == "--summary":
+                            summary = True
+                            i += 1
+                        else:
+                            i += 1
+
+                    # Import here to avoid circular deps
+                    import json
+                    from collections import Counter
+
+                    from nerve.core.nodes.history import HistoryReader
+
+                    try:
+                        # Determine server and session names
+                        if python_exec_enabled:
+                            # Local mode
+                            server = session.server_name if session else "repl"
+                            sess = session.name if session else "default"
+                        else:
+                            # Server mode
+                            server = adapter.server_name
+                            sess = adapter.name
+
+                        # Try to read history
+                        reader = HistoryReader.create(
+                            node_id=node_name,
+                            server_name=server,
+                            session_name=sess,
+                        )
+
+                        # Get entries
+                        if op:
+                            entries = reader.get_by_op(op)
+                        else:
+                            entries = reader.get_all()
+
+                        # Apply limit
+                        if last is not None and last < len(entries):
+                            entries = entries[-last:]
+
+                        if not entries:
+                            print("No history entries found")
+                            continue
+
+                        # Display
+                        if summary:
+                            ops_count = Counter(e["op"] for e in entries)
+                            print(f"Node: {node_name}")
+                            print(f"Server: {server}")
+                            print(f"Session: {sess}")
+                            print(f"Total entries: {len(entries)}")
+                            print("\nOperations:")
+                            for op_type, count in sorted(ops_count.items()):
+                                print(f"  {op_type}: {count}")
+                        else:
+                            for entry in entries:
+                                seq = entry.get("seq", "?")
+                                op_type = entry.get("op", "unknown")
+                                ts = entry.get("ts", entry.get("ts_start", ""))
+                                ts_display = ts.split("T")[1][:8] if "T" in ts else ts[:8]
+
+                                if op_type == "send":
+                                    input_text = entry.get("input", "")[:40]
+                                    response = entry.get("response", {})
+                                    sections = response.get("sections", [])
+                                    print(
+                                        f"[{seq:3}] {ts_display} SEND    {input_text!r} -> {len(sections)} sections"
+                                    )
+                                elif op_type == "run":
+                                    cmd = entry.get("input", "")[:40]
+                                    print(f"[{seq:3}] {ts_display} RUN     {cmd!r}")
+                                elif op_type == "write":
+                                    data = entry.get("input", "")[:30].replace("\n", "\\n")
+                                    print(f"[{seq:3}] {ts_display} WRITE   {data!r}")
+                                elif op_type == "read":
+                                    lines = entry.get("lines", 0)
+                                    buffer_len = len(entry.get("buffer", ""))
+                                    print(
+                                        f"[{seq:3}] {ts_display} READ    {lines} lines, {buffer_len} chars"
+                                    )
+                                else:
+                                    print(f"[{seq:3}] {ts_display} {op_type.upper()}")
+
+                    except FileNotFoundError:
+                        print(f"No history found for node '{node_name}'")
+                    except Exception as e:
+                        print(f"Error reading history: {e}")
+                    continue
+
                 elif cmd == "reset":
                     # Local mode only
                     if not python_exec_enabled:
@@ -312,7 +427,7 @@ async def run_interactive(
                         await run_async_operation(session.stop())
                     state.nodes.clear()
                     # Recreate session
-                    session = Session(name="repl")
+                    session = Session(name="default", server_name="repl")
                     state.namespace["session"] = session
                     state.namespace["context"] = ExecutionContext(session=session)
                     state.namespace["nodes"] = state.nodes

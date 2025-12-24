@@ -19,8 +19,8 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session_instance = Mock()
-                mock_session_instance.name = "repl"
-                mock_session_instance.id = "repl"
+                mock_session_instance.name = "default"
+                mock_session_instance.id = "default"
                 mock_session_instance.nodes = {}
                 mock_session_instance.graphs = {}
                 mock_session_instance.stop = AsyncMock()
@@ -31,7 +31,7 @@ class TestRunInteractive:
                 await run_interactive()
 
                 # Verify session was created
-                MockSession.assert_called_once_with(name="repl")
+                MockSession.assert_called_once_with(name="default", server_name="repl")
                 # Verify cleanup was called
                 mock_session_instance.stop.assert_called_once()
 
@@ -65,7 +65,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=EOFError):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}
@@ -108,7 +108,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}
@@ -132,7 +132,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}
@@ -180,7 +180,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}
@@ -199,7 +199,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}
@@ -254,7 +254,7 @@ class TestRunInteractive:
         with patch("builtins.input", side_effect=["exit"]):
             with patch("nerve.core.session.Session") as MockSession:
                 mock_session = Mock()
-                mock_session.name = "repl"
+                mock_session.name = "default"
                 mock_session.id = "repl"
                 mock_session.nodes = {}
                 mock_session.graphs = {}

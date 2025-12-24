@@ -528,7 +528,7 @@ def node_interrupt(node_name: str, server_name: str):
 
 @node.command("history")
 @click.argument("node_name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option(
     "--session", "session_name", default="default", help="Session name (default: default)"
 )
@@ -564,15 +564,17 @@ def node_history(
 
     **Examples:**
 
-        nerve server node history my-claude --server local
+        nerve server node history my-claude
 
-        nerve server node history my-claude --server local --last 10
+        nerve server node history my-claude --last 10
 
-        nerve server node history my-claude --server local --op send
+        nerve server node history my-claude --server prod --session my-session
 
-        nerve server node history my-claude --server local --inputs-only --json
+        nerve server node history my-claude --op send
 
-        nerve server node history my-claude --server local --summary
+        nerve server node history my-claude --inputs-only --json
+
+        nerve server node history my-claude --summary
     """
     import json
     from pathlib import Path

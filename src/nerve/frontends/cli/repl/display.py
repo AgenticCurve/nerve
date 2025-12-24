@@ -14,7 +14,7 @@ def print_help():
 Nerve REPL - Interactive Python environment for AI CLI orchestration
 
 Pre-loaded:
-  session     - Session named 'repl' (ready to use)
+  session     - Session named 'default' (ready to use)
   Session, Graph, FunctionNode, ExecutionContext
   ParserType, BackendType, PTYNode, WezTermNode
 
@@ -36,6 +36,7 @@ Commands:
     read <node>           Read node's output buffer
     stop <node>           Stop a node
     delete <node>         Delete a node
+    history <node>        View node's history (supports --last, --op, --summary)
 
   Graphs:
     show [name]           Show graph structure (default: 'graph' variable)
