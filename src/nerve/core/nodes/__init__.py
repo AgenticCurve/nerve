@@ -69,7 +69,7 @@ from nerve.core.nodes.base import (
 from nerve.core.nodes.context import ExecutionContext
 
 # Graph
-from nerve.core.nodes.graph import Graph, Step, StepEvent
+from nerve.core.nodes.graph import Graph, GraphStep, GraphStepList, Step, StepEvent
 
 # Terminal nodes
 from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
@@ -109,6 +109,8 @@ __all__ = [
     "ExecutionContext",
     # Graph
     "Graph",
+    "GraphStep",
+    "GraphStepList",
     "Step",
     "StepEvent",
     # Terminal

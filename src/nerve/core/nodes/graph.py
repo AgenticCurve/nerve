@@ -80,6 +80,130 @@ class StepEvent:
     timestamp: datetime = field(default_factory=datetime.now)
 
 
+class GraphStep:
+    """Wrapper for fluent graph building with >> operator.
+
+    Example:
+        >>> A = graph.step("A", node, input="First")
+        >>> B = graph.step("B", node, input="Second")
+        >>> C = graph.step("C", node, input="Third")
+        >>> A >> B >> C  # B depends on A, C depends on B
+    """
+
+    def __init__(
+        self,
+        graph: "Graph",
+        step_id: str,
+        node: Node | None = None,
+        node_ref: str | None = None,
+        input: Any = None,
+        input_fn: Callable[[dict[str, Any]], Any] | None = None,
+        depends_on: list[str] | None = None,
+        error_policy: ErrorPolicy | None = None,
+        parser: "ParserType | None" = None,
+    ):
+        self.graph = graph
+        self.step_id = step_id
+        self.node = node
+        self.node_ref = node_ref
+        self.input = input
+        self.input_fn = input_fn
+        self.error_policy = error_policy
+        self.parser = parser
+        self.depends_on: list[str] = depends_on or []
+        self._registered = False
+
+    def _ensure_registered(self):
+        """Add this step to the graph if not already registered."""
+        if not self._registered:
+            if self.node:
+                self.graph.add_step(
+                    self.node,
+                    self.step_id,
+                    input=self.input,
+                    input_fn=self.input_fn,
+                    depends_on=self.depends_on,
+                    error_policy=self.error_policy,
+                    parser=self.parser,
+                )
+            elif self.node_ref:
+                self.graph.add_step_ref(
+                    self.node_ref,
+                    self.step_id,
+                    input=self.input,
+                    input_fn=self.input_fn,
+                    depends_on=self.depends_on,
+                    error_policy=self.error_policy,
+                    parser=self.parser,
+                )
+            else:
+                raise ValueError(f"Step {self.step_id} has neither node nor node_ref")
+            self._registered = True
+
+    def __rshift__(self, other):
+        """A >> B makes B depend on A.
+
+        Supports:
+            A >> B           # B depends on A
+            A >> [B, C]      # Both B and C depend on A
+        """
+        if isinstance(other, (list, GraphStepList)):
+            # A >> [B, C]
+            for step in other:
+                if isinstance(step, GraphStep):
+                    step.depends_on.append(self.step_id)
+                    self._ensure_registered()
+                    step._ensure_registered()
+            return GraphStepList(other)
+        elif isinstance(other, GraphStep):
+            # A >> B
+            other.depends_on.append(self.step_id)
+            self._ensure_registered()
+            other._ensure_registered()
+            return other
+        else:
+            raise TypeError(f"Cannot use >> with {type(other)}")
+
+    def __repr__(self):
+        return f"GraphStep(id={self.step_id!r}, depends_on={self.depends_on})"
+
+
+class GraphStepList(list):
+    """List wrapper that supports >> operator for parallel dependencies.
+
+    Example:
+        >>> [A, B] >> C  # C depends on both A and B
+    """
+
+    def __rshift__(self, other):
+        """[A, B] >> C makes C depend on all items in the list.
+
+        Supports:
+            [A, B] >> C        # C depends on both A and B
+            [A, B] >> [C, D]   # C and D depend on both A and B
+        """
+        if isinstance(other, (list, GraphStepList)):
+            # [A, B] >> [C, D]
+            for downstream in other:
+                if isinstance(downstream, GraphStep):
+                    for upstream in self:
+                        if isinstance(upstream, GraphStep):
+                            downstream.depends_on.append(upstream.step_id)
+                            upstream._ensure_registered()
+                    downstream._ensure_registered()
+            return GraphStepList(other)
+        elif isinstance(other, GraphStep):
+            # [A, B] >> C
+            for upstream in self:
+                if isinstance(upstream, GraphStep):
+                    other.depends_on.append(upstream.step_id)
+                    upstream._ensure_registered()
+            other._ensure_registered()
+            return other
+        else:
+            raise TypeError(f"Cannot use >> with {type(other)}")
+
+
 class Graph:
     """Directed graph of steps that implements Node protocol.
 
@@ -209,6 +333,69 @@ class Graph:
             parser=parser,
         )
         return self
+
+    def step(
+        self,
+        step_id: str,
+        node: Node | None = None,
+        node_ref: str | None = None,
+        input: Any = None,
+        input_fn: Callable[[dict[str, Any]], Any] | None = None,
+        depends_on: list[str] | None = None,
+        error_policy: ErrorPolicy | None = None,
+        parser: ParserType | None = None,
+    ) -> GraphStep:
+        """Create a step for fluent graph building with >> operator.
+
+        This method returns a GraphStep that can be chained with >> operators
+        to build dependencies. Steps are automatically registered when dependencies
+        are set (either via >> operator or explicit depends_on parameter).
+
+        Args:
+            step_id: Unique identifier for this step.
+            node: Direct reference to node to execute (mutually exclusive with node_ref).
+            node_ref: ID of node to resolve from session (mutually exclusive with node).
+            input: Static input value (mutually exclusive with input_fn).
+            input_fn: Dynamic input function that receives upstream results.
+            depends_on: List of step IDs this step depends on (optional, can use >> instead).
+            error_policy: How to handle errors in this step.
+            parser: Parser to use for terminal nodes (overrides node default).
+
+        Returns:
+            GraphStep that supports >> operator for dependency chaining.
+
+        Example:
+            >>> # Using >> operator
+            >>> A = graph.step("fetch", node, input="http://api")
+            >>> B = graph.step("process", node)
+            >>> C = graph.step("output", node)
+            >>> A >> B >> C  # B depends on A, C depends on B
+            >>>
+            >>> # Using explicit depends_on
+            >>> A = graph.step("fetch", node, input="http://api")
+            >>> B = graph.step("process", node, depends_on=["fetch"])
+            >>>
+            >>> # Parallel branches with >>
+            >>> D = graph.step("branch1", node)
+            >>> E = graph.step("branch2", node)
+            >>> F = graph.step("merge", node)
+            >>> C >> [D, E] >> F  # D and E depend on C, F depends on both
+        """
+        step = GraphStep(
+            self,
+            step_id,
+            node=node,
+            node_ref=node_ref,
+            input=input,
+            input_fn=input_fn,
+            depends_on=depends_on,
+            error_policy=error_policy,
+            parser=parser,
+        )
+        # If depends_on was provided, register the step immediately
+        if depends_on:
+            step._ensure_registered()
+        return step
 
     def chain(self, *step_ids: str) -> Graph:
         """Set linear dependencies between steps.
