@@ -72,7 +72,9 @@ def wezterm_list(json_output: bool):
 
 
 @wezterm.command("spawn")
-@click.option("--command", "-c", "cmd", default="claude", help="Command to run (e.g., claude, gemini)")
+@click.option(
+    "--command", "-c", "cmd", default="claude", help="Command to run (e.g., claude, gemini)"
+)
 @click.option("--cwd", default=None, help="Working directory")
 @click.option("--name", "-n", default=None, help="Node name for reference")
 def wezterm_spawn(cmd: str, cwd: str | None, name: str | None):

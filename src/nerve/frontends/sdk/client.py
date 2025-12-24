@@ -22,9 +22,7 @@ class RemoteNode:
     command: str
     _client: NerveClient
 
-    async def send(
-        self, text: str, parser: str = "none", stream: bool = False
-    ) -> ParsedResponse:
+    async def send(self, text: str, parser: str = "none", stream: bool = False) -> ParsedResponse:
         """Send input and get response.
 
         Args:

@@ -62,8 +62,9 @@ class NoneParser(Parser):
     def _strip_ansi(text: str) -> str:
         """Strip ANSI escape codes from text."""
         import re
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        return ansi_escape.sub('', text)
+
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        return ansi_escape.sub("", text)
 
     def parse(self, content: str) -> ParsedResponse:
         """Return content as-is in a single text section.

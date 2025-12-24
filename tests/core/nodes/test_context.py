@@ -3,7 +3,7 @@
 import pytest
 
 from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
-from nerve.core.nodes.cancellation import CancelledException, CancellationToken
+from nerve.core.nodes.cancellation import CancellationToken, CancelledException
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.session.session import Session
 from nerve.core.types import ParserType
@@ -63,9 +63,7 @@ class TestExecutionContext:
     def test_with_upstream(self):
         """Test with_upstream merges upstream dict."""
         session = Session()
-        context = ExecutionContext(
-            session=session, upstream={"a": 1, "b": 2}
-        )
+        context = ExecutionContext(session=session, upstream={"a": 1, "b": 2})
 
         new_context = context.with_upstream({"c": 3, "b": 99})
 
@@ -114,9 +112,7 @@ class TestExecutionContext:
         session = Session()
         budget = Budget(max_steps=10)
         usage = ResourceUsage(steps_executed=5)
-        context = ExecutionContext(
-            session=session, budget=budget, usage=usage
-        )
+        context = ExecutionContext(session=session, budget=budget, usage=usage)
 
         # Should not raise
         context.check_budget()
@@ -126,9 +122,7 @@ class TestExecutionContext:
         session = Session()
         budget = Budget(max_steps=5)
         usage = ResourceUsage(steps_executed=10)
-        context = ExecutionContext(
-            session=session, budget=budget, usage=usage
-        )
+        context = ExecutionContext(session=session, budget=budget, usage=usage)
 
         with pytest.raises(BudgetExceededError):
             context.check_budget()
@@ -146,9 +140,7 @@ class TestExecutionContext:
         session = Session()
         parent_budget = Budget(max_tokens=1000)
         parent_usage = ResourceUsage(tokens_used=100)
-        context = ExecutionContext(
-            session=session, budget=parent_budget, usage=parent_usage
-        )
+        context = ExecutionContext(session=session, budget=parent_budget, usage=parent_usage)
 
         sub_budget = Budget(max_tokens=500)
         sub_context = context.with_sub_budget(sub_budget)
@@ -162,9 +154,7 @@ class TestExecutionContext:
         session = Session()
         parent_budget = Budget(max_tokens=1000)
         parent_usage = ResourceUsage(tokens_used=100)
-        context = ExecutionContext(
-            session=session, budget=parent_budget, usage=parent_usage
-        )
+        context = ExecutionContext(session=session, budget=parent_budget, usage=parent_usage)
 
         sub_budget = Budget(max_tokens=500)
         sub_context = context.with_sub_budget(sub_budget)

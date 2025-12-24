@@ -140,9 +140,7 @@ class TestFunctionNode:
 
         node = FunctionNode(id="process", fn=process)
         session = Session()
-        context = ExecutionContext(
-            session=session, input=None, upstream={"prev": "data"}
-        )
+        context = ExecutionContext(session=session, input=None, upstream={"prev": "data"})
 
         result = await node.execute(context)
         assert result == "got data"

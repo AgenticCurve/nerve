@@ -144,9 +144,7 @@ class TestExecutionTrace:
 
     def test_add_step(self):
         """Test add_step method."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
 
         step = StepTrace(
             step_id="step1",
@@ -169,9 +167,7 @@ class TestExecutionTrace:
 
     def test_add_multiple_steps(self):
         """Test adding multiple steps aggregates tokens."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
         now = datetime.now()
 
         for i in range(3):
@@ -195,9 +191,7 @@ class TestExecutionTrace:
 
     def test_complete_success(self):
         """Test complete marks trace as completed."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
 
         trace.complete()
 
@@ -207,9 +201,7 @@ class TestExecutionTrace:
 
     def test_complete_with_error(self):
         """Test complete with error marks trace as failed."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
 
         trace.complete(error="Something failed")
 
@@ -219,9 +211,7 @@ class TestExecutionTrace:
 
     def test_cancel(self):
         """Test cancel marks trace as cancelled."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
 
         trace.cancel()
 
@@ -230,9 +220,7 @@ class TestExecutionTrace:
 
     def test_duration_ms_while_running(self):
         """Test duration_ms returns None while running."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
 
         assert trace.duration_ms is None
 
@@ -247,9 +235,7 @@ class TestExecutionTrace:
 
     def test_explain_simple(self):
         """Test explain output for simple trace."""
-        trace = ExecutionTrace(
-            graph_id="pipeline", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="pipeline", start_time=datetime.now())
         now = datetime.now()
 
         trace.add_step(
@@ -277,9 +263,7 @@ class TestExecutionTrace:
 
     def test_explain_with_error(self):
         """Test explain output with step error."""
-        trace = ExecutionTrace(
-            graph_id="test", start_time=datetime.now()
-        )
+        trace = ExecutionTrace(graph_id="test", start_time=datetime.now())
         now = datetime.now()
 
         trace.add_step(

@@ -15,9 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import secrets
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -160,9 +158,7 @@ class AnthropicProxyServer:
         # Just return OK - we don't need to forward telemetry
         return web.json_response({"status": "ok"})
 
-    def _error_response(
-        self, error_type: str, message: str, status: int
-    ) -> web.Response:
+    def _error_response(self, error_type: str, message: str, status: int) -> web.Response:
         """Create an Anthropic-format error response."""
         from aiohttp import web
 
@@ -173,7 +169,6 @@ class AnthropicProxyServer:
 
     async def _handle_messages(self, request: web.Request) -> web.Response:
         """Handle POST /v1/messages - main proxy endpoint."""
-        from aiohttp import web
 
         # Header validation
         content_type = request.headers.get("Content-Type", "")
@@ -262,10 +257,14 @@ class AnthropicProxyServer:
                         upstream_response.status,
                         error_body[:500],
                     )
-                    self._save_debug(trace_id, "2_error.json", {
-                        "status": upstream_response.status,
-                        "body": error_body,
-                    })
+                    self._save_debug(
+                        trace_id,
+                        "2_error.json",
+                        {
+                            "status": upstream_response.status,
+                            "body": error_body,
+                        },
+                    )
                     # Return error in SSE format
                     error_event = f"event: error\ndata: {error_body}\n\n"
                     await response.write(error_event.encode("utf-8"))
@@ -319,10 +318,14 @@ class AnthropicProxyServer:
             async with self._session.post(url, json=body) as upstream_response:
                 response_body = await upstream_response.text()
 
-                self._save_debug(trace_id, "2_response.json", {
-                    "status": upstream_response.status,
-                    "body": json.loads(response_body) if response_body else None,
-                })
+                self._save_debug(
+                    trace_id,
+                    "2_response.json",
+                    {
+                        "status": upstream_response.status,
+                        "body": json.loads(response_body) if response_body else None,
+                    },
+                )
 
                 if upstream_response.status != 200:
                     logger.error(
@@ -331,9 +334,7 @@ class AnthropicProxyServer:
                         upstream_response.status,
                         response_body[:500],
                     )
-                    error_type = ERROR_TYPE_MAP.get(
-                        upstream_response.status, "api_error"
-                    )
+                    error_type = ERROR_TYPE_MAP.get(upstream_response.status, "api_error")
                     return self._error_response(
                         error_type,
                         response_body,

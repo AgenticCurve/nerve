@@ -152,15 +152,9 @@ async def create_openai_proxy(
     config = OpenAIProxyConfig(
         host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
         port=int(get_value(str(port) if port != 3456 else None, "PROXY_PORT", "port", "3456")),
-        upstream_base_url=get_value(
-            upstream_base_url, "OPENAI_BASE_URL", "upstream_base_url", ""
-        ),
-        upstream_api_key=get_value(
-            upstream_api_key, "OPENAI_API_KEY", "upstream_api_key", ""
-        ),
-        upstream_model=get_value(
-            upstream_model, "OPENAI_MODEL", "upstream_model", ""
-        ),
+        upstream_base_url=get_value(upstream_base_url, "OPENAI_BASE_URL", "upstream_base_url", ""),
+        upstream_api_key=get_value(upstream_api_key, "OPENAI_API_KEY", "upstream_api_key", ""),
+        upstream_model=get_value(upstream_model, "OPENAI_MODEL", "upstream_model", ""),
     )
 
     # Validate required config
@@ -173,9 +167,7 @@ async def create_openai_proxy(
             "upstream_api_key is required. Set OPENAI_API_KEY env var or pass explicitly."
         )
     if not config.upstream_model:
-        raise ValueError(
-            "upstream_model is required. Set OPENAI_MODEL env var or pass explicitly."
-        )
+        raise ValueError("upstream_model is required. Set OPENAI_MODEL env var or pass explicitly.")
 
     server = OpenAIProxyServer(config=config)
     await server.serve()

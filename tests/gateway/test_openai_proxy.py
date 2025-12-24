@@ -1,8 +1,5 @@
 """End-to-end tests for OpenAIProxyServer (Anthropic→OpenAI transformation)."""
 
-import asyncio
-import json
-
 import aiohttp
 import pytest
 from aioresponses import aioresponses
@@ -86,32 +83,36 @@ class TestOpenAIProxyServer:
         """Should reject requests without proper Content-Type."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/v1/messages",
                 data="not json",
                 headers={"Content-Type": "text/plain"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["type"] == "error"
-                assert data["error"]["type"] == "invalid_request_error"
-                assert "Content-Type" in data["error"]["message"]
+            ) as resp,
+        ):
+            assert resp.status == 400
+            data = await resp.json()
+            assert data["type"] == "error"
+            assert data["error"]["type"] == "invalid_request_error"
+            assert "Content-Type" in data["error"]["message"]
 
     async def test_json_validation(self, running_proxy):
         """Should reject invalid JSON."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/v1/messages",
                 data="{not valid json",
                 headers={"Content-Type": "application/json"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["error"]["type"] == "invalid_request_error"
-                assert "JSON" in data["error"]["message"]
+            ) as resp,
+        ):
+            assert resp.status == 400
+            data = await resp.json()
+            assert data["error"]["type"] == "invalid_request_error"
+            assert "JSON" in data["error"]["message"]
 
     async def test_request_validation(self, running_proxy):
         """Should validate Anthropic request format."""
@@ -147,8 +148,9 @@ class TestOpenAIProxyServer:
                 },
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "messages": [{"role": "user", "content": "Hello"}],
@@ -159,14 +161,15 @@ class TestOpenAIProxyServer:
                         "Content-Type": "application/json",
                         "anthropic-version": "2024-01-01",
                     },
-                ) as resp:
-                    assert resp.status == 200
-                    data = await resp.json()
+                ) as resp,
+            ):
+                assert resp.status == 200
+                data = await resp.json()
 
-                    assert data["type"] == "message"
-                    assert data["role"] == "assistant"
-                    assert len(data["content"]) == 1
-                    assert data["content"][0]["text"] == "Hello from upstream!"
+                assert data["type"] == "message"
+                assert data["role"] == "assistant"
+                assert len(data["content"]) == 1
+                assert data["content"][0]["text"] == "Hello from upstream!"
 
     async def test_streaming_request(self, running_proxy):
         """Streaming request should return SSE events."""
@@ -186,8 +189,9 @@ class TestOpenAIProxyServer:
                 headers={"Content-Type": "text/event-stream"},
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "messages": [{"role": "user", "content": "Say hi"}],
@@ -198,21 +202,22 @@ class TestOpenAIProxyServer:
                         "Content-Type": "application/json",
                         "anthropic-version": "2024-01-01",
                     },
-                ) as resp:
-                    assert resp.status == 200
-                    assert "text/event-stream" in resp.headers["Content-Type"]
+                ) as resp,
+            ):
+                assert resp.status == 200
+                assert "text/event-stream" in resp.headers["Content-Type"]
 
-                    # Read all SSE events
-                    events = []
-                    async for line in resp.content:
-                        line_str = line.decode("utf-8").strip()
-                        if line_str.startswith("event:"):
-                            event_type = line_str.split(":")[1].strip()
-                            events.append(event_type)
+                # Read all SSE events
+                events = []
+                async for line in resp.content:
+                    line_str = line.decode("utf-8").strip()
+                    if line_str.startswith("event:"):
+                        event_type = line_str.split(":")[1].strip()
+                        events.append(event_type)
 
-                    # Should have the required Anthropic event types
-                    assert "message_start" in events
-                    assert "message_stop" in events
+                # Should have the required Anthropic event types
+                assert "message_start" in events
+                assert "message_stop" in events
 
     async def test_tool_use_transformation(self, running_proxy):
         """Tool use should be properly transformed between formats."""
@@ -244,8 +249,9 @@ class TestOpenAIProxyServer:
                 },
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "messages": [{"role": "user", "content": "Weather in NYC?"}],
@@ -260,21 +266,20 @@ class TestOpenAIProxyServer:
                         "stream": False,
                     },
                     headers={"Content-Type": "application/json"},
-                ) as resp:
-                    assert resp.status == 200
-                    data = await resp.json()
+                ) as resp,
+            ):
+                assert resp.status == 200
+                data = await resp.json()
 
-                    # Should have tool_use block in Anthropic format
-                    tool_use_blocks = [
-                        b for b in data["content"] if b["type"] == "tool_use"
-                    ]
-                    assert len(tool_use_blocks) == 1
+                # Should have tool_use block in Anthropic format
+                tool_use_blocks = [b for b in data["content"] if b["type"] == "tool_use"]
+                assert len(tool_use_blocks) == 1
 
-                    tool_block = tool_use_blocks[0]
-                    assert tool_block["name"] == "get_weather"
-                    assert tool_block["input"] == {"location": "NYC"}
-                    # ID should be in Anthropic format
-                    assert tool_block["id"].startswith("toolu_")
+                tool_block = tool_use_blocks[0]
+                assert tool_block["name"] == "get_weather"
+                assert tool_block["input"] == {"location": "NYC"}
+                # ID should be in Anthropic format
+                assert tool_block["id"].startswith("toolu_")
 
     async def test_error_format_matches_anthropic(self, running_proxy):
         """Errors should be in Anthropic format."""
@@ -288,20 +293,22 @@ class TestOpenAIProxyServer:
                 body="Unauthorized",
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "messages": [{"role": "user", "content": "Hello"}],
                         "stream": False,
                     },
                     headers={"Content-Type": "application/json"},
-                ) as resp:
-                    # Should return the error
-                    assert resp.status == 401
-                    data = await resp.json()
+                ) as resp,
+            ):
+                # Should return the error
+                assert resp.status == 401
+                data = await resp.json()
 
-                    # Anthropic error format
-                    assert data["type"] == "error"
-                    assert "error" in data
-                    assert data["error"]["type"] == "authentication_error"
+                # Anthropic error format
+                assert data["type"] == "error"
+                assert "error" in data
+                assert data["error"]["type"] == "authentication_error"

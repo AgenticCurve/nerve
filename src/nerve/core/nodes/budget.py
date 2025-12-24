@@ -123,10 +123,7 @@ class ResourceUsage:
                 f"API call limit exceeded: {self.api_calls}/{budget.max_api_calls}",
             )
 
-        if (
-            budget.max_cost_dollars is not None
-            and self.cost_dollars >= budget.max_cost_dollars
-        ):
+        if budget.max_cost_dollars is not None and self.cost_dollars >= budget.max_cost_dollars:
             return (
                 True,
                 f"Cost limit exceeded: ${self.cost_dollars:.2f}/${budget.max_cost_dollars:.2f}",

@@ -34,9 +34,7 @@ class TestSession:
     def test_session_creation_with_values(self):
         """Test creating session with specified values."""
         session = Session(
-            name="Test Session",
-            description="A test session",
-            tags=["test", "example"]
+            name="Test Session", description="A test session", tags=["test", "example"]
         )
 
         assert session.id == "Test Session"
@@ -66,7 +64,6 @@ class TestSession:
 
         # Create a mock that would be returned by create_node
         # To test duplicate behavior, we'll test create_function which is sync
-        from nerve.core.nodes import FunctionNode
 
         session.create_function("fn1", fn=lambda ctx: None)
 
@@ -182,11 +179,7 @@ class TestSession:
 
     def test_to_dict(self):
         """Test converting session to dict."""
-        session = Session(
-            name="test-id",
-            description="Test desc",
-            tags=["tag1", "tag2"]
-        )
+        session = Session(name="test-id", description="Test desc", tags=["tag1", "tag2"])
 
         mock_node = MagicMock()
         mock_node.id = "node-1"
@@ -266,7 +259,7 @@ class TestSession:
         """Test deleting a graph."""
         session = Session()
 
-        graph = session.create_graph("to-delete")
+        session.create_graph("to-delete")
         assert "to-delete" in session.graphs
 
         deleted = session.delete_graph("to-delete")
@@ -312,9 +305,7 @@ class TestSessionManager:
         manager = SessionManager()
 
         session = manager.create_session(
-            session_id="my-id",
-            description="A test session",
-            tags=["test"]
+            session_id="my-id", description="A test session", tags=["test"]
         )
 
         assert session.id == "my-id"

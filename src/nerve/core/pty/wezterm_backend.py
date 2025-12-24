@@ -105,14 +105,13 @@ class WezTermBackend(Backend):
         """
         # Ensure WezTerm is running first
         if not await ensure_wezterm_running():
-            raise RuntimeError(
-                "Failed to start WezTerm. Please start WezTerm manually."
-            )
+            raise RuntimeError("Failed to start WezTerm. Please start WezTerm manually.")
 
         cmd = ["wezterm", "cli", "spawn"]
 
         # If not running from within WezTerm, we need to specify where to spawn
         import os
+
         if not os.environ.get("WEZTERM_PANE"):
             # Check if there are existing panes we can spawn into
             existing_panes = list_wezterm_panes()
@@ -248,7 +247,7 @@ class WezTermBackend(Backend):
 
                 # Find new content by comparing with last seen
                 if len(new_content) > len(last_content):
-                    chunk = new_content[len(last_content):]
+                    chunk = new_content[len(last_content) :]
                     last_content = new_content
                     yield chunk
                 elif new_content != last_content:
@@ -500,7 +499,9 @@ async def ensure_wezterm_running(timeout: float = 10.0) -> bool:
     try:
         # Start WezTerm GUI - it will daemonize itself
         process = await asyncio.create_subprocess_exec(
-            "wezterm", "start", "--",
+            "wezterm",
+            "start",
+            "--",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.DEVNULL,
         )

@@ -332,12 +332,14 @@ async def run_dev_coach_consultants(
     # Configure transport
     if transport == "tcp":
         from nerve.transport import TCPSocketClient
+
         host, port = "127.0.0.1", 9876
         connection_str = f"tcp://{host}:{port}"
         server_args = ["--tcp", "--host", host, "--port", str(port)]
         client = TCPSocketClient(host, port)
     else:
         from nerve.transport import UnixSocketClient
+
         connection_str = f"/tmp/nerve-{server_name}.sock"
         server_args = []
         client = UnixSocketClient(connection_str)
@@ -397,7 +399,7 @@ async def run_dev_coach_consultants(
     # Setup files
     Path(LOG_FILE).unlink(missing_ok=True)
     with open(OUTPUT_FILE, "w") as f:
-        f.write(f"# Dev + Coach + Consultants Collaboration\n\n")
+        f.write("# Dev + Coach + Consultants Collaboration\n\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n\n")
         f.write("---\n\n")
 
@@ -512,10 +514,12 @@ async def run_dev_coach_consultants(
             return agent_id, advice, None
 
         # Query all consultants in parallel
-        results = await asyncio.gather(*[
-            get_consultant_advice(agent_id, template)
-            for agent_id, template in consultant_configs
-        ])
+        results = await asyncio.gather(
+            *[
+                get_consultant_advice(agent_id, template)
+                for agent_id, template in consultant_configs
+            ]
+        )
 
         # Collect results
         consultant_advice = {}
@@ -610,7 +614,7 @@ async def run_dev_coach_consultants(
         print("=" * 80)
 
         with open(OUTPUT_FILE, "a") as f:
-            f.write(f"\n## Terminated\n\n")
+            f.write("\n## Terminated\n\n")
             f.write(f"Reached max rounds ({MAX_ROUNDS}) without acceptance.\n\n")
             f.write(f"*Terminated on {datetime.now().isoformat()}*\n")
 
@@ -627,7 +631,12 @@ async def run_dev_coach_consultants(
 
     print("\nStopping server...")
     stop_proc = await asyncio.create_subprocess_exec(
-        "uv", "run", "nerve", "server", "stop", server_name,
+        "uv",
+        "run",
+        "nerve",
+        "server",
+        "stop",
+        server_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

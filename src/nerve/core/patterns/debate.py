@@ -30,6 +30,7 @@ class Agent(Protocol):
         """Send input and get response."""
         ...
 
+
 DEFAULT_DEBATE_PROMPT = """You are arguing {position} in a debate.
 
 Topic: {topic}

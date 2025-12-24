@@ -52,18 +52,21 @@ async def run_debate(
     # Configure transport
     if transport == "http":
         from nerve.transport import HTTPClient
+
         host, port = "127.0.0.1", 8765
         connection_str = f"http://{host}:{port}"
         server_args = ["--http", "--host", host, "--port", str(port)]
         client = HTTPClient(f"http://{host}:{port}")
     elif transport == "tcp":
         from nerve.transport import TCPSocketClient
+
         host, port = "127.0.0.1", 9876
         connection_str = f"tcp://{host}:{port}"
         server_args = ["--tcp", "--host", host, "--port", str(port)]
         client = TCPSocketClient(host, port)
     else:
         from nerve.transport import UnixSocketClient
+
         connection_str = f"/tmp/nerve-{server_name}.sock"
         server_args = []
         client = UnixSocketClient(connection_str)
@@ -288,7 +291,12 @@ Counter their arguments and reinforce why Python is better."""
 
     print("\nStopping server...")
     stop_proc = await asyncio.create_subprocess_exec(
-        "uv", "run", "nerve", "server", "stop", server_name,
+        "uv",
+        "run",
+        "nerve",
+        "server",
+        "stop",
+        server_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

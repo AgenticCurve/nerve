@@ -22,7 +22,6 @@ from pathlib import Path
 
 from nerve.server.protocols import Command, CommandType
 
-
 # =============================================================================
 # TASK DEFINITIONS
 # =============================================================================
@@ -54,6 +53,7 @@ def tee_task(data: any, log_file: str, label: str = "") -> any:
         f.write(f"{'=' * 60}\n")
         if isinstance(data, dict):
             import json
+
             f.write(json.dumps(data, indent=2, default=str))
         else:
             f.write(str(data))
@@ -77,13 +77,13 @@ def extract_number(response_data: dict) -> int | None:
         if section.get("type") == "text":
             content = section.get("content", "")
             # Look for numbers 3-10 in the text
-            numbers = re.findall(r'\b([3-9]|10)\b', content)
+            numbers = re.findall(r"\b([3-9]|10)\b", content)
             if numbers:
                 return int(numbers[0])
 
     # Fallback: search in raw
     raw = response_data.get("raw", "")
-    numbers = re.findall(r'\b([3-9]|10)\b', raw)
+    numbers = re.findall(r"\b([3-9]|10)\b", raw)
     if numbers:
         return int(numbers[0])
 
@@ -113,18 +113,21 @@ async def run_number_loop(
     # Configure transport
     if transport == "http":
         from nerve.transport import HTTPClient
+
         host, port = "127.0.0.1", 8765
         connection_str = f"http://{host}:{port}"
         server_args = ["--http", "--host", host, "--port", str(port)]
         client = HTTPClient(f"http://{host}:{port}")
     elif transport == "tcp":
         from nerve.transport import TCPSocketClient
+
         host, port = "127.0.0.1", 9876
         connection_str = f"tcp://{host}:{port}"
         server_args = ["--tcp", "--host", host, "--port", str(port)]
         client = TCPSocketClient(host, port)
     else:
         from nerve.transport import UnixSocketClient
+
         connection_str = f"/tmp/nerve-{server_name}.sock"
         server_args = []
         client = UnixSocketClient(connection_str)
@@ -240,9 +243,7 @@ What number do you pick?"""
         # TEE TASK: Log sequence output (passthrough)
         print("\n[TEE TASK: Logging sequence to file]")
         sequence_output = tee_task(
-            sequence_output,
-            log_file,
-            f"Iteration {i+1} - Python sequence for {number}"
+            sequence_output, log_file, f"Iteration {i + 1} - Python sequence for {number}"
         )
         print(f"  -> Logged to {log_file}")
 
@@ -277,11 +278,7 @@ Pick a different number than {number} this time. What's your choice?"""
 
         # TEE TASK: Log Claude's raw response (passthrough)
         print("\n[TEE TASK: Logging Claude response to file]")
-        response = tee_task(
-            response,
-            log_file,
-            f"Iteration {i+1} - Claude response"
-        )
+        response = tee_task(response, log_file, f"Iteration {i + 1} - Claude response")
         print(f"  -> Logged to {log_file}")
 
         text = extract_text_response(response)
@@ -292,6 +289,7 @@ Pick a different number than {number} this time. What's your choice?"""
             print("Could not extract number, using fallback")
             # Pick a random different number
             import random
+
             new_number = random.choice([n for n in range(3, 11) if n != number])
 
         print(f"\nExtracted number: {new_number}")
@@ -306,7 +304,12 @@ Pick a different number than {number} this time. What's your choice?"""
 
     print("\nStopping server...")
     stop_proc = await asyncio.create_subprocess_exec(
-        "uv", "run", "nerve", "server", "stop", server_name,
+        "uv",
+        "run",
+        "nerve",
+        "server",
+        "stop",
+        server_name,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

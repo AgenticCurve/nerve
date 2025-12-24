@@ -18,10 +18,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
 from nerve.core.nodes.base import NodeInfo, NodeState
+from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
 from nerve.core.pty.pty_backend import PTYBackend
@@ -238,9 +238,7 @@ class PTYNode:
 
         return result
 
-    async def execute_stream(
-        self, context: ExecutionContext
-    ) -> AsyncIterator[str]:
+    async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
 
         Args:
@@ -754,9 +752,7 @@ class WezTermNode:
 
         return result
 
-    async def execute_stream(
-        self, context: ExecutionContext
-    ) -> AsyncIterator[str]:
+    async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
 
         Args:
@@ -1159,9 +1155,7 @@ class ClaudeWezTermNode:
 
         return result
 
-    async def execute_stream(
-        self, context: ExecutionContext
-    ) -> AsyncIterator[str]:
+    async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
 
         Args:
@@ -1333,4 +1327,6 @@ class ClaudeWezTermNode:
         )
 
     def __repr__(self) -> str:
-        return f"ClaudeWezTermNode(id={self.id!r}, pane_id={self.pane_id!r}, state={self.state.name})"
+        return (
+            f"ClaudeWezTermNode(id={self.id!r}, pane_id={self.pane_id!r}, state={self.state.name})"
+        )

@@ -1,7 +1,5 @@
 """Tests for AnthropicProxyServer (passthrough proxy)."""
 
-import json
-
 import aiohttp
 import pytest
 from aioresponses import aioresponses
@@ -50,9 +48,7 @@ class TestAnthropicProxyServer:
         server._app = web.Application(client_max_size=proxy_config.max_body_size)
         server._app.router.add_post("/v1/messages", server._handle_messages)
         server._app.router.add_get("/health", server._handle_health)
-        server._app.router.add_post(
-            "/api/event_logging/batch", server._handle_telemetry
-        )
+        server._app.router.add_post("/api/event_logging/batch", server._handle_telemetry)
 
         # Start on a free port
         server._runner = web.AppRunner(server._app)
@@ -86,46 +82,52 @@ class TestAnthropicProxyServer:
         """Telemetry endpoint should silently accept requests."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/api/event_logging/batch",
                 json={"events": []},
                 headers={"Content-Type": "application/json"},
-            ) as resp:
-                assert resp.status == 200
-                data = await resp.json()
-                assert data["status"] == "ok"
+            ) as resp,
+        ):
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["status"] == "ok"
 
     async def test_content_type_validation(self, running_proxy):
         """Should reject requests without proper Content-Type."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/v1/messages",
                 data="not json",
                 headers={"Content-Type": "text/plain"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["type"] == "error"
-                assert data["error"]["type"] == "invalid_request_error"
-                assert "Content-Type" in data["error"]["message"]
+            ) as resp,
+        ):
+            assert resp.status == 400
+            data = await resp.json()
+            assert data["type"] == "error"
+            assert data["error"]["type"] == "invalid_request_error"
+            assert "Content-Type" in data["error"]["message"]
 
     async def test_json_validation(self, running_proxy):
         """Should reject invalid JSON."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/v1/messages",
                 data="{not valid json",
                 headers={"Content-Type": "application/json"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["error"]["type"] == "invalid_request_error"
-                assert "JSON" in data["error"]["message"]
+            ) as resp,
+        ):
+            assert resp.status == 400
+            data = await resp.json()
+            assert data["error"]["type"] == "invalid_request_error"
+            assert "JSON" in data["error"]["message"]
 
     async def test_passthrough_non_streaming(self, running_proxy):
         """Non-streaming request should pass through unchanged."""
@@ -146,8 +148,9 @@ class TestAnthropicProxyServer:
                 },
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "model": "claude-3-5-sonnet-20241022",
@@ -159,15 +162,16 @@ class TestAnthropicProxyServer:
                         "Content-Type": "application/json",
                         "anthropic-version": "2024-01-01",
                     },
-                ) as resp:
-                    assert resp.status == 200
-                    data = await resp.json()
+                ) as resp,
+            ):
+                assert resp.status == 200
+                data = await resp.json()
 
-                    # Response should be passed through unchanged
-                    assert data["type"] == "message"
-                    assert data["role"] == "assistant"
-                    assert len(data["content"]) == 1
-                    assert data["content"][0]["text"] == "Hello from Anthropic!"
+                # Response should be passed through unchanged
+                assert data["type"] == "message"
+                assert data["role"] == "assistant"
+                assert len(data["content"]) == 1
+                assert data["content"][0]["text"] == "Hello from Anthropic!"
 
     async def test_passthrough_streaming(self, running_proxy):
         """Streaming request should pass through SSE events unchanged."""
@@ -176,15 +180,15 @@ class TestAnthropicProxyServer:
         with aioresponses(passthrough=[base_url]) as m:
             # Mock SSE response from upstream (Anthropic format)
             sse_response = (
-                b'event: message_start\n'
+                b"event: message_start\n"
                 b'data: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022"}}\n\n'
-                b'event: content_block_start\n'
+                b"event: content_block_start\n"
                 b'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
-                b'event: content_block_delta\n'
+                b"event: content_block_delta\n"
                 b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello!"}}\n\n'
-                b'event: content_block_stop\n'
+                b"event: content_block_stop\n"
                 b'data: {"type":"content_block_stop","index":0}\n\n'
-                b'event: message_stop\n'
+                b"event: message_stop\n"
                 b'data: {"type":"message_stop"}\n\n'
             )
             m.post(
@@ -193,8 +197,9 @@ class TestAnthropicProxyServer:
                 headers={"Content-Type": "text/event-stream"},
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "model": "claude-3-5-sonnet-20241022",
@@ -206,21 +211,22 @@ class TestAnthropicProxyServer:
                         "Content-Type": "application/json",
                         "anthropic-version": "2024-01-01",
                     },
-                ) as resp:
-                    assert resp.status == 200
-                    assert "text/event-stream" in resp.headers["Content-Type"]
+                ) as resp,
+            ):
+                assert resp.status == 200
+                assert "text/event-stream" in resp.headers["Content-Type"]
 
-                    # Read all SSE events
-                    events = []
-                    async for line in resp.content:
-                        line_str = line.decode("utf-8").strip()
-                        if line_str.startswith("event:"):
-                            event_type = line_str.split(":")[1].strip()
-                            events.append(event_type)
+                # Read all SSE events
+                events = []
+                async for line in resp.content:
+                    line_str = line.decode("utf-8").strip()
+                    if line_str.startswith("event:"):
+                        event_type = line_str.split(":")[1].strip()
+                        events.append(event_type)
 
-                    # Should have Anthropic event types (passed through)
-                    assert "message_start" in events
-                    assert "message_stop" in events
+                # Should have Anthropic event types (passed through)
+                assert "message_start" in events
+                assert "message_stop" in events
 
     async def test_upstream_error_non_streaming(self, running_proxy):
         """Upstream errors should be returned in Anthropic format."""
@@ -240,8 +246,9 @@ class TestAnthropicProxyServer:
                 },
             )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(
                     f"{base_url}/v1/messages",
                     json={
                         "model": "claude-3-5-sonnet-20241022",
@@ -249,14 +256,15 @@ class TestAnthropicProxyServer:
                         "stream": False,
                     },
                     headers={"Content-Type": "application/json"},
-                ) as resp:
-                    assert resp.status == 401
-                    data = await resp.json()
+                ) as resp,
+            ):
+                assert resp.status == 401
+                data = await resp.json()
 
-                    # Anthropic error format
-                    assert data["type"] == "error"
-                    assert "error" in data
-                    assert data["error"]["type"] == "authentication_error"
+                # Anthropic error format
+                assert data["type"] == "error"
+                assert "error" in data
+                assert data["error"]["type"] == "authentication_error"
 
     async def test_model_override(self):
         """Model override in config should replace model in requests.

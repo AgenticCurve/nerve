@@ -52,8 +52,8 @@ Example (Graph execution):
 from nerve.core.nodes import (
     Budget,
     BudgetExceededError,
-    CancelledException,
     CancellationToken,
+    CancelledException,
     ClaudeWezTermNode,
     ErrorPolicy,
     ExecutionContext,
@@ -89,7 +89,6 @@ from nerve.core.parsers import ClaudeParser, GeminiParser, NoneParser, get_parse
 from nerve.core.pty import (
     Backend,
     BackendConfig,
-    BackendType as PTYBackendType,
     PTYBackend,
     PTYConfig,
     PTYManager,
@@ -97,6 +96,9 @@ from nerve.core.pty import (
     WezTermBackend,
     get_backend,
     is_wezterm_available,
+)
+from nerve.core.pty import (
+    BackendType as PTYBackendType,
 )
 
 # Session
@@ -116,7 +118,6 @@ from nerve.core.types import (
     Section,
     SessionState,
 )
-
 
 __all__ = [
     # Node abstraction

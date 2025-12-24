@@ -15,10 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import secrets
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -98,7 +95,6 @@ class OpenAIProxyServer:
         # Use the shared tracer to generate trace ID
         return self._tracer.generate_trace_id(body)
 
-    
     def _save_debug(self, trace_id: str, filename: str, data: Any) -> None:
         """Save debug data to JSON file if debug_dir is configured."""
         # Use the shared tracer to save debug data
@@ -229,7 +225,11 @@ class OpenAIProxyServer:
 
         # Save transformed OpenAI request
         self._save_debug(trace_id, "2_openai_request.json", openai_request)
-        logger.debug("[%s] Transformed OpenAI request: %s", trace_id, json.dumps(openai_request, indent=2, default=str))
+        logger.debug(
+            "[%s] Transformed OpenAI request: %s",
+            trace_id,
+            json.dumps(openai_request, indent=2, default=str),
+        )
 
         # Handle streaming vs non-streaming
         is_streaming = body.get("stream", True)
@@ -289,14 +289,16 @@ class OpenAIProxyServer:
         try:
             async for chunk in self._client.stream(openai_request, trace_id):
                 # Save chunk for debug
-                debug_chunks.append({
-                    "type": chunk.type,
-                    "content": chunk.content,
-                    "tool_name": chunk.tool_name,
-                    "tool_call_id": chunk.tool_call_id,
-                    "tool_arguments_delta": chunk.tool_arguments_delta,
-                    "index": chunk.index,
-                })
+                debug_chunks.append(
+                    {
+                        "type": chunk.type,
+                        "content": chunk.content,
+                        "tool_name": chunk.tool_name,
+                        "tool_call_id": chunk.tool_call_id,
+                        "tool_arguments_delta": chunk.tool_arguments_delta,
+                        "index": chunk.index,
+                    }
+                )
                 # Generate proper Anthropic SSE event sequence
                 if not has_sent_message_start:
                     # Send message_start first

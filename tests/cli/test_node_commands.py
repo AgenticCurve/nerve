@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nerve.frontends.cli.server.node import (
     node,
     node_create,

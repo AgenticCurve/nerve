@@ -30,6 +30,7 @@ class Agent(Protocol):
         """Send input and get response."""
         ...
 
+
 # Default prompt templates
 DEFAULT_DEV_PROMPT = """You are a SENIOR DEVELOPER working with a legendary coach who reviews your work.
 

@@ -285,7 +285,7 @@ async def run_dev_coach(
     Path(LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
     Path(LOG_FILE).unlink(missing_ok=True)
     with open(OUTPUT_FILE, "w") as f:
-        f.write(f"# Dev + Coach Collaboration\n\n")
+        f.write("# Dev + Coach Collaboration\n\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n\n")
         f.write("---\n\n")
 
@@ -405,9 +405,7 @@ async def run_dev_coach(
         return
 
     coach_response = extract_text_response(result.data.get("response", {}))
-    print(
-        coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response
-    )
+    print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
     log_to_file(LOG_FILE, "Coach - Initial", coach_response)
 
     # Check acceptance after initial review
@@ -485,7 +483,7 @@ async def run_dev_coach(
             additional_context=ADDITIONAL_CONTEXT,
         )
 
-        print(f"\n[COACH: Reviewing...]")
+        print("\n[COACH: Reviewing...]")
         print("-" * 80)
 
         result = await client.send_command(
@@ -505,11 +503,7 @@ async def run_dev_coach(
             break
 
         coach_response = extract_text_response(result.data.get("response", {}))
-        print(
-            coach_response[:2000] + "..."
-            if len(coach_response) > 2000
-            else coach_response
-        )
+        print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
         log_to_file(LOG_FILE, f"Coach - Round {round_num}", coach_response)
 
         # Check acceptance
@@ -526,9 +520,7 @@ async def run_dev_coach(
                 f.write("## Final Output\n\n")
                 f.write(dev_response)
                 f.write("\n\n---\n\n")
-                f.write(
-                    f"*Completed after {round_num} rounds on {datetime.now().isoformat()}*\n"
-                )
+                f.write(f"*Completed after {round_num} rounds on {datetime.now().isoformat()}*\n")
             break
 
         with open(OUTPUT_FILE, "a") as f:
@@ -543,7 +535,7 @@ async def run_dev_coach(
         print("=" * 80)
 
         with open(OUTPUT_FILE, "a") as f:
-            f.write(f"\n## Terminated\n\n")
+            f.write("\n## Terminated\n\n")
             f.write(f"Reached maximum rounds ({MAX_ROUNDS}) without acceptance.\n\n")
             f.write(f"*Terminated on {datetime.now().isoformat()}*\n")
 

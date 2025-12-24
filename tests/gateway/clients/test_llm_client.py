@@ -172,11 +172,7 @@ class TestLLMClientSend:
                 # Second call: success
                 m.post(
                     "https://api.test.com/v1/chat/completions",
-                    payload={
-                        "choices": [
-                            {"message": {"content": "OK"}, "finish_reason": "stop"}
-                        ]
-                    },
+                    payload={"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]},
                 )
 
                 response = await client.send({})

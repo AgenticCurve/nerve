@@ -24,12 +24,8 @@ async def main():
     # Create session and nodes (nodes are auto-registered)
     session = Session()
 
-    advocate_python = await session.create_node(
-        node_id="python-advocate", command="claude"
-    )
-    advocate_js = await session.create_node(
-        node_id="js-advocate", command="claude"
-    )
+    advocate_python = await session.create_node(node_id="python-advocate", command="claude")
+    advocate_js = await session.create_node(node_id="js-advocate", command="claude")
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")

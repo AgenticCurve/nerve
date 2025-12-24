@@ -16,7 +16,6 @@ from code import compile_command
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-
 # =========================================================================
 # Session Adapter - Abstraction for local vs remote sessions
 # =========================================================================
@@ -224,9 +223,7 @@ class RemoteSessionAdapter:
         result = await self.client.send_command(
             Command(
                 type=CommandType.EXECUTE_INPUT,
-                params=self._add_session_id(
-                    {"node_id": node_id, "text": text, "stream": False}
-                ),
+                params=self._add_session_id({"node_id": node_id, "text": text, "stream": False}),
             )
         )
         if result.success:
@@ -362,8 +359,6 @@ async def run_interactive(
         ExecutionContext,
         FunctionNode,
         Graph,
-        PTYNode,
-        WezTermNode,
     )
     from nerve.core.session import BackendType, Session
 
@@ -380,7 +375,7 @@ async def run_interactive(
         transport_type, socket_path = get_server_transport(server_name)
 
         if transport_type != "unix":
-            print(f"Error: Only unix socket servers supported for REPL")
+            print("Error: Only unix socket servers supported for REPL")
             print(f"Server '{server_name}' uses {transport_type}")
             return
 
@@ -484,7 +479,7 @@ async def run_interactive(
 
                 print(f"\nSession: {adapter.name}")
                 print(f"  ID: {adapter.id}")
-                if hasattr(adapter, 'server_name'):
+                if hasattr(adapter, "server_name"):
                     print(f"  Server: {adapter.server_name}")
                 print(f"  Nodes: {adapter.node_count}")
                 print(f"  Graphs: {adapter.graph_count}")
@@ -500,6 +495,7 @@ async def run_interactive(
                     response = await adapter.execute_on_node(node_name, text)
                     # Pretty print the response
                     import json
+
                     if isinstance(response, (dict, list)):
                         print(json.dumps(response, indent=2))
                     elif isinstance(response, str):
@@ -512,6 +508,7 @@ async def run_interactive(
                             # Try eval as Python literal (safer than eval)
                             try:
                                 import ast
+
                                 parsed = ast.literal_eval(response)
                                 print(json.dumps(parsed, indent=2))
                             except (ValueError, SyntaxError):

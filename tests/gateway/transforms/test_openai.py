@@ -1,7 +1,5 @@
 """Tests for OpenAITransformer."""
 
-import pytest
-
 from nerve.gateway.transforms.openai import OpenAITransformer
 from nerve.gateway.transforms.tool_id_mapper import ToolIDMapper
 from nerve.gateway.transforms.types import (

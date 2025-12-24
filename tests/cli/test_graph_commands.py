@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nerve.frontends.cli.server.graph import (
     graph,
     graph_create,

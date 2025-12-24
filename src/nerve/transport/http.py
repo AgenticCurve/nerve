@@ -306,8 +306,8 @@ class HTTPClient:
                     error=data.get("error"),
                     request_id=data.get("request_id"),
                 )
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Command timed out after {timeout}s")
+        except TimeoutError:
+            raise TimeoutError(f"Command timed out after {timeout}s") from None
 
     async def events(self) -> AsyncIterator[Event]:
         """Subscribe to events."""

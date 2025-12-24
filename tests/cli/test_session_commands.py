@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nerve.frontends.cli.server.session import (
     session,
     session_create,

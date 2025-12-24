@@ -1,6 +1,6 @@
 """Tests for nerve.frontends.sdk.client module."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -29,7 +29,7 @@ class TestRemoteNode:
 
         node = RemoteNode(id="test-node", command="claude", _client=mock_client)
 
-        response = await node.send("Hello", parser="claude")
+        await node.send("Hello", parser="claude")
 
         assert mock_client._send_command.called
         call_args = mock_client._send_command.call_args[0][0]

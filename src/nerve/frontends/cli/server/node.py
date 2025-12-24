@@ -104,9 +104,13 @@ def node_list(server_name: str, session_id: str | None, json_output: bool):
 
 @node.command("create")
 @click.argument("name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name to create the node on")
+@click.option(
+    "--server", "-s", "server_name", required=True, help="Server name to create the node on"
+)
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-@click.option("--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')")
+@click.option(
+    "--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')"
+)
 @click.option("--cwd", default=None, help="Working directory for the node")
 @click.option(
     "--backend",
@@ -115,7 +119,9 @@ def node_list(server_name: str, session_id: str | None, json_output: bool):
     default="pty",
     help="Backend (pty, wezterm, or claude-wezterm)",
 )
-@click.option("--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)")
+@click.option(
+    "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
+)
 @click.option(
     "--history/--no-history",
     default=True,
@@ -635,7 +641,9 @@ def node_history(
                     response = entry.get("response", {})
                     sections = response.get("sections", [])
                     section_count = len(sections)
-                    click.echo(f"[{seq_num:3}] {ts_display} SEND    {input_text!r} -> {section_count} sections")
+                    click.echo(
+                        f"[{seq_num:3}] {ts_display} SEND    {input_text!r} -> {section_count} sections"
+                    )
                 elif op_type == "send_stream":
                     input_text = entry.get("input", "")[:50]
                     click.echo(f"[{seq_num:3}] {ts_display} STREAM  {input_text!r}")
@@ -648,7 +656,9 @@ def node_history(
                 elif op_type == "read":
                     lines_count = entry.get("lines", 0)
                     buffer_len = len(entry.get("buffer", ""))
-                    click.echo(f"[{seq_num:3}] {ts_display} READ    {lines_count} lines, {buffer_len} chars")
+                    click.echo(
+                        f"[{seq_num:3}] {ts_display} READ    {lines_count} lines, {buffer_len} chars"
+                    )
                 elif op_type == "interrupt":
                     click.echo(f"[{seq_num:3}] {ts_display} INTERRUPT")
                 elif op_type == "delete":

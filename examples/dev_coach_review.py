@@ -357,7 +357,7 @@ async def run_dev_coach_review(
     # Setup files
     Path(LOG_FILE).unlink(missing_ok=True)
     with open(OUTPUT_FILE, "w") as f:
-        f.write(f"# Dev + Coach + Review Collaboration\n\n")
+        f.write("# Dev + Coach + Review Collaboration\n\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n\n")
         f.write("---\n\n")
 
@@ -476,11 +476,7 @@ async def run_dev_coach_review(
                 break
 
             coach_response = extract_text_response(result.data.get("response", {}))
-            print(
-                coach_response[:2000] + "..."
-                if len(coach_response) > 2000
-                else coach_response
-            )
+            print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
                 LOG_FILE,
                 f"Coach - Processing Feedback (Outer {outer_round})",
@@ -514,11 +510,7 @@ async def run_dev_coach_review(
                 break
 
             dev_response = extract_text_response(result.data.get("response", {}))
-            print(
-                dev_response[:2000] + "..."
-                if len(dev_response) > 2000
-                else dev_response
-            )
+            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
             log_to_file(
                 LOG_FILE,
                 f"Dev - Addressing Feedback (Outer {outer_round})",
@@ -576,11 +568,7 @@ async def run_dev_coach_review(
                 break
 
             coach_response = extract_text_response(result.data.get("response", {}))
-            print(
-                coach_response[:2000] + "..."
-                if len(coach_response) > 2000
-                else coach_response
-            )
+            print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
                 LOG_FILE,
                 f"Coach - Outer {outer_round} Inner {inner_round}",
@@ -622,14 +610,8 @@ async def run_dev_coach_review(
                 break
 
             dev_response = extract_text_response(result.data.get("response", {}))
-            print(
-                dev_response[:2000] + "..."
-                if len(dev_response) > 2000
-                else dev_response
-            )
-            log_to_file(
-                LOG_FILE, f"Dev - Outer {outer_round} Inner {inner_round}", dev_response
-            )
+            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
+            log_to_file(LOG_FILE, f"Dev - Outer {outer_round} Inner {inner_round}", dev_response)
 
             # Prepare next coach prompt
             coach_prompt = COACH_LOOP_PROMPT_TEMPLATE.format(
@@ -677,9 +659,7 @@ async def run_dev_coach_review(
 
         reviewer_response = extract_text_response(result.data.get("response", {}))
         print(
-            reviewer_response[:2000] + "..."
-            if len(reviewer_response) > 2000
-            else reviewer_response
+            reviewer_response[:2000] + "..." if len(reviewer_response) > 2000 else reviewer_response
         )
         log_to_file(LOG_FILE, f"Reviewer - Outer {outer_round}", reviewer_response)
 
@@ -717,7 +697,7 @@ async def run_dev_coach_review(
         print("=" * 80)
 
         with open(OUTPUT_FILE, "a") as f:
-            f.write(f"\n## Terminated\n\n")
+            f.write("\n## Terminated\n\n")
             f.write(f"Reached max rounds ({MAX_OUTER_ROUNDS}) without approval.\n\n")
             f.write(f"*Terminated on {datetime.now().isoformat()}*\n")
 

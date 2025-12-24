@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nerve.core.session import BackendType, Session
+from nerve.core.session import Session
 
 
 class TestSessionCreateNode:

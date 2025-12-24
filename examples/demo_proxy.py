@@ -13,21 +13,20 @@ Usage:
 
 import asyncio
 import json
-import sys
 
 import aiohttp
 from aiohttp import web
-
 
 # ============================================================================
 # Mock OpenAI Server
 # ============================================================================
 
+
 async def mock_openai_chat_completions(request: web.Request) -> web.Response:
     """Mock OpenAI /chat/completions endpoint."""
     body = await request.json()
 
-    print(f"\n[Mock OpenAI] Received request:")
+    print("\n[Mock OpenAI] Received request:")
     print(f"  Model: {body.get('model')}")
     print(f"  Messages: {len(body.get('messages', []))} messages")
     print(f"  Stream: {body.get('stream', False)}")
@@ -62,26 +61,28 @@ async def mock_openai_chat_completions(request: web.Request) -> web.Response:
         return response
     else:
         # Non-streaming response
-        return web.json_response({
-            "id": "chatcmpl-mock123",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": body.get("model", "gpt-4"),
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "Hello from the mock server! I received your message.",
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 8,
-            },
-        })
+        return web.json_response(
+            {
+                "id": "chatcmpl-mock123",
+                "object": "chat.completion",
+                "created": 1234567890,
+                "model": body.get("model", "gpt-4"),
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Hello from the mock server! I received your message.",
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 8,
+                },
+            }
+        )
 
 
 async def start_mock_openai(port: int) -> web.AppRunner:
@@ -100,46 +101,47 @@ async def start_mock_openai(port: int) -> web.AppRunner:
 # Demo Runner
 # ============================================================================
 
+
 async def make_anthropic_request(proxy_url: str, stream: bool = False) -> None:
     """Make a request to the proxy in Anthropic format."""
     request_body = {
         "model": "claude-3-opus-20240229",
         "max_tokens": 1024,
-        "messages": [
-            {"role": "user", "content": "Hello! Please greet me."}
-        ],
+        "messages": [{"role": "user", "content": "Hello! Please greet me."}],
         "stream": stream,
     }
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Making {'streaming' if stream else 'non-streaming'} request to proxy...")
-    print(f"{'='*60}")
-    print(f"Request (Anthropic format):")
+    print(f"{'=' * 60}")
+    print("Request (Anthropic format):")
     print(json.dumps(request_body, indent=2))
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
+    async with (
+        aiohttp.ClientSession() as session,
+        session.post(
             f"{proxy_url}/v1/messages",
             json=request_body,
             headers={
                 "Content-Type": "application/json",
                 "anthropic-version": "2024-01-01",
             },
-        ) as resp:
-            print(f"\nResponse status: {resp.status}")
-            print(f"Content-Type: {resp.headers.get('Content-Type')}")
+        ) as resp,
+    ):
+        print(f"\nResponse status: {resp.status}")
+        print(f"Content-Type: {resp.headers.get('Content-Type')}")
 
-            if stream:
-                print("\nStreaming response (Anthropic SSE format):")
-                print("-" * 40)
-                async for line in resp.content:
-                    line_str = line.decode("utf-8").strip()
-                    if line_str:
-                        print(line_str)
-            else:
-                data = await resp.json()
-                print("\nResponse (Anthropic format):")
-                print(json.dumps(data, indent=2))
+        if stream:
+            print("\nStreaming response (Anthropic SSE format):")
+            print("-" * 40)
+            async for line in resp.content:
+                line_str = line.decode("utf-8").strip()
+                if line_str:
+                    print(line_str)
+        else:
+            data = await resp.json()
+            print("\nResponse (Anthropic format):")
+            print(json.dumps(data, indent=2))
 
 
 async def main():

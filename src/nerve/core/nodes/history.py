@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -148,7 +148,7 @@ class HistoryWriter:
                             last_seq = max(last_seq, entry.get("seq", 0))
                         except json.JSONDecodeError:
                             continue  # Skip malformed lines
-        except (OSError, IOError):
+        except OSError:
             pass
         return last_seq
 
@@ -182,7 +182,7 @@ class HistoryWriter:
 
     def _now(self) -> str:
         """Get current timestamp in ISO format."""
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _write_entry(self, entry: dict) -> bool:
         """Write entry to file.
@@ -198,13 +198,11 @@ class HistoryWriter:
 
         try:
             # Ensure entry is JSON-serializable
-            json_str = json.dumps(
-                entry, default=str
-            )  # default=str handles non-serializable
+            json_str = json.dumps(entry, default=str)  # default=str handles non-serializable
             self._file.write(json_str + "\n")
             self._file.flush()  # Ensure immediate write
             return True
-        except (OSError, IOError, TypeError) as e:
+        except (OSError, TypeError) as e:
             logger.warning(f"History write failed for {self.node_id}: {e}")
             return False
 
@@ -424,7 +422,7 @@ class HistoryWriter:
         if self._file is not None:
             try:
                 self._file.close()
-            except (OSError, IOError):
+            except OSError:
                 pass  # Best effort
             self._file = None
 
@@ -474,9 +472,7 @@ class HistoryReader:
         file_path = base_dir / server_name / f"{node_id}.jsonl"
 
         if not file_path.exists():
-            raise FileNotFoundError(
-                f"No history for node '{node_id}' on server '{server_name}'"
-            )
+            raise FileNotFoundError(f"No history for node '{node_id}' on server '{server_name}'")
 
         return cls(
             node_id=node_id,
@@ -497,9 +493,7 @@ class HistoryReader:
                     try:
                         entries.append(json.loads(line))
                     except json.JSONDecodeError:
-                        logger.warning(
-                            f"Malformed JSON at {self.file_path}:{line_num}, skipping"
-                        )
+                        logger.warning(f"Malformed JSON at {self.file_path}:{line_num}, skipping")
         return entries
 
     def get_all(self) -> list[dict]:

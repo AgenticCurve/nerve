@@ -124,8 +124,19 @@ def _run_cli() -> None:
     @cli.command()
     @click.argument("file", required=False)
     @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
-    @click.option("--server", "-s", "server_name", default=None, help="Connect to server (default: local mode)")
-    @click.option("--session", "session_name", default=None, help="Session to connect to (default: server's default session)")
+    @click.option(
+        "--server",
+        "-s",
+        "server_name",
+        default=None,
+        help="Connect to server (default: local mode)",
+    )
+    @click.option(
+        "--session",
+        "session_name",
+        default=None,
+        help="Session to connect to (default: server's default session)",
+    )
     def repl(file: str | None, dry_run: bool, server_name: str | None, session_name: str | None):
         """Interactive graph definition and execution.
 

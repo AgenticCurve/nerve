@@ -77,18 +77,18 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_returns_entries(self, engine, tmp_path):
         """Test that GET_HISTORY returns history entries for a node."""
-        mock_node, history_writer = self._create_node_with_history(
-            engine, "test-node", tmp_path
-        )
+        mock_node, history_writer = self._create_node_with_history(engine, "test-node", tmp_path)
         try:
             # Write directly to create history entry
             await mock_node.write("echo hello\n")
 
             # Get history
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={"node_id": "test-node"},
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={"node_id": "test-node"},
+                )
+            )
 
             assert result.success is True
             assert result.data["node_id"] == "test-node"
@@ -102,22 +102,22 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_with_last_limit(self, engine, tmp_path):
         """Test that 'last' parameter limits results."""
-        mock_node, history_writer = self._create_node_with_history(
-            engine, "test-limit", tmp_path
-        )
+        mock_node, history_writer = self._create_node_with_history(engine, "test-limit", tmp_path)
         try:
             # Create multiple history entries
             for i in range(5):
                 await mock_node.write(f"cmd{i}\n")
 
             # Get only last 2 entries
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={
-                    "node_id": "test-limit",
-                    "last": 2,
-                },
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={
+                        "node_id": "test-limit",
+                        "last": 2,
+                    },
+                )
+            )
 
             assert result.success is True
             assert result.data["total"] == 2
@@ -129,22 +129,22 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_with_op_filter(self, engine, tmp_path):
         """Test that 'op' parameter filters by operation type."""
-        mock_node, history_writer = self._create_node_with_history(
-            engine, "test-op", tmp_path
-        )
+        mock_node, history_writer = self._create_node_with_history(engine, "test-op", tmp_path)
         try:
             # Create different types of entries (all writes)
             await mock_node.write("some data\n")
             await mock_node.write("ls\n")
 
             # Filter by 'write' operation
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={
-                    "node_id": "test-op",
-                    "op": "write",
-                },
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={
+                        "node_id": "test-op",
+                        "op": "write",
+                    },
+                )
+            )
 
             assert result.success is True
             # All entries should be 'write' operations
@@ -157,22 +157,22 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_with_inputs_only(self, engine, tmp_path):
         """Test that 'inputs_only' filters to input operations."""
-        mock_node, history_writer = self._create_node_with_history(
-            engine, "test-inputs", tmp_path
-        )
+        mock_node, history_writer = self._create_node_with_history(engine, "test-inputs", tmp_path)
         try:
             # Create entries
             await mock_node.write("data\n")
             await mock_node.write("ls\n")
 
             # Get inputs only
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={
-                    "node_id": "test-inputs",
-                    "inputs_only": True,
-                },
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={
+                        "node_id": "test-inputs",
+                        "inputs_only": True,
+                    },
+                )
+            )
 
             assert result.success is True
             # All entries should be input operations
@@ -187,10 +187,12 @@ class TestGetHistory:
     async def test_get_history_missing_node(self, engine, tmp_path):
         """Test graceful handling when node doesn't exist."""
         # Get history for non-existent node
-        result = await engine.execute(Command(
-            type=CommandType.GET_HISTORY,
-            params={"node_id": "nonexistent"},
-        ))
+        result = await engine.execute(
+            Command(
+                type=CommandType.GET_HISTORY,
+                params={"node_id": "nonexistent"},
+            )
+        )
 
         # Should succeed with empty results, not error
         assert result.success is True
@@ -202,13 +204,15 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_no_history_node(self, engine, tmp_path):
         """Test node created with history=False."""
-        mock_node = self._create_node_without_history(engine, "no-history")
+        self._create_node_without_history(engine, "no-history")
         try:
             # Get history for node with disabled history
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={"node_id": "no-history"},
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={"node_id": "no-history"},
+                )
+            )
 
             # Should succeed with empty results
             assert result.success is True
@@ -221,10 +225,12 @@ class TestGetHistory:
     @pytest.mark.asyncio
     async def test_get_history_requires_node_id(self, engine):
         """Test that node_id is required."""
-        result = await engine.execute(Command(
-            type=CommandType.GET_HISTORY,
-            params={},  # Missing node_id
-        ))
+        result = await engine.execute(
+            Command(
+                type=CommandType.GET_HISTORY,
+                params={},  # Missing node_id
+            )
+        )
 
         assert result.success is False
         assert "node_id" in result.error.lower()
@@ -237,10 +243,12 @@ class TestGetHistory:
         )
         try:
             # Get history without specifying server_name
-            result = await engine.execute(Command(
-                type=CommandType.GET_HISTORY,
-                params={"node_id": "test-default-server"},
-            ))
+            result = await engine.execute(
+                Command(
+                    type=CommandType.GET_HISTORY,
+                    params={"node_id": "test-default-server"},
+                )
+            )
 
             assert result.success is True
             # Server name should default to engine's server name

@@ -57,7 +57,9 @@ class NerveEngine:
     _server_name: str = field(default="default")
     _default_session: Session | None = field(default=None, repr=False)
     _sessions: dict[str, Session] = field(default_factory=dict, repr=False)
-    _python_namespaces: dict[str, dict[str, Any]] = field(default_factory=dict, repr=False)  # session_id -> namespace
+    _python_namespaces: dict[str, dict[str, Any]] = field(
+        default_factory=dict, repr=False
+    )  # session_id -> namespace
     _running_graphs: dict[str, asyncio.Task] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
 
@@ -248,12 +250,14 @@ class NerveEngine:
             node = session.get_node(nid)
             if node and hasattr(node, "to_info"):
                 info = node.to_info()
-                nodes_info.append({
-                    "id": nid,
-                    "type": info.node_type,
-                    "state": info.state.name,
-                    **info.metadata,
-                })
+                nodes_info.append(
+                    {
+                        "id": nid,
+                        "type": info.node_type,
+                        "state": info.state.name,
+                        **info.metadata,
+                    }
+                )
 
         return {
             "nodes": node_ids,
@@ -421,9 +425,8 @@ class NerveEngine:
             dict with "output" (captured stdout/result) and "error" (if any).
         """
         import io
-        import sys
-        from contextlib import redirect_stdout, redirect_stderr
         from code import compile_command
+        from contextlib import redirect_stderr, redirect_stdout
 
         session = self._get_session(params)
         code_str = params.get("code", "")
@@ -439,9 +442,6 @@ class NerveEngine:
             from nerve.core.nodes import (
                 ExecutionContext,
                 FunctionNode,
-                Graph,
-                PTYNode,
-                WezTermNode,
             )
             from nerve.core.session import BackendType
 
@@ -520,6 +520,7 @@ class NerveEngine:
             }
         except Exception as e:
             import traceback
+
             return {
                 "output": "",
                 "error": f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
@@ -696,8 +697,7 @@ class NerveEngine:
         return {
             "graph_id": graph_id,
             "results": {
-                step_id: {"output": str(output)[:500]}
-                for step_id, output in results.items()
+                step_id: {"output": str(output)[:500]} for step_id, output in results.items()
             },
         }
 
@@ -797,15 +797,17 @@ class NerveEngine:
         """
         sessions = []
         for session in self._sessions.values():
-            sessions.append({
-                "id": session.name,  # id is the name
-                "name": session.name,
-                "description": session.description,
-                "tags": session.tags,
-                "node_count": len(session.nodes),
-                "graph_count": len(session.graphs),
-                "is_default": session.name == self._default_session.name,
-            })
+            sessions.append(
+                {
+                    "id": session.name,  # id is the name
+                    "name": session.name,
+                    "description": session.description,
+                    "tags": session.tags,
+                    "node_count": len(session.nodes),
+                    "graph_count": len(session.graphs),
+                    "is_default": session.name == self._default_session.name,
+                }
+            )
 
         return {
             "sessions": sessions,
@@ -830,12 +832,14 @@ class NerveEngine:
             node = session.get_node(nid)
             if node and hasattr(node, "to_info"):
                 info = node.to_info()
-                nodes_info.append({
-                    "id": nid,
-                    "type": info.node_type,
-                    "state": info.state.name,
-                    **info.metadata,
-                })
+                nodes_info.append(
+                    {
+                        "id": nid,
+                        "type": info.node_type,
+                        "state": info.state.name,
+                        **info.metadata,
+                    }
+                )
 
         return {
             "session_id": session.name,  # session_id is the name
@@ -920,10 +924,12 @@ class NerveEngine:
         for gid in graph_ids:
             graph = session.get_graph(gid)
             if graph is not None:
-                graphs.append({
-                    "id": gid,
-                    "step_count": len(graph.list_steps()),
-                })
+                graphs.append(
+                    {
+                        "id": gid,
+                        "step_count": len(graph.list_steps()),
+                    }
+                )
 
         return {"graphs": graphs}
 
@@ -958,13 +964,15 @@ class NerveEngine:
                 elif step.node:
                     node_id = step.node.id
 
-                steps.append({
-                    "id": step_id,
-                    "node_id": node_id,
-                    "input": step.input,
-                    "depends_on": step.depends_on,
-                    # Note: input_fn, error_policy, parser are not serializable
-                })
+                steps.append(
+                    {
+                        "id": step_id,
+                        "node_id": node_id,
+                        "input": step.input,
+                        "depends_on": step.depends_on,
+                        # Note: input_fn, error_policy, parser are not serializable
+                    }
+                )
 
         return {
             "graph_id": graph_id,
@@ -1026,8 +1034,7 @@ class NerveEngine:
         return {
             "graph_id": graph_id,
             "results": {
-                step_id: {"output": str(output)[:500]}
-                for step_id, output in results.items()
+                step_id: {"output": str(output)[:500]} for step_id, output in results.items()
             },
         }
 

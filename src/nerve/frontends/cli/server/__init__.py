@@ -175,7 +175,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
                 for node_id, node in list(session.nodes.items()):
                     try:
                         await asyncio.wait_for(node.stop(), timeout=2.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         click.echo(f"  {node_id}: timeout, force killing...")
                         if hasattr(node, "backend") and hasattr(node.backend, "process"):
                             try:
@@ -234,7 +234,9 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
 @click.argument("name", default="local")
 @click.option("--all", "stop_all", is_flag=True, help="Stop all nerve servers")
 @click.option("--force", "-f", is_flag=True, help="Force kill (SIGKILL) without graceful shutdown")
-@click.option("--timeout", "-t", default=5.0, help="Graceful shutdown timeout in seconds (default: 5)")
+@click.option(
+    "--timeout", "-t", default=5.0, help="Graceful shutdown timeout in seconds (default: 5)"
+)
 def stop(name: str, stop_all: bool, force: bool, timeout: float):
     """Stop the nerve daemon.
 
@@ -282,15 +284,15 @@ def stop(name: str, stop_all: bool, force: bool, timeout: float):
 
         url = f"http://{host_port}/api/shutdown"
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, timeout=aiohttp.ClientTimeout(total=timeout_secs)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data.get("success", False)
-                    return False
-        except (Exception, asyncio.TimeoutError):
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(url, timeout=aiohttp.ClientTimeout(total=timeout_secs)) as response,
+            ):
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get("success", False)
+                return False
+        except (TimeoutError, Exception):
             return False
 
     async def graceful_stop_tcp(host_port: str, timeout_secs: float) -> bool:
@@ -408,7 +410,7 @@ def status(name: str, show_all: bool):
             if result.success:
                 return result.data
             return None
-        except (Exception, asyncio.TimeoutError):
+        except (TimeoutError, Exception):
             return None
 
     async def get_tcp_status(host_port: str) -> dict | None:
@@ -428,7 +430,7 @@ def status(name: str, show_all: bool):
             if result.success:
                 return result.data
             return None
-        except (Exception, asyncio.TimeoutError):
+        except (TimeoutError, Exception):
             return None
 
     async def get_server_status(server_name: str) -> dict | None:
@@ -540,9 +542,7 @@ def server_list():
             try:
                 client = UnixSocketClient(sock_path)
                 await client.connect()
-                result = await client.send_command(
-                    Command(type=CommandType.PING, params={})
-                )
+                result = await client.send_command(Command(type=CommandType.PING, params={}))
                 await client.disconnect()
                 if result.success:
                     return {"transport": sock_path, **result.data}

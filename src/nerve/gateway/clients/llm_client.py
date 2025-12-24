@@ -105,9 +105,7 @@ class CircuitBreaker:
         self.failure_count += 1
         self.last_failure_time = time.time()
         if self.failure_count >= self.failure_threshold:
-            logger.warning(
-                "Circuit breaker opened after %d failures", self.failure_count
-            )
+            logger.warning("Circuit breaker opened after %d failures", self.failure_count)
             self.state = CircuitState.OPEN
 
     def can_execute(self) -> bool:
@@ -420,7 +418,12 @@ class LLMClient:
                         # Parse SSE chunks
                         chunks = transformer.parse_sse_chunk(line_str, mapper)
                         for chunk in chunks:
-                            logger.debug("[%s] Parsed chunk: type=%s content=%s", trace_id, chunk.type, chunk.content[:50] if chunk.content else "")
+                            logger.debug(
+                                "[%s] Parsed chunk: type=%s content=%s",
+                                trace_id,
+                                chunk.type,
+                                chunk.content[:50] if chunk.content else "",
+                            )
                             yield chunk
 
                     logger.debug("[%s] Stream complete, received %d lines", trace_id, line_count)

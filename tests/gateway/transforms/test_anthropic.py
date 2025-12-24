@@ -1,7 +1,5 @@
 """Tests for AnthropicTransformer."""
 
-import pytest
-
 from nerve.gateway.transforms.anthropic import AnthropicTransformer
 from nerve.gateway.transforms.tool_id_mapper import ToolIDMapper
 from nerve.gateway.transforms.types import (

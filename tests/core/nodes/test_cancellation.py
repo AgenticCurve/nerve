@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from nerve.core.nodes.cancellation import CancelledException, CancellationToken
+from nerve.core.nodes.cancellation import CancellationToken, CancelledException
 
 
 class TestCancelledException:

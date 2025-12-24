@@ -65,23 +65,23 @@ from nerve.core.nodes.base import (
     PersistentNode,
 )
 
+# Agent capabilities: Budgets
+from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
+
+# Agent capabilities: Cancellation
+from nerve.core.nodes.cancellation import CancellationToken, CancelledException
+
 # Execution context
 from nerve.core.nodes.context import ExecutionContext
 
 # Graph
 from nerve.core.nodes.graph import Graph, GraphStep, GraphStepList, Step, StepEvent
 
-# Terminal nodes
-from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
-
 # Agent capabilities: Error handling
 from nerve.core.nodes.policies import ErrorPolicy
 
-# Agent capabilities: Budgets
-from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
-
-# Agent capabilities: Cancellation
-from nerve.core.nodes.cancellation import CancelledException, CancellationToken
+# Terminal nodes
+from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
 
 # Agent capabilities: Tracing
 from nerve.core.nodes.trace import ExecutionTrace, StepTrace

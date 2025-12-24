@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from nerve.core.nodes.base import FunctionNode, Node, NodeInfo, NodeState
 from nerve.core.nodes.policies import ErrorPolicy
-from nerve.core.nodes.trace import ExecutionTrace, StepTrace
+from nerve.core.nodes.trace import StepTrace
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
@@ -92,7 +92,7 @@ class GraphStep:
 
     def __init__(
         self,
-        graph: "Graph",
+        graph: Graph,
         step_id: str,
         node: Node | None = None,
         node_ref: str | None = None,
@@ -100,7 +100,7 @@ class GraphStep:
         input_fn: Callable[[dict[str, Any]], Any] | None = None,
         depends_on: list[str] | None = None,
         error_policy: ErrorPolicy | None = None,
-        parser: "ParserType | None" = None,
+        parser: ParserType | None = None,
     ):
         self.graph = graph
         self.step_id = step_id
@@ -228,7 +228,7 @@ class Graph:
         >>> print(results["process"])
     """
 
-    def __init__(self, id: str, session: "Session", max_parallel: int = 1) -> None:
+    def __init__(self, id: str, session: Session, max_parallel: int = 1) -> None:
         """Initialize a graph and register it with the session.
 
         IMPORTANT: Graphs must be created through a Session for proper lifecycle management.
@@ -460,22 +460,16 @@ class Graph:
 
             # Check for mutually exclusive input/input_fn
             if step.input is not None and step.input_fn is not None:
-                errors.append(
-                    f"Step '{step_id}': input and input_fn are mutually exclusive"
-                )
+                errors.append(f"Step '{step_id}': input and input_fn are mutually exclusive")
 
             # Check for missing node reference
             if step.node is None and step.node_ref is None:
-                errors.append(
-                    f"Step '{step_id}': either node or node_ref must be provided"
-                )
+                errors.append(f"Step '{step_id}': either node or node_ref must be provided")
 
             # Check for missing dependencies
             for dep_id in step.depends_on:
                 if dep_id not in self._steps:
-                    errors.append(
-                        f"Step '{step_id}' depends on unknown step '{dep_id}'"
-                    )
+                    errors.append(f"Step '{step_id}' depends on unknown step '{dep_id}'")
 
         # Check for cycles (only if no other errors)
         if not errors:
@@ -610,9 +604,7 @@ class Graph:
 
         return results
 
-    async def execute_stream(
-        self, context: ExecutionContext
-    ) -> AsyncIterator[StepEvent]:
+    async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[StepEvent]:
         """Execute graph steps and stream events as they occur.
 
         Yields:
@@ -652,9 +644,7 @@ class Graph:
 
             try:
                 # If terminal node with streaming support, stream chunks
-                if hasattr(node, "execute_stream") and callable(
-                    getattr(node, "execute_stream")
-                ):
+                if hasattr(node, "execute_stream") and callable(node.execute_stream):
                     chunks = []
                     async for chunk in node.execute_stream(step_context):
                         chunks.append(chunk)
@@ -768,7 +758,7 @@ class Graph:
                 else:
                     return await node.execute(context)
 
-            except asyncio.TimeoutError as e:
+            except TimeoutError as e:
                 if policy.should_retry(attempt):
                     delay = policy.get_delay_for_attempt(attempt)
                     await asyncio.sleep(delay)

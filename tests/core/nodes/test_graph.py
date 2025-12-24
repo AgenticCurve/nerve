@@ -5,7 +5,6 @@ import pytest
 from nerve.core.nodes.base import FunctionNode
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.graph import Graph, Step, StepEvent
-from nerve.core.nodes.policies import ErrorPolicy
 from nerve.core.session.session import Session
 
 
@@ -158,9 +157,7 @@ class TestGraph:
         graph = Graph(id="test", session=session)
         node = FunctionNode(id="fn", fn=lambda ctx: ctx.input)
 
-        graph._steps["a"] = Step(
-            node=node, input="static", input_fn=lambda u: u
-        )
+        graph._steps["a"] = Step(node=node, input="static", input_fn=lambda u: u)
 
         errors = graph.validate()
         assert len(errors) == 1
@@ -272,9 +269,7 @@ class TestGraph:
         outer = Graph(id="outer", session=session2)
         outer.add_step(inner, step_id="nested")
         outer.add_step(
-            FunctionNode(
-                id="fn", fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']}"
-            ),
+            FunctionNode(id="fn", fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']}"),
             step_id="after",
             depends_on=["nested"],
         )
@@ -340,6 +335,7 @@ class TestGraph:
 
     def test_collect_persistent_nodes(self):
         """Test collecting persistent nodes from graph."""
+
         # Create a mock persistent node
         class MockPersistentNode:
             id = "persistent"

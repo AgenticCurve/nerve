@@ -9,20 +9,18 @@ Then configure Claude Code:
     export ANTHROPIC_BASE_URL="http://127.0.0.1:3456"
     claude
 """
+
 import asyncio
 import logging
 import os
 import sys
 
 # Enable logging (use DEBUG to see full request payloads)
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # Quiet noisy loggers
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
 
-from nerve.gateway.openai_proxy import OpenAIProxyServer, OpenAIProxyConfig
+from nerve.gateway.openai_proxy import OpenAIProxyConfig, OpenAIProxyServer
 
 
 async def main():

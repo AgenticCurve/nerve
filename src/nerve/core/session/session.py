@@ -110,7 +110,7 @@ class Session:
         history: bool | None = None,  # None = use session default
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
-        default_parser: "ParserType | None" = None,
+        default_parser: ParserType | None = None,
     ) -> TerminalNode:
         """Create and register a terminal node.
 
@@ -173,9 +173,7 @@ class Session:
                 if not command:
                     raise ValueError("command is required for claude-wezterm backend")
                 actual_parser = (
-                    default_parser
-                    if default_parser != ParserType.NONE
-                    else ParserType.CLAUDE
+                    default_parser if default_parser != ParserType.NONE else ParserType.CLAUDE
                 )
                 node = await ClaudeWezTermNode._create(
                     node_id=node_id,
@@ -236,7 +234,7 @@ class Session:
         self,
         node_id: str,
         fn: Callable[[ExecutionContext], Any],
-    ) -> "FunctionNode":
+    ) -> FunctionNode:
         """Create and register a function node.
 
         Args:

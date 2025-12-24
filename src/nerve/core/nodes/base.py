@@ -12,9 +12,10 @@ Persistent nodes maintain state across executions; ephemeral nodes are stateless
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext

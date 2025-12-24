@@ -11,7 +11,7 @@ from glob import glob
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
+    pass
 
 
 def get_server_client(server_name: str) -> tuple[type, str | tuple[str, int]]:
