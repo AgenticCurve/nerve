@@ -528,7 +528,10 @@ def node_interrupt(node_name: str, server_name: str):
 
 @node.command("history")
 @click.argument("node_name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@click.option(
+    "--session", "session_name", default="default", help="Session name (default: default)"
+)
 @click.option("--last", "-n", "limit", type=int, default=None, help="Show only last N entries")
 @click.option(
     "--op",
@@ -542,6 +545,7 @@ def node_interrupt(node_name: str, server_name: str):
 def node_history(
     node_name: str,
     server_name: str,
+    session_name: str,
     limit: int | None,
     op: str | None,
     seq: int | None,
@@ -552,7 +556,7 @@ def node_history(
     """View history for a node.
 
     Reads the JSONL history file for the specified node.
-    History is stored in .nerve/history/<server>/<node>.jsonl
+    History is stored in .nerve/history/<server>/<session>/<node>.jsonl
 
     **Arguments:**
 
@@ -560,15 +564,17 @@ def node_history(
 
     **Examples:**
 
-        nerve server node history my-claude --server local
+        nerve server node history my-claude
 
-        nerve server node history my-claude --server local --last 10
+        nerve server node history my-claude --last 10
 
-        nerve server node history my-claude --server local --op send
+        nerve server node history my-claude --server prod --session my-session
 
-        nerve server node history my-claude --server local --inputs-only --json
+        nerve server node history my-claude --op send
 
-        nerve server node history my-claude --server local --summary
+        nerve server node history my-claude --inputs-only --json
+
+        nerve server node history my-claude --summary
     """
     import json
     from pathlib import Path
@@ -582,6 +588,7 @@ def node_history(
         reader = HistoryReader.create(
             node_id=node_name,
             server_name=server_name,
+            session_name=session_name,
             base_dir=base_dir,
         )
 
@@ -615,6 +622,7 @@ def node_history(
                 ops_count[op_type] = ops_count.get(op_type, 0) + 1
             click.echo(f"Node: {node_name}")
             click.echo(f"Server: {server_name}")
+            click.echo(f"Session: {session_name}")
             click.echo(f"Total entries: {len(entries)}")
             click.echo("\nOperations:")
             for op_name, count in sorted(ops_count.items()):
@@ -668,5 +676,8 @@ def node_history(
                     click.echo(f"[{seq_num:3}] {ts_display} {op_type.upper()}")
 
     except FileNotFoundError:
-        click.echo(f"No history found for node '{node_name}' on server '{server_name}'", err=True)
+        click.echo(
+            f"No history found for node '{node_name}' in session '{session_name}' on server '{server_name}'",
+            err=True,
+        )
         sys.exit(1)

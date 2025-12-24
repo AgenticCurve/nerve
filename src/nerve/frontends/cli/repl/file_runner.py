@@ -25,8 +25,8 @@ async def run_from_file(
     )
     from nerve.core.session import BackendType, Session
 
-    # Create default session named "repl"
-    session = Session(name="repl")
+    # Create default session for REPL
+    session = Session(name="repl", server_name="repl")
 
     namespace = {
         "asyncio": asyncio,

@@ -138,9 +138,11 @@ class Session:
             WezTermNode,
         )
         from nerve.core.types import ParserType
+        from nerve.core.validation import validate_name
 
         if not node_id:
             raise ValueError("node_id is required")
+        validate_name(node_id, "node")
         if node_id in self.nodes:
             raise ValueError(f"Node already exists: {node_id}")
 
@@ -156,6 +158,7 @@ class Session:
                 history_writer = HistoryWriter.create(
                     node_id=node_id,
                     server_name=self.server_name,
+                    session_name=self.name,
                     base_dir=self.history_base_dir,
                     enabled=True,
                 )
@@ -245,12 +248,14 @@ class Session:
             FunctionNode wrapping the callable.
 
         Raises:
-            ValueError: If node_id already exists.
+            ValueError: If node_id already exists or is invalid.
         """
         from nerve.core.nodes.base import FunctionNode
+        from nerve.core.validation import validate_name
 
         if not node_id:
             raise ValueError("node_id is required")
+        validate_name(node_id, "node")
         if node_id in self.nodes:
             raise ValueError(f"Node already exists: {node_id}")
 
