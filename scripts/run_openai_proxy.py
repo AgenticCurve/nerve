@@ -15,12 +15,12 @@ import logging
 import os
 import sys
 
+from nerve.gateway.openai_proxy import OpenAIProxyConfig, OpenAIProxyServer
+
 # Enable logging (use DEBUG to see full request payloads)
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # Quiet noisy loggers
 logging.getLogger("aiohttp").setLevel(logging.WARNING)
-
-from nerve.gateway.openai_proxy import OpenAIProxyConfig, OpenAIProxyServer
 
 
 async def main():

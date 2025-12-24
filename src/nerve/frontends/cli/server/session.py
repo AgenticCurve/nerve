@@ -63,7 +63,6 @@ def session_list(server_name: str, json_output: bool):
 
         if result.success:
             sessions = result.data.get("sessions", [])
-            default_id = result.data.get("default_session_id")
 
             if json_output:
                 import json

@@ -201,10 +201,12 @@ async def main():
     try:
         # Check health
         print("\n3. Checking proxy health...")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{proxy_url}/health") as resp:
-                health = await resp.json()
-                print(f"   Health: {health}")
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(f"{proxy_url}/health") as resp,
+        ):
+            health = await resp.json()
+            print(f"   Health: {health}")
 
         # Make non-streaming request
         print("\n4. Testing non-streaming request...")

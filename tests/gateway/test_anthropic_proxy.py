@@ -72,11 +72,13 @@ class TestAnthropicProxyServer:
         """Health endpoint should return ok status."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{base_url}/health") as resp:
-                assert resp.status == 200
-                data = await resp.json()
-                assert data["status"] == "ok"
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(f"{base_url}/health") as resp,
+        ):
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["status"] == "ok"
 
     async def test_telemetry_endpoint(self, running_proxy):
         """Telemetry endpoint should silently accept requests."""

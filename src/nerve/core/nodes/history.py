@@ -123,8 +123,10 @@ class HistoryWriter:
             if file_path.exists():
                 writer._seq = writer._recover_last_seq()
 
-            # Open file in append mode
-            writer._file = open(file_path, "a", encoding="utf-8")
+            # Open file in append mode - intentionally not using context manager
+            # as the file must remain open for the object's lifetime. The file is
+            # properly closed via close() method or __exit__ when used as context manager.
+            writer._file = open(file_path, "a", encoding="utf-8")  # noqa: SIM115
 
         except (OSError, PermissionError, json.JSONDecodeError) as e:
             raise HistoryError(f"Failed to initialize history writer: {e}") from e
@@ -425,6 +427,14 @@ class HistoryWriter:
             except OSError:
                 pass  # Best effort
             self._file = None
+
+    def __enter__(self) -> HistoryWriter:
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - ensures file is closed."""
+        self.close()
 
 
 @dataclass

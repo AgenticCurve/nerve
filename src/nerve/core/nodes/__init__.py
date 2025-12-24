@@ -30,7 +30,7 @@ Agent capabilities:
     ResourceUsage: Resource consumption tracking
     BudgetExceededError: Raised when budget exceeded
     CancellationToken: Cooperative cancellation
-    CancelledException: Raised when execution cancelled
+    CancelledError: Raised when execution cancelled
     StepTrace: Per-step execution trace
     ExecutionTrace: Full graph execution trace
 
@@ -69,13 +69,21 @@ from nerve.core.nodes.base import (
 from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
 
 # Agent capabilities: Cancellation
-from nerve.core.nodes.cancellation import CancellationToken, CancelledException
+from nerve.core.nodes.cancellation import CancellationToken, CancelledError
 
 # Execution context
 from nerve.core.nodes.context import ExecutionContext
 
 # Graph
 from nerve.core.nodes.graph import Graph, GraphStep, GraphStepList, Step, StepEvent
+
+# History
+from nerve.core.nodes.history import (
+    HISTORY_BUFFER_LINES,
+    HistoryError,
+    HistoryReader,
+    HistoryWriter,
+)
 
 # Agent capabilities: Error handling
 from nerve.core.nodes.policies import ErrorPolicy
@@ -88,14 +96,6 @@ from nerve.core.nodes.trace import ExecutionTrace, StepTrace
 
 # Terminal node type alias
 TerminalNode = PTYNode | WezTermNode | ClaudeWezTermNode
-
-# History
-from nerve.core.nodes.history import (
-    HISTORY_BUFFER_LINES,
-    HistoryError,
-    HistoryReader,
-    HistoryWriter,
-)
 
 __all__ = [
     # Base
@@ -126,7 +126,7 @@ __all__ = [
     "BudgetExceededError",
     # Cancellation
     "CancellationToken",
-    "CancelledException",
+    "CancelledError",
     # Tracing
     "StepTrace",
     "ExecutionTrace",

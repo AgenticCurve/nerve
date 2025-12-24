@@ -528,7 +528,7 @@ class Graph:
         Raises:
             ValueError: If graph is invalid.
             BudgetExceededError: If budget limits are exceeded.
-            CancelledException: If execution is cancelled.
+            CancelledError: If execution is cancelled.
         """
         errors = self.validate()
         if errors:

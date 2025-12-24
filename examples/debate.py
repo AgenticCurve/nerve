@@ -74,7 +74,7 @@ async def run_debate(
     # Start server
     print(f"Starting server '{server_name}' ({transport})...")
     cmd = ["uv", "run", "nerve", "server", "start", server_name] + server_args
-    proc = await asyncio.create_subprocess_exec(
+    await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,

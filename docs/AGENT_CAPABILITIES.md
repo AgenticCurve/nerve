@@ -267,10 +267,10 @@ class ExecutionContext:
                 raise BudgetExceededError(self.usage, self.budget, reason)
 
     def check_cancelled(self) -> None:
-        """Raise CancelledException if cancellation was requested.
+        """Raise CancelledError if cancellation was requested.
 
         Raises:
-            CancelledException: If cancellation was requested.
+            CancelledError: If cancellation was requested.
         """
         if self.cancellation:
             self.cancellation.check()
@@ -367,19 +367,19 @@ class CancellationToken:
         return self._cancelled
 
     def check(self) -> None:
-        """Raise CancelledException if cancelled."""
+        """Raise CancelledError if cancelled."""
         if self._cancelled:
-            raise CancelledException()
+            raise CancelledError()
 
     async def wait(self) -> None:
         """Wait until cancelled."""
         await self._event.wait()
 ```
 
-### REQ-C2: CancelledException
+### REQ-C2: CancelledError
 
 ```python
-class CancelledException(Exception):
+class CancelledError(Exception):
     """Raised when execution is cancelled."""
     pass
 ```
@@ -605,7 +605,7 @@ def validate(self) -> list[str]:
 
 3. **Cancellation** (`core/nodes/cancellation.py`)
    - CancellationToken
-   - CancelledException
+   - CancelledError
    - Cancellation check points in Graph
 
 4. **Enhanced Graph Execution**
@@ -665,7 +665,7 @@ def validate(self) -> list[str]:
 | Skip on error | Graph continues, step has fallback_value |
 | Fallback node | Fallback executes when primary fails |
 | Budget exceeded mid-graph | BudgetExceededError raised, partial results |
-| Cancel mid-graph | CancelledException raised, partial results |
+| Cancel mid-graph | CancelledError raised, partial results |
 | Trace captures all steps | explain() shows full history |
 
 ### 9.3 Performance Tests (P0)

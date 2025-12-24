@@ -4,20 +4,20 @@ import asyncio
 
 import pytest
 
-from nerve.core.nodes.cancellation import CancellationToken, CancelledException
+from nerve.core.nodes.cancellation import CancellationToken, CancelledError
 
 
-class TestCancelledException:
-    """Tests for CancelledException."""
+class TestCancelledError:
+    """Tests for CancelledError."""
 
     def test_is_exception(self):
         """Test it's a proper exception."""
-        with pytest.raises(CancelledException):
-            raise CancelledException()
+        with pytest.raises(CancelledError):
+            raise CancelledError()
 
     def test_message(self):
         """Test exception message."""
-        error = CancelledException()
+        error = CancelledError()
         assert "cancelled" in str(type(error).__name__).lower()
 
 
@@ -53,7 +53,7 @@ class TestCancellationToken:
         token = CancellationToken()
         token.cancel()
 
-        with pytest.raises(CancelledException):
+        with pytest.raises(CancelledError):
             token.check()
 
     @pytest.mark.asyncio
@@ -90,7 +90,7 @@ class TestCancellationToken:
         token = CancellationToken()
         token.cancel()
 
-        with pytest.raises(CancelledException):
+        with pytest.raises(CancelledError):
             token.check()
 
         token.reset()
@@ -118,7 +118,7 @@ class TestCancellationToken:
         worker_task = asyncio.create_task(worker())
         cancel_task = asyncio.create_task(canceller())
 
-        with pytest.raises(CancelledException):
+        with pytest.raises(CancelledError):
             await asyncio.gather(worker_task, cancel_task)
 
         # Should have done some work but not all

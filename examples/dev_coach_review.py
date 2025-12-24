@@ -19,6 +19,13 @@ Usage:
     python examples/dev_coach_review.py my-impl unix /path/to/plan.md
 """
 
+import asyncio
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from nerve.server.protocols import Command, CommandType
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -242,13 +249,6 @@ Otherwise, provide specific feedback. Be thorough."""
 # =============================================================================
 # SCRIPT
 # =============================================================================
-
-import asyncio
-import sys
-from datetime import datetime
-from pathlib import Path
-
-from nerve.server.protocols import Command, CommandType
 
 
 def extract_text_response(response_data: dict) -> str:

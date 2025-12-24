@@ -52,12 +52,12 @@ def create_client(server_name: str):
     """
     from nerve.transport import TCPSocketClient
 
-    ClientClass, conn_info = get_server_client(server_name)
+    client_class, conn_info = get_server_client(server_name)
 
-    if ClientClass is TCPSocketClient:
+    if client_class is TCPSocketClient:
         return TCPSocketClient(conn_info[0], conn_info[1])
     else:
-        return ClientClass(conn_info)
+        return client_class(conn_info)
 
 
 def get_server_transport(server_name: str) -> tuple[str, str | None]:

@@ -73,11 +73,13 @@ class TestOpenAIProxyServer:
         """Health endpoint should return ok status."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{base_url}/health") as resp:
-                assert resp.status == 200
-                data = await resp.json()
-                assert data["status"] == "ok"
+        async with (
+            aiohttp.ClientSession() as session,
+            session.get(f"{base_url}/health") as resp,
+        ):
+            assert resp.status == 200
+            data = await resp.json()
+            assert data["status"] == "ok"
 
     async def test_content_type_validation(self, running_proxy):
         """Should reject requests without proper Content-Type."""
@@ -118,16 +120,18 @@ class TestOpenAIProxyServer:
         """Should validate Anthropic request format."""
         server, base_url = running_proxy
 
-        async with aiohttp.ClientSession() as session:
-            # Missing messages field
-            async with session.post(
+        # Missing messages field
+        async with (
+            aiohttp.ClientSession() as session,
+            session.post(
                 f"{base_url}/v1/messages",
                 json={"max_tokens": 1024},
                 headers={"Content-Type": "application/json"},
-            ) as resp:
-                assert resp.status == 400
-                data = await resp.json()
-                assert data["error"]["type"] == "invalid_request_error"
+            ) as resp,
+        ):
+            assert resp.status == 400
+            data = await resp.json()
+            assert data["error"]["type"] == "invalid_request_error"
 
     async def test_non_streaming_request(self, running_proxy):
         """Non-streaming request should return complete response."""

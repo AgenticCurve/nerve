@@ -96,13 +96,13 @@ class ExecutionContext:
         return replace(self, parser=parser)
 
     def check_cancelled(self) -> None:
-        """Raise CancelledException if cancellation was requested.
+        """Raise CancelledError if cancellation was requested.
 
         Should be called at checkpoints during execution (before each step,
         after each step, etc.) to support cooperative cancellation.
 
         Raises:
-            CancelledException: If cancellation was requested.
+            CancelledError: If cancellation was requested.
         """
         if self.cancellation:
             self.cancellation.check()

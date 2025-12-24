@@ -53,7 +53,7 @@ from nerve.core.nodes import (
     Budget,
     BudgetExceededError,
     CancellationToken,
-    CancelledException,
+    CancelledError,
     ClaudeWezTermNode,
     ErrorPolicy,
     ExecutionContext,
@@ -144,7 +144,7 @@ __all__ = [
     "ResourceUsage",
     "BudgetExceededError",
     "CancellationToken",
-    "CancelledException",
+    "CancelledError",
     "StepTrace",
     "ExecutionTrace",
     # History

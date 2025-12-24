@@ -561,7 +561,7 @@ class CancellationToken:
     def check(self) -> None:
         """Raise if cancelled."""
         if self._cancelled:
-            raise CancelledException()
+            raise CancelledError()
 
     async def wait(self) -> None:
         """Wait until cancelled."""
@@ -598,7 +598,7 @@ token.cancel()
 
 try:
     result = await task
-except CancelledException:
+except CancelledError:
     print("Execution was cancelled")
 ```
 
@@ -608,7 +608,7 @@ class PersistentNode(Node):
     async def execute(self, context) -> Any:
         try:
             return await self._execute_impl(context)
-        except CancelledException:
+        except CancelledError:
             await self.cleanup()  # Release resources
             raise
 ```
@@ -951,7 +951,7 @@ class CancellationToken:
     def cancel(self): self._cancelled = True
     def check(self):
         if self._cancelled:
-            raise CancelledException()
+            raise CancelledError()
 
 @dataclass
 class StepTrace:

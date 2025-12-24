@@ -23,6 +23,13 @@ Usage:
     python examples/dev_coach_consultants.py my-task unix /path/to/context.md
 """
 
+import asyncio
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from nerve.server.protocols import Command, CommandType
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -263,13 +270,6 @@ Be concise and actionable."""
 # SCRIPT
 # =============================================================================
 
-import asyncio
-import sys
-from datetime import datetime
-from pathlib import Path
-
-from nerve.server.protocols import Command, CommandType
-
 
 def extract_text_response(response_data: dict) -> str:
     """Extract text content from response."""
@@ -501,7 +501,12 @@ async def run_dev_coach_consultants(
         ]
 
         # Build prompts
-        async def get_consultant_advice(agent_id: str, prompt_template: str):
+        async def get_consultant_advice(
+            agent_id: str,
+            prompt_template: str,
+            dev_response: str = dev_response,
+            coach_thoughts: str = coach_thoughts,
+        ):
             prompt = prompt_template.format(
                 dev_response=dev_response,
                 coach_thoughts=coach_thoughts,

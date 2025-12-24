@@ -13,6 +13,13 @@ Usage:
     python examples/dev_coach.py my-task unix /path/to/context.md
 """
 
+import asyncio
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from nerve.server.protocols import Command, CommandType
+
 # =============================================================================
 # CONFIGURATION - Edit these to customize the collaboration
 # =============================================================================
@@ -165,13 +172,6 @@ Otherwise, provide your next round of feedback."""
 # =============================================================================
 # SCRIPT - Usually no need to edit below this line
 # =============================================================================
-
-import asyncio
-import sys
-from datetime import datetime
-from pathlib import Path
-
-from nerve.server.protocols import Command, CommandType
 
 
 def extract_text_response(response_data: dict) -> str:

@@ -3,7 +3,7 @@
 import pytest
 
 from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
-from nerve.core.nodes.cancellation import CancellationToken, CancelledException
+from nerve.core.nodes.cancellation import CancellationToken, CancelledError
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.session.session import Session
 from nerve.core.types import ParserType
@@ -96,7 +96,7 @@ class TestExecutionContext:
         token.cancel()
         context = ExecutionContext(session=session, cancellation=token)
 
-        with pytest.raises(CancelledException):
+        with pytest.raises(CancelledError):
             context.check_cancelled()
 
     def test_check_cancelled_no_token(self):

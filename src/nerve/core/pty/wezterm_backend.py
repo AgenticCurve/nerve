@@ -498,7 +498,7 @@ async def ensure_wezterm_running(timeout: float = 10.0) -> bool:
 
     try:
         # Start WezTerm GUI - it will daemonize itself
-        process = await asyncio.create_subprocess_exec(
+        await asyncio.create_subprocess_exec(
             "wezterm",
             "start",
             "--",

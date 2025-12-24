@@ -8,7 +8,6 @@ import sys
 import rich_click as click
 
 from nerve.frontends.cli.utils import (
-    create_client,
     find_all_servers,
     force_kill_server,
     get_server_transport,
@@ -209,7 +208,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
             # Clean up all nodes before exiting
             click.echo("Cleaning up nodes...")
             for session in engine._sessions.values():
-                for node_id, node in list(session.nodes.items()):
+                for _node_id, node in list(session.nodes.items()):
                     try:
                         await node.stop()
                     except Exception:
@@ -576,7 +575,3 @@ def server_list():
             )
 
     asyncio.run(run())
-
-
-# Import subcommands to register them
-from nerve.frontends.cli.server import graph, node, session

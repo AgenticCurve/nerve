@@ -318,7 +318,6 @@ class NerveEngine:
         text = params["text"]
         parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
-        submit = params.get("submit")  # Custom submit sequence (optional)
 
         node = session.get_node(node_id)
         if not node:
@@ -762,7 +761,6 @@ class NerveEngine:
             step_id = step_data["id"]
             node_id = step_data.get("node_id")
             text = step_data.get("text", "")
-            parser_str = step_data.get("parser", "none")
             depends_on = step_data.get("depends_on", [])
 
             # Get the node for this step

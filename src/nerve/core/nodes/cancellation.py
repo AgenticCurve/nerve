@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 
 
-class CancelledException(Exception):
+class CancelledError(Exception):
     """Raised when execution is cancelled.
 
     This exception should be caught at the graph execution level
@@ -42,10 +42,10 @@ class CancellationToken:
         >>> await asyncio.sleep(5)
         >>> token.cancel()
         >>>
-        >>> # Graph will raise CancelledException at next check point
+        >>> # Graph will raise CancelledError at next check point
         >>> try:
         ...     await task
-        ... except CancelledException:
+        ... except CancelledError:
         ...     print("Execution was cancelled")
     """
 
@@ -72,16 +72,16 @@ class CancellationToken:
         return self._cancelled
 
     def check(self) -> None:
-        """Raise CancelledException if cancelled.
+        """Raise CancelledError if cancelled.
 
         Call this at safe points during execution where
         it's okay to stop (e.g., between steps).
 
         Raises:
-            CancelledException: If cancellation was requested.
+            CancelledError: If cancellation was requested.
         """
         if self._cancelled:
-            raise CancelledException()
+            raise CancelledError()
 
     async def wait(self) -> None:
         """Wait until cancelled.
