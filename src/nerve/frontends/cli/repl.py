@@ -200,7 +200,7 @@ async def run_interactive(
 
             elif cmd == "graphs":
                 sess = state.namespace.get("session")
-                if sess:
+                if sess is not None:
                     graph_ids = sess.list_graphs()
                     if graph_ids:
                         print("\nGraphs:")
@@ -214,7 +214,7 @@ async def run_interactive(
 
             elif cmd == "session":
                 sess = state.namespace.get("session")
-                if sess:
+                if sess is not None:
                     print(f"\nSession: {sess.name}")
                     print(f"  ID: {sess.id}")
                     print(f"  Nodes: {len(sess.nodes)}")
@@ -305,7 +305,7 @@ async def run_interactive(
 
             elif cmd == "reset":
                 sess = state.namespace.get("session")
-                if sess:
+                if sess is not None:
                     asyncio.get_event_loop().run_until_complete(sess.stop())
                 state.nodes.clear()
                 state.namespace["nodes"] = state.nodes
