@@ -255,6 +255,7 @@ class Graph:
         # Interrupt support
         self._current_context: ExecutionContext | None = None
         self._current_node: Node | None = None
+        self._interrupt_lock: asyncio.Lock = asyncio.Lock()
 
         # Auto-register with session
         session.graphs[id] = self
@@ -572,7 +573,8 @@ class Graph:
                 start_mono = time.monotonic()
 
                 # Track current node for interrupt()
-                self._current_node = node
+                async with self._interrupt_lock:
+                    self._current_node = node
 
                 try:
                     result = await self._execute_with_policy(step, node, step_context)
@@ -583,7 +585,8 @@ class Graph:
                     raise
 
                 finally:
-                    self._current_node = None
+                    async with self._interrupt_lock:
+                        self._current_node = None
                     end_time = datetime.now()
                     duration_ms = (time.monotonic() - start_mono) * 1000
 
@@ -618,7 +621,8 @@ class Graph:
 
         finally:
             self._current_context = None
-            self._current_node = None
+            async with self._interrupt_lock:
+                self._current_node = None
 
         return results
 
@@ -635,8 +639,10 @@ class Graph:
             self._current_context.cancellation.cancel()
 
         # Interrupt the currently executing node
-        if self._current_node is not None:
-            await self._current_node.interrupt()
+        async with self._interrupt_lock:
+            node = self._current_node
+        if node is not None:
+            await node.interrupt()
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[StepEvent]:
         """Execute graph steps and stream events as they occur.
@@ -679,7 +685,8 @@ class Graph:
                 yield StepEvent("step_start", step_id, node.id)
 
                 # Track current node for interrupt()
-                self._current_node = node
+                async with self._interrupt_lock:
+                    self._current_node = node
 
                 try:
                     # If terminal node with streaming support, stream chunks
@@ -700,11 +707,13 @@ class Graph:
                     raise
 
                 finally:
-                    self._current_node = None
+                    async with self._interrupt_lock:
+                        self._current_node = None
 
         finally:
             self._current_context = None
-            self._current_node = None
+            async with self._interrupt_lock:
+                self._current_node = None
 
     def collect_persistent_nodes(self) -> list[Node]:
         """Recursively find all persistent nodes in this graph.

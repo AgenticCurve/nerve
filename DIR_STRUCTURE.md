@@ -44,7 +44,7 @@
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 202] context.py
-│       │   │   ├── [L: 877] graph.py
+│       │   │   ├── [L: 886] graph.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L:1332] terminal.py
@@ -187,4 +187,4 @@
 │       └── [L:   1] __init__.py
 └── [L:1427] uv.lock
 
-40 directories, 148 files, 32,811 total lines
+40 directories, 148 files, 32,820 total lines
