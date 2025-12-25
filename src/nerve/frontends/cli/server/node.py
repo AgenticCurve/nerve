@@ -128,6 +128,32 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
     default=True,
     help="Enable/disable history logging (default: enabled)",
 )
+@click.option(
+    "--api-format",
+    type=click.Choice(["anthropic", "openai"]),
+    default=None,
+    help="Provider API format (anthropic or openai). Enables proxy.",
+)
+@click.option(
+    "--provider-base-url",
+    default=None,
+    help="Provider base URL (e.g., https://api.openai.com/v1)",
+)
+@click.option(
+    "--provider-api-key",
+    default=None,
+    help="Provider API key",
+)
+@click.option(
+    "--provider-model",
+    default=None,
+    help="Model to use (required for openai format, optional for anthropic)",
+)
+@click.option(
+    "--provider-debug-dir",
+    default=None,
+    help="Directory for proxy debug logs",
+)
 def node_create(
     name: str,
     server_name: str,
@@ -137,6 +163,11 @@ def node_create(
     node_type: str,
     pane_id: str | None,
     history: bool,
+    api_format: str | None,
+    provider_base_url: str | None,
+    provider_api_key: str | None,
+    provider_model: str | None,
+    provider_debug_dir: str | None,
 ) -> None:
     """Create a new node.
 
@@ -152,6 +183,37 @@ def node_create(
         nerve server node create attached --server myproject --type WezTermNode --pane-id 4
 
         nerve server node create claude --server myproject --type ClaudeWezTermNode --command claude
+
+    **With OpenAI provider (starts a proxy):**
+
+        nerve server node create claude-openai --server myproject \\
+            --type ClaudeWezTermNode \\
+            --command "claude --dangerously-skip-permissions" \\
+            --api-format openai \\
+            --provider-base-url https://api.openai.com/v1 \\
+            --provider-api-key sk-... \\
+            --provider-model gpt-4.1
+
+    **With Anthropic-format provider (passthrough proxy):**
+
+        nerve server node create claude-glm --server myproject \\
+            --type ClaudeWezTermNode \\
+            --command "claude --dangerously-skip-permissions" \\
+            --api-format anthropic \\
+            --provider-base-url https://api.glm.ai/v1 \\
+            --provider-api-key glm-... \\
+            --provider-model glm-4.5
+
+    **With debug logging:**
+
+        nerve server node create claude-openai --server myproject \\
+            --type ClaudeWezTermNode \\
+            --command "claude --dangerously-skip-permissions" \\
+            --api-format openai \\
+            --provider-base-url https://api.openai.com/v1 \\
+            --provider-api-key sk-... \\
+            --provider-model gpt-4.1 \\
+            --provider-debug-dir /tmp/proxy-logs
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -160,6 +222,24 @@ def node_create(
         validate_name(name, "node")
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    # Validate provider options
+    provider_opts = [api_format, provider_base_url, provider_api_key]
+    if any(provider_opts) and not all(provider_opts):
+        click.echo(
+            "Error: --api-format, --provider-base-url, and --provider-api-key "
+            "must all be specified together",
+            err=True,
+        )
+        sys.exit(1)
+
+    if api_format == "openai" and not provider_model:
+        click.echo("Error: --provider-model is required for openai format", err=True)
+        sys.exit(1)
+
+    if api_format and node_type != "ClaudeWezTermNode":
+        click.echo("Error: Provider options require --type ClaudeWezTermNode", err=True)
         sys.exit(1)
 
     # Map node type to wire protocol backend value
@@ -178,7 +258,7 @@ def node_create(
             click.echo(f"Error: Server '{server_name}' not running", err=True)
             sys.exit(1)
 
-        params = {
+        params: dict[str, object] = {
             "node_id": name,
             "cwd": cwd,
             "backend": backend,
@@ -191,6 +271,18 @@ def node_create(
         if pane_id:
             params["pane_id"] = pane_id
 
+        # Add provider config if specified
+        if api_format:
+            provider_config: dict[str, str | None] = {
+                "api_format": api_format,
+                "base_url": provider_base_url,
+                "api_key": provider_api_key,
+                "model": provider_model,
+            }
+            if provider_debug_dir:
+                provider_config["debug_dir"] = provider_debug_dir
+            params["provider"] = provider_config
+
         result = await client.send_command(
             Command(
                 type=CommandType.CREATE_NODE,
@@ -199,7 +291,11 @@ def node_create(
         )
 
         if result.success:
-            click.echo(f"Created node: {name}")
+            proxy_url = result.data.get("proxy_url") if result.data else None
+            if proxy_url:
+                click.echo(f"Created node: {name} (proxy: {proxy_url})")
+            else:
+                click.echo(f"Created node: {name}")
         else:
             click.echo(f"Error: {result.error}", err=True)
 

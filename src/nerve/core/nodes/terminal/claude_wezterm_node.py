@@ -60,6 +60,7 @@ class ClaudeWezTermNode:
     state: NodeState = field(default=NodeState.READY, init=False)
     _history_writer: HistoryWriter | None = field(default=None, init=False, repr=False)
     _created_via_create: bool = field(default=False, init=False, repr=False)
+    _proxy_url: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prevent direct instantiation."""
@@ -80,6 +81,7 @@ class ClaudeWezTermNode:
         parser: ParserType = ParserType.CLAUDE,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
+        proxy_url: str | None = None,
     ) -> ClaudeWezTermNode:
         """Create a new ClaudeWezTerm node and register with session.
 
@@ -95,6 +97,8 @@ class ClaudeWezTermNode:
             parser: Default parser (defaults to CLAUDE).
             ready_timeout: Timeout for terminal to become ready.
             response_timeout: Default timeout for responses.
+            proxy_url: URL for API proxy. If set, exports ANTHROPIC_BASE_URL
+                       before running claude command.
 
         Returns:
             A ready ClaudeWezTermNode, registered in the session.
@@ -111,6 +115,14 @@ class ClaudeWezTermNode:
             ...     command="claude --dangerously-skip-permissions"
             ... )
             >>> assert "claude" in session.nodes
+
+        Example with proxy:
+            >>> node = await ClaudeWezTermNode.create(
+            ...     id="claude-openai",
+            ...     session=session,
+            ...     command="claude --dangerously-skip-permissions",
+            ...     proxy_url="http://127.0.0.1:34561",
+            ... )
         """
         import logging
 
@@ -157,6 +169,15 @@ class ClaudeWezTermNode:
 
             await asyncio.sleep(0.5)
 
+            # If proxy_url is set, export ANTHROPIC_BASE_URL before running claude
+            if proxy_url:
+                export_cmd = f"export ANTHROPIC_BASE_URL={proxy_url}"
+                await inner.backend.write(export_cmd)
+                await asyncio.sleep(0.1)
+                await inner.backend.write("\r")
+                await asyncio.sleep(0.3)  # Wait for export to complete
+                logger.debug(f"Set ANTHROPIC_BASE_URL={proxy_url} for node '{id}'")
+
             # Type the command into the shell
             await inner.backend.write(command)
             await asyncio.sleep(0.1)
@@ -174,6 +195,7 @@ class ClaudeWezTermNode:
             wrapper.persistent = True
             wrapper.state = NodeState.READY
             wrapper._history_writer = history_writer
+            wrapper._proxy_url = proxy_url
 
             # History: log the initial run command (buffer captured by first operation)
             if history_writer and history_writer.enabled:
@@ -427,17 +449,20 @@ class ClaudeWezTermNode:
 
     def to_info(self) -> NodeInfo:
         """Get node information."""
+        metadata = {
+            "pane_id": self.pane_id,
+            "command": self.command,
+            "default_parser": self._default_parser.value,
+            "last_input": self._last_input,
+        }
+        if self._proxy_url:
+            metadata["proxy_url"] = self._proxy_url
         return NodeInfo(
             id=self.id,
             node_type="claude-wezterm",
             state=self.state,
             persistent=self.persistent,
-            metadata={
-                "pane_id": self.pane_id,
-                "command": self.command,
-                "default_parser": self._default_parser.value,
-                "last_input": self._last_input,
-            },
+            metadata=metadata,
         )
 
     def __repr__(self) -> str:

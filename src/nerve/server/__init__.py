@@ -39,6 +39,13 @@ from nerve.server.protocols import (
     EventSink,
     EventType,
 )
+from nerve.server.proxy_manager import (
+    ProviderConfig,
+    ProxyHealthError,
+    ProxyInstance,
+    ProxyManager,
+    ProxyStartError,
+)
 
 __all__ = [
     "NerveEngine",
@@ -48,4 +55,10 @@ __all__ = [
     "Command",
     "CommandType",
     "CommandResult",
+    # Proxy management
+    "ProxyManager",
+    "ProxyInstance",
+    "ProviderConfig",
+    "ProxyStartError",
+    "ProxyHealthError",
 ]

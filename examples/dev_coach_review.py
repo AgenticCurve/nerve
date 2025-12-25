@@ -76,7 +76,7 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 
 INITIAL_TASK = """Implement the refactoring described in the plan.
 
-docs/prds/breaking-graph.md
+docs/prd/openai-provider-support.md
 
 Read the plan, explore the codebase, and implement step by step.
 Write clean, well-tested code following existing patterns."""

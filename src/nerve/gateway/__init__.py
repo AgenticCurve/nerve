@@ -34,10 +34,21 @@ Usage (direct):
     asyncio.run(main())
 """
 
+from nerve.gateway.anthropic_proxy import AnthropicProxyConfig, AnthropicProxyServer
 from nerve.gateway.errors import ERROR_TYPE_MAP
+from nerve.gateway.openai_proxy import OpenAIProxyConfig, OpenAIProxyServer
+from nerve.gateway.passthrough_proxy import PassthroughProxyConfig, PassthroughProxyServer
 from nerve.gateway.tracing import RequestTracer
 
 __all__ = [
+    # Proxy servers
+    "AnthropicProxyConfig",
+    "AnthropicProxyServer",
+    "OpenAIProxyConfig",
+    "OpenAIProxyServer",
+    "PassthroughProxyConfig",
+    "PassthroughProxyServer",
+    # Utilities
     "ERROR_TYPE_MAP",
     "RequestTracer",
 ]
