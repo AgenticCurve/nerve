@@ -1,7 +1,4 @@
 ./
-├── docs/
-│   └── prds/
-│       └── [L: 550] breaking-graph.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -16,8 +13,8 @@
 │   ├── [L: 587] dev_coach.py
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 756] dev_coach_review.py
-│   ├── [L: 845] dev_coach_review_prd.py
+│   ├── [L: 736] dev_coach_review.py
+│   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -49,10 +46,10 @@
 │       │   │   ├── [L: 202] context.py
 │       │   │   ├── graph/
 │       │   │   │   ├── [L:  21] __init__.py
-│       │   │   │   ├── [L: 150] builder.py
+│       │   │   │   ├── [L: 151] builder.py
 │       │   │   │   ├── [L:  29] events.py
 │       │   │   │   ├── [L: 712] graph.py
-│       │   │   │   └── [L:  46] step.py
+│       │   │   │   └── [L:  47] step.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
@@ -199,4 +196,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 156 files, 33,760 total lines
+42 directories, 155 files, 33,191 total lines

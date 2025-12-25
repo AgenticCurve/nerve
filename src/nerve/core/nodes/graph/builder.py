@@ -13,7 +13,8 @@ GraphStep and GraphStepList enable intuitive graph building with the >> operator
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.core.nodes.base import Node
@@ -43,7 +44,7 @@ class GraphStep:
         depends_on: list[str] | None = None,
         error_policy: ErrorPolicy | None = None,
         parser: ParserType | None = None,
-    ):
+    ) -> None:
         self.graph = graph
         self.step_id = step_id
         self.node = node
