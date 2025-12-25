@@ -11,7 +11,7 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext
+from nerve.core.nodes import ExecutionContext, PTYNode
 from nerve.core.session import Session
 
 
@@ -20,8 +20,9 @@ async def main():
 
     # Create session and node (node is auto-registered)
     session = Session()
-    node = await session.create_node(
-        "claude",
+    node = await PTYNode.create(
+        id="claude",
+        session=session,
         command="claude",
         cwd=".",  # Current directory
     )

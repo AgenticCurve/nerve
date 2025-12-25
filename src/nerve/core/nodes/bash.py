@@ -8,6 +8,7 @@ Key features:
 - Errors are caught and returned in JSON (never raises)
 - Supports interrupt() to send SIGINT (Ctrl+C) to running process
 - Working directory and environment configured at node creation
+- Auto-registers with session on creation
 """
 
 from __future__ import annotations
@@ -16,10 +17,13 @@ import asyncio
 import os
 import signal
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
+
+if TYPE_CHECKING:
+    from nerve.core.session.session import Session
 
 
 @dataclass
@@ -41,9 +45,18 @@ class BashNode:
     - Supports interrupt() to send SIGINT (Ctrl+C) to running process
     - Working directory and environment configured at node creation
     - Configurable timeout per-node or per-execution
+    - Auto-registers with session on creation
+
+    Args:
+        id: Unique identifier for this node.
+        session: Session to register this node with.
+        cwd: Working directory for command execution.
+        env: Environment variables for command execution.
+        timeout: Default timeout for commands (seconds).
 
     Example:
-        >>> node = BashNode(id="runner", cwd="/tmp", timeout=30.0)
+        >>> session = Session("my-session")
+        >>> node = BashNode(id="runner", session=session, cwd="/tmp", timeout=30.0)
         >>> ctx = ExecutionContext(session=session, input="ls -la")
         >>> result = await node.execute(ctx)
         >>> print(result)
@@ -65,14 +78,34 @@ class BashNode:
         >>> assert result["interrupted"] == True
     """
 
+    # Required fields (no defaults)
     id: str
+    session: Session
+
+    # Optional fields (with defaults)
     cwd: str | None = None
     env: dict[str, str] | None = None
     timeout: float = 30.0
-    persistent: bool = field(default=False, init=False)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Internal fields (not in __init__)
+    persistent: bool = field(default=False, init=False)
     _current_proc: asyncio.subprocess.Process | None = field(default=None, init=False, repr=False)
     _proc_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate and register with session."""
+        from nerve.core.validation import validate_name
+
+        # Validate node ID
+        validate_name(self.id, "node")
+
+        # Check for duplicates
+        if self.id in self.session.nodes:
+            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+
+        # Auto-register with session
+        self.session.nodes[self.id] = self
 
     async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute a bash command and return JSON result.

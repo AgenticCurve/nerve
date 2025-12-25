@@ -15,9 +15,9 @@ def session():
 
 
 @pytest.fixture
-def bash_node():
+def bash_node(session):
     """Create a BashNode for testing."""
-    return BashNode(id="test-bash", timeout=5.0)
+    return BashNode(id="test-bash", session=session, timeout=5.0)
 
 
 @pytest.mark.asyncio
@@ -57,9 +57,10 @@ async def test_bash_node_chained_commands(session, bash_node):
 
 
 @pytest.mark.asyncio
-async def test_bash_node_timeout(session):
+async def test_bash_node_timeout():
     """Test command timeout."""
-    bash_node = BashNode(id="test-bash", timeout=0.5)
+    session = Session(name="test-timeout")
+    bash_node = BashNode(id="test-bash", session=session, timeout=0.5)
     context = ExecutionContext(session=session, input="sleep 10")
     result = await bash_node.execute(context)
 
@@ -89,9 +90,10 @@ async def test_bash_node_interrupt(session, bash_node):
 
 
 @pytest.mark.asyncio
-async def test_bash_node_working_directory(session, tmp_path):
+async def test_bash_node_working_directory(tmp_path):
     """Test working directory configuration."""
-    bash_node = BashNode(id="test-bash", cwd=str(tmp_path))
+    session = Session(name="test-cwd")
+    bash_node = BashNode(id="test-bash", session=session, cwd=str(tmp_path))
     context = ExecutionContext(session=session, input="pwd")
     result = await bash_node.execute(context)
 
@@ -100,9 +102,10 @@ async def test_bash_node_working_directory(session, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_bash_node_environment_variables(session, bash_node):
+async def test_bash_node_environment_variables():
     """Test environment variable injection."""
-    bash_node = BashNode(id="test-bash", env={"TEST_VAR": "test_value"})
+    session = Session(name="test-env")
+    bash_node = BashNode(id="test-bash", session=session, env={"TEST_VAR": "test_value"})
     context = ExecutionContext(session=session, input="echo $TEST_VAR")
     result = await bash_node.execute(context)
 

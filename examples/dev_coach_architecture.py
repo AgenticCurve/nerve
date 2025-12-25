@@ -251,6 +251,7 @@ async def run_dev_coach(
                 "command": "claude --dangerously-skip-permissions",
                 "cwd": DEV_CWD,
                 "backend": "claude-wezterm",
+                "response_timeout": 2400.0,  # 40 minutes for long operations
             },
         )
     )
@@ -268,6 +269,7 @@ async def run_dev_coach(
                 "command": "claude --dangerously-skip-permissions",
                 "cwd": COACH_CWD,
                 "backend": "claude-wezterm",
+                "response_timeout": 2400.0,  # 40 minutes for long operations
             },
         )
     )

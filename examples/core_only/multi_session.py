@@ -10,7 +10,7 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext
+from nerve.core.nodes import ExecutionContext, PTYNode
 from nerve.core.session import Session
 
 
@@ -20,8 +20,8 @@ async def main():
     session = Session()
 
     # Create multiple nodes (auto-registered)
-    claude1 = await session.create_node(node_id="claude-1", command="claude")
-    claude2 = await session.create_node(node_id="claude-2", command="claude")
+    claude1 = await PTYNode.create(id="claude-1", session=session, command="claude")
+    claude2 = await PTYNode.create(id="claude-2", session=session, command="claude")
 
     print(f"Active nodes: {session.list_nodes()}")
     print()

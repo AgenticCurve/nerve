@@ -193,7 +193,24 @@ class NerveEngine:
         """Create a new node.
 
         Requires node_id (name) in params. Names must be unique.
+        Uses direct node class instantiation with session parameter.
+
+        Parameters:
+            node_id: Node identifier (required)
+            command: Command to run (e.g., "claude" or ["claude", "--flag"])
+            cwd: Working directory
+            backend: Node backend ("pty", "wezterm", "claude-wezterm")
+            pane_id: For attaching to existing WezTerm pane
+            history: Enable history logging (default: True)
+            response_timeout: Max wait for terminal response in seconds (default: 1800.0)
+            ready_timeout: Max wait for terminal ready state in seconds (default: 60.0)
         """
+        from nerve.core.nodes.terminal import (
+            ClaudeWezTermNode,
+            PTYNode,
+            WezTermNode,
+        )
+
         session = self._get_session(params)
 
         node_id = params.get("node_id")
@@ -204,15 +221,57 @@ class NerveEngine:
         backend = params.get("backend", "pty")  # "pty" or "wezterm"
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
         history = params.get("history", True)  # Enable history by default
+        response_timeout = params.get("response_timeout", 1800.0)
+        ready_timeout = params.get("ready_timeout", 60.0)
 
-        node = await session.create_node(
-            node_id=str(node_id),
-            command=command,
-            backend=backend,
-            cwd=cwd,
-            pane_id=pane_id,
-            history=history,
-        )
+        # Dispatch to appropriate node class based on backend
+        node: PTYNode | WezTermNode | ClaudeWezTermNode
+        if backend == "pty":
+            node = await PTYNode.create(
+                id=str(node_id),
+                session=session,
+                command=command,
+                cwd=cwd,
+                history=history,
+                response_timeout=response_timeout,
+                ready_timeout=ready_timeout,
+            )
+        elif backend == "wezterm":
+            if pane_id:
+                # Attach to existing pane
+                node = await WezTermNode.attach(
+                    id=str(node_id),
+                    session=session,
+                    pane_id=pane_id,
+                    history=history,
+                    response_timeout=response_timeout,
+                    ready_timeout=ready_timeout,
+                )
+            else:
+                # Create new pane
+                node = await WezTermNode.create(
+                    id=str(node_id),
+                    session=session,
+                    command=command,
+                    cwd=cwd,
+                    history=history,
+                    response_timeout=response_timeout,
+                    ready_timeout=ready_timeout,
+                )
+        elif backend == "claude-wezterm":
+            if not command:
+                raise ValueError("command is required for claude-wezterm backend")
+            node = await ClaudeWezTermNode.create(
+                id=str(node_id),
+                session=session,
+                command=command,
+                cwd=cwd,
+                history=history,
+                response_timeout=response_timeout,
+                ready_timeout=ready_timeout,
+            )
+        else:
+            raise ValueError(f"Unknown backend: {backend}")
 
         await self._emit(
             EventType.NODE_CREATED,
@@ -321,7 +380,15 @@ class NerveEngine:
         return {"started": True, "command": command}
 
     async def _execute_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute input on a node and wait for response."""
+        """Execute input on a node and wait for response.
+
+        Parameters:
+            node_id: Node identifier (required)
+            text: Input text to send (required)
+            parser: Parser type ("claude", "gemini", "none")
+            stream: Stream output as events (default: False)
+            timeout: Override node's response_timeout for this execution (optional)
+        """
         session = self._get_session(params)
         node_id = params.get("node_id")
         if not node_id:
@@ -329,6 +396,7 @@ class NerveEngine:
         text = params["text"]
         parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
+        timeout = params.get("timeout")  # Optional per-execution timeout override
 
         node = session.get_node(str(node_id))
         if not node:
@@ -339,10 +407,11 @@ class NerveEngine:
 
         await self._emit(EventType.NODE_BUSY, node_id=node_id)
 
-        # Create execution context
+        # Create execution context with optional timeout
         context = ExecutionContext(
             session=session,
             input=text,
+            timeout=timeout,
         )
 
         if stream:
@@ -351,6 +420,7 @@ class NerveEngine:
                 session=session,
                 input=text,
                 parser=parser_type,
+                timeout=timeout,
             )
             async for chunk in node.execute_stream(stream_context):  # type: ignore[attr-defined]
                 await self._emit(
@@ -454,18 +524,30 @@ class NerveEngine:
                 ExecutionContext,
                 FunctionNode,
             )
-            from nerve.core.session import BackendType
+            from nerve.core.nodes.bash import BashNode
+            from nerve.core.nodes.graph import Graph
+            from nerve.core.nodes.terminal import (
+                ClaudeWezTermNode,
+                PTYNode,
+                WezTermNode,
+            )
 
             self._python_namespaces[session_id] = {
                 "asyncio": asyncio,
+                # Node classes (use with session parameter)
+                "BashNode": BashNode,
                 "FunctionNode": FunctionNode,
+                "Graph": Graph,
+                "PTYNode": PTYNode,
+                "WezTermNode": WezTermNode,
+                "ClaudeWezTermNode": ClaudeWezTermNode,
+                # Other useful classes
                 "ExecutionContext": ExecutionContext,
                 "Session": Session,
                 "ParserType": ParserType,
-                "BackendType": BackendType,
+                # Pre-configured instances
                 "session": session,  # The actual session
                 "context": ExecutionContext(session=session),  # Pre-configured context
-                # NOTE: Graph, PTYNode, WezTermNode removed - use session.create_*() instead
             }
 
         namespace = self._python_namespaces[session_id]
@@ -784,12 +866,14 @@ class NerveEngine:
 
     async def _execute_graph(self, params: dict[str, Any]) -> dict[str, Any]:
         """Execute a graph."""
+        from nerve.core.nodes.graph import Graph
+
         session = self._get_session(params)
         graph_id = params.get("graph_id", "graph_0")
         steps_data = params["steps"]
 
         # Build Graph from step definitions
-        graph = session.create_graph(graph_id)
+        graph = Graph(id=graph_id, session=session)
 
         for step_data in steps_data:
             step_id = step_data["id"]
@@ -1015,13 +1099,15 @@ class NerveEngine:
         Returns:
             Dict with graph_id.
         """
+        from nerve.core.nodes.graph import Graph
+
         session = self._get_session(params)
         graph_id = params.get("graph_id")
 
         if not graph_id:
             raise ValueError("graph_id is required")
 
-        graph = session.create_graph(graph_id)
+        graph = Graph(id=graph_id, session=session)
 
         await self._emit(
             EventType.GRAPH_CREATED,

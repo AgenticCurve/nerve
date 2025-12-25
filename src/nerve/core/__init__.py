@@ -22,15 +22,16 @@ Key Concepts:
     Node:       Executable unit (terminal, function, graph)
     Graph:      Orchestrates node execution with dependencies
     Parser:     How to interpret output (specified per-command)
-    Session:    Optional grouping of nodes with metadata
+    Session:    Groups nodes and graphs with metadata
 
 Example (PTY node - you own the process):
     >>> from nerve.core.nodes import ExecutionContext
+    >>> from nerve.core.nodes.terminal import PTYNode
     >>> from nerve.core.session import Session
     >>>
     >>> async def main():
-    ...     session = Session()
-    ...     node = await session.create_node("my-node", command="claude")
+    ...     session = Session(name="my-session")
+    ...     node = await PTYNode.create(id="my-node", session=session, command="claude")
     ...     context = ExecutionContext(session=session, input="Hello!")
     ...     response = await node.execute(context)
     ...     print(response.sections)
@@ -38,12 +39,13 @@ Example (PTY node - you own the process):
 
 Example (Graph execution):
     >>> from nerve.core.nodes import FunctionNode, ExecutionContext
+    >>> from nerve.core.nodes.graph import Graph
     >>> from nerve.core.session import Session
     >>>
     >>> async def main():
     ...     session = Session(name="my-session")
-    ...     graph = session.create_graph("my-pipeline")
-    ...     fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
+    ...     graph = Graph(id="my-pipeline", session=session)
+    ...     fetch = FunctionNode(id="fetch", session=session, fn=lambda ctx: fetch_data())
     ...     graph.add_step(fetch, step_id="fetch")
     ...     results = await graph.execute(ExecutionContext(session=session))
 """
@@ -94,16 +96,11 @@ from nerve.core.pty import (
     PTYManager,
     PTYProcess,
     WezTermBackend,
-    get_backend,
     is_wezterm_available,
-)
-from nerve.core.pty import (
-    BackendType as PTYBackendType,
 )
 
 # Session
 from nerve.core.session import (
-    BackendType,
     Session,
     SessionManager,
     SessionMetadata,
@@ -162,13 +159,10 @@ __all__ = [
     "SessionManager",
     "SessionMetadata",
     "SessionStore",
-    "BackendType",
     "get_default_store",
     # Backends
     "Backend",
     "BackendConfig",
-    "PTYBackendType",
-    "get_backend",
     "PTYBackend",
     "WezTermBackend",
     "is_wezterm_available",

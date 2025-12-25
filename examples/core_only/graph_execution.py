@@ -10,7 +10,7 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext, FunctionNode
+from nerve.core.nodes import ExecutionContext, FunctionNode, Graph, PTYNode
 from nerve.core.session import Session
 
 
@@ -19,13 +19,13 @@ async def main():
 
     # Create session and node (node is auto-registered)
     session = Session()
-    claude = await session.create_node("claude", command="claude", cwd=".")
+    claude = await PTYNode.create(id="claude", session=session, command="claude", cwd=".")
 
     print(f"Claude node: {claude.id}")
     print()
 
     # Build a Graph (auto-registered in session)
-    graph = session.create_graph("haiku-pipeline")
+    graph = Graph(id="haiku-pipeline", session=session)
 
     # Step 1: Ask Claude to generate a haiku
     async def generate_haiku(ctx: ExecutionContext):
@@ -39,7 +39,7 @@ async def main():
         return response.raw
 
     graph.add_step(
-        FunctionNode(id="haiku", fn=generate_haiku),
+        FunctionNode(id="haiku", session=session, fn=generate_haiku),
         step_id="haiku",
     )
 
@@ -56,7 +56,7 @@ async def main():
         return response.raw
 
     graph.add_step(
-        FunctionNode(id="critique", fn=critique_haiku),
+        FunctionNode(id="critique", session=session, fn=critique_haiku),
         step_id="critique",
         depends_on=["haiku"],
     )
@@ -76,7 +76,7 @@ async def main():
         return response.raw
 
     graph.add_step(
-        FunctionNode(id="improved", fn=improve_haiku),
+        FunctionNode(id="improved", session=session, fn=improve_haiku),
         step_id="improved",
         depends_on=["haiku", "critique"],
     )

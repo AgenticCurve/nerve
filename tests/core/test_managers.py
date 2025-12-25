@@ -56,19 +56,17 @@ class TestSession:
         assert session.get_node("test") is mock_node
 
     def test_duplicate_node_raises(self):
-        """Test that create_node with duplicate ID raises."""
+        """Test that adding duplicate node ID raises."""
+        from nerve.core.nodes.base import FunctionNode
+
         session = Session()
-        mock_node = MagicMock()
-        mock_node.id = "node-1"
-        session.nodes["test"] = mock_node
 
-        # Create a mock that would be returned by create_node
-        # To test duplicate behavior, we'll test create_function which is sync
+        # Create first node
+        FunctionNode(id="fn1", session=session, fn=lambda ctx: None)
 
-        session.create_function("fn1", fn=lambda ctx: None)
-
+        # Creating another node with same ID should raise
         with pytest.raises(ValueError, match="already exists"):
-            session.create_function("fn1", fn=lambda ctx: None)
+            FunctionNode(id="fn1", session=session, fn=lambda ctx: None)
 
     def test_get_node(self):
         """Test getting a node by name."""
@@ -235,21 +233,25 @@ class TestSession:
         assert "Session" in repr_str
         assert "My Session" in repr_str
 
-    def test_create_function(self):
-        """Test creating a function node."""
+    def test_create_function_node(self):
+        """Test creating a function node with new API."""
+        from nerve.core.nodes.base import FunctionNode
+
         session = Session()
 
-        fn = session.create_function("test-fn", fn=lambda ctx: ctx.input)
+        fn = FunctionNode(id="test-fn", session=session, fn=lambda ctx: ctx.input)
 
         assert fn.id == "test-fn"
         assert "test-fn" in session.nodes
         assert session.get_node("test-fn") is fn
 
     def test_create_graph(self):
-        """Test creating a graph."""
+        """Test creating a graph with new API."""
+        from nerve.core.nodes.graph import Graph
+
         session = Session()
 
-        graph = session.create_graph("test-graph")
+        graph = Graph(id="test-graph", session=session)
 
         assert graph.id == "test-graph"
         assert "test-graph" in session.graphs
@@ -257,9 +259,11 @@ class TestSession:
 
     def test_delete_graph(self):
         """Test deleting a graph."""
+        from nerve.core.nodes.graph import Graph
+
         session = Session()
 
-        session.create_graph("to-delete")
+        Graph(id="to-delete", session=session)
         assert "to-delete" in session.graphs
 
         deleted = session.delete_graph("to-delete")
@@ -268,10 +272,12 @@ class TestSession:
 
     def test_list_graphs(self):
         """Test listing graph IDs."""
+        from nerve.core.nodes.graph import Graph
+
         session = Session()
 
-        session.create_graph("graph-a")
-        session.create_graph("graph-b")
+        Graph(id="graph-a", session=session)
+        Graph(id="graph-b", session=session)
 
         graphs = session.list_graphs()
         assert len(graphs) == 2

@@ -11,26 +11,26 @@ Backends:
 Classes:
     Backend: Abstract base class for backends
     BackendConfig: Configuration for backends
-    BackendType: Enum of available backend types
 
 Legacy (deprecated, use backends instead):
     PTYProcess: Alias for PTYBackend
     PTYConfig: Alias for BackendConfig
 
 Example:
-    >>> from nerve.core.pty import get_backend, BackendType, BackendConfig
+    >>> from nerve.core.pty import PTYBackend, BackendConfig
     >>>
     >>> # Use PTY backend (default)
-    >>> backend = get_backend(BackendType.PTY, ["claude"], BackendConfig(cwd="/project"))
+    >>> backend = PTYBackend(["claude"], BackendConfig(cwd="/project"))
     >>> await backend.start()
     >>> await backend.write("hello\\n")
     >>>
     >>> # Use WezTerm backend
-    >>> backend = get_backend(BackendType.WEZTERM, ["claude"])
+    >>> from nerve.core.pty import WezTermBackend
+    >>> backend = WezTermBackend(["claude"])
     >>> await backend.start()  # Opens in WezTerm pane
 """
 
-from nerve.core.pty.backend import Backend, BackendConfig, BackendType, get_backend
+from nerve.core.pty.backend import Backend, BackendConfig
 from nerve.core.pty.manager import PTYManager
 
 # Legacy aliases for backwards compatibility
@@ -44,11 +44,9 @@ from nerve.core.pty.wezterm_backend import (
 )
 
 __all__ = [
-    # New backend API
+    # Backend API
     "Backend",
     "BackendConfig",
-    "BackendType",
-    "get_backend",
     "PTYBackend",
     "WezTermBackend",
     "is_wezterm_available",

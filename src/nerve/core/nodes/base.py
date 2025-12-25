@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
+    from nerve.core.session.session import Session
 
 
 class NodeState(Enum):
@@ -173,28 +174,53 @@ class FunctionNode:
     The wrapped function receives an ExecutionContext and should return
     a result. Both sync and async functions are supported.
 
-    Example:
-        # Sync function
-        def transform(ctx: ExecutionContext) -> str:
-            return ctx.input.upper()
+    Auto-registers with session on creation.
 
-        node = FunctionNode(id="transform", fn=transform)
+    Args:
+        id: Unique identifier for this node.
+        session: Session to register this node with.
+        fn: Sync or async callable accepting ExecutionContext.
+
+    Example:
+        >>> session = Session("my-session")
+        >>> def transform(ctx: ExecutionContext) -> str:
+        ...     return ctx.input.upper()
+        >>> node = FunctionNode(id="transform", session=session, fn=transform)
 
         # Async function
-        async def fetch(ctx: ExecutionContext) -> dict:
-            return await http_client.get(ctx.input)
-
-        node = FunctionNode(id="fetch", fn=fetch)
+        >>> async def fetch(ctx: ExecutionContext) -> dict:
+        ...     return await http_client.get(ctx.input)
+        >>> node = FunctionNode(id="fetch", session=session, fn=fetch)
 
         # Lambda
-        node = FunctionNode(id="add", fn=lambda ctx: ctx.input + 1)
+        >>> node = FunctionNode(id="add", session=session, fn=lambda ctx: ctx.input + 1)
     """
 
+    # Required fields (no defaults)
     id: str
+    session: Session
     fn: Callable[[ExecutionContext], Any]
-    persistent: bool = field(default=False, init=False)
+
+    # Optional fields (with defaults)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Internal fields (not in __init__)
+    persistent: bool = field(default=False, init=False)
     _current_task: asyncio.Task[Any] | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Validate and register with session."""
+        from nerve.core.validation import validate_name
+
+        # Validate node ID
+        validate_name(self.id, "node")
+
+        # Check for duplicates
+        if self.id in self.session.nodes:
+            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+
+        # Auto-register with session
+        self.session.nodes[self.id] = self
 
     async def execute(self, context: ExecutionContext) -> Any:
         """Execute the wrapped function.
