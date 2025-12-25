@@ -29,7 +29,7 @@ class TCPSocketServer:
 
     Example:
         >>> transport = TCPSocketServer(host="0.0.0.0", port=8080)
-        >>> engine = NerveEngine(event_sink=transport)
+        >>> engine = build_nerve_engine(event_sink=transport)
         >>> await transport.serve(engine)
     """
 

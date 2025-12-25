@@ -13,7 +13,7 @@ Then in another terminal:
 
 import asyncio
 
-from nerve.server import NerveEngine
+from nerve.server import build_nerve_engine
 from nerve.transport import UnixSocketServer
 
 SOCKET_PATH = "/tmp/nerve-example.sock"
@@ -23,7 +23,7 @@ async def main():
     print("Starting nerve server...")
 
     transport = UnixSocketServer(SOCKET_PATH)
-    engine = NerveEngine(event_sink=transport)
+    engine = build_nerve_engine(event_sink=transport)
 
     print(f"Listening on: {SOCKET_PATH}")
     print("Press Ctrl+C to stop.")

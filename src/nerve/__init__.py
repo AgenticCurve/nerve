@@ -39,9 +39,9 @@ With Graph execution:
     >>> results = await graph.execute(ExecutionContext(session=session))
 
 With server:
-    >>> from nerve.server import NerveEngine
+    >>> from nerve.server import build_nerve_engine
     >>> from nerve.transport import InProcessTransport
-    >>> engine = NerveEngine(event_sink=transport)
+    >>> engine = build_nerve_engine(event_sink=transport)
 """
 
 from nerve.__version__ import __version__

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from nerve.core.nodes.history import HistoryWriter
-from nerve.server.engine import NerveEngine
+from nerve.server.engine import build_nerve_engine
 from nerve.server.protocols import Command, CommandType
 
 
@@ -37,6 +37,11 @@ def create_mock_node(node_id: str, history_writer: HistoryWriter | None = None):
     return mock_node
 
 
+def get_default_session(engine):
+    """Helper to get the default session from the engine's session registry."""
+    return engine.session_handler.session_registry.default_session
+
+
 class TestGetHistory:
     """Tests for _get_history handler."""
 
@@ -48,12 +53,13 @@ class TestGetHistory:
     @pytest.fixture
     def engine(self, event_sink, tmp_path):
         """Create engine with test configuration."""
-        engine = NerveEngine(
+        engine = build_nerve_engine(
             event_sink=event_sink,
-            _server_name="test-server",
+            server_name="test-server",
         )
         # Override history base dir for testing
-        engine._default_session.history_base_dir = tmp_path
+        session = get_default_session(engine)
+        session.history_base_dir = tmp_path
         return engine
 
     def _create_node_with_history(self, engine, node_id: str, tmp_path):
@@ -66,13 +72,15 @@ class TestGetHistory:
             enabled=True,
         )
         mock_node = create_mock_node(node_id, history_writer)
-        engine._default_session.nodes[node_id] = mock_node
+        session = get_default_session(engine)
+        session.nodes[node_id] = mock_node
         return mock_node, history_writer
 
     def _create_node_without_history(self, engine, node_id: str):
         """Helper to create a mock node without history."""
         mock_node = create_mock_node(node_id, history_writer=None)
-        engine._default_session.nodes[node_id] = mock_node
+        session = get_default_session(engine)
+        session.nodes[node_id] = mock_node
         return mock_node
 
     @pytest.mark.asyncio
@@ -98,7 +106,7 @@ class TestGetHistory:
             assert result.data["total"] >= 1  # At least the write entry
         finally:
             history_writer.close()
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
     @pytest.mark.asyncio
     async def test_get_history_with_last_limit(self, engine, tmp_path):
@@ -125,7 +133,7 @@ class TestGetHistory:
             assert len(result.data["entries"]) == 2
         finally:
             history_writer.close()
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
     @pytest.mark.asyncio
     async def test_get_history_with_op_filter(self, engine, tmp_path):
@@ -153,7 +161,7 @@ class TestGetHistory:
                 assert entry["op"] == "write"
         finally:
             history_writer.close()
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
     @pytest.mark.asyncio
     async def test_get_history_with_inputs_only(self, engine, tmp_path):
@@ -182,7 +190,7 @@ class TestGetHistory:
                 assert entry["op"] in input_ops
         finally:
             history_writer.close()
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
     @pytest.mark.asyncio
     async def test_get_history_missing_node(self, engine, tmp_path):
@@ -221,10 +229,10 @@ class TestGetHistory:
             assert result.data["total"] == 0
             assert "note" in result.data
         finally:
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
     @pytest.mark.asyncio
-    async def test_get_history_requires_node_id(self, engine):
+    async def test_get_history_requires_node_id(self, engine, tmp_path):
         """Test that node_id is required."""
         result = await engine.execute(
             Command(
@@ -256,7 +264,7 @@ class TestGetHistory:
             assert result.data["server_name"] == "test-server"
         finally:
             history_writer.close()
-            engine._default_session.nodes.clear()
+            get_default_session(engine).nodes.clear()
 
 
 class TestTimeoutParameters:
@@ -268,18 +276,19 @@ class TestTimeoutParameters:
         return MockEventSink()
 
     @pytest.fixture
-    def engine(self, event_sink):
+    def engine(self, event_sink, tmp_path):
         """Create engine with test configuration."""
-        return NerveEngine(
+        engine = build_nerve_engine(
             event_sink=event_sink,
-            _server_name="test-server",
+            server_name="test-server",
         )
+        session = get_default_session(engine)
+        session.history_base_dir = tmp_path
+        return engine
 
     @pytest.mark.asyncio
     async def test_create_node_with_default_timeouts(self, engine):
         """Test CREATE_NODE uses default timeout values when not specified."""
-        from unittest.mock import patch
-
         with patch("nerve.core.nodes.terminal.PTYNode.create") as mock_create:
             mock_node = MagicMock()
             mock_node.id = "test-node"
@@ -307,8 +316,6 @@ class TestTimeoutParameters:
     @pytest.mark.asyncio
     async def test_create_node_with_custom_timeouts(self, engine):
         """Test CREATE_NODE accepts custom timeout values."""
-        from unittest.mock import patch
-
         with patch("nerve.core.nodes.terminal.PTYNode.create") as mock_create:
             mock_node = MagicMock()
             mock_node.id = "test-node"
@@ -338,8 +345,6 @@ class TestTimeoutParameters:
     @pytest.mark.asyncio
     async def test_create_wezterm_node_with_timeouts(self, engine):
         """Test CREATE_NODE with wezterm backend passes timeout values."""
-        from unittest.mock import patch
-
         with patch("nerve.core.nodes.terminal.WezTermNode.create") as mock_create:
             mock_node = MagicMock()
             mock_node.id = "test-node"
@@ -367,8 +372,6 @@ class TestTimeoutParameters:
     @pytest.mark.asyncio
     async def test_create_wezterm_attach_with_timeouts(self, engine):
         """Test CREATE_NODE with wezterm attach passes timeout values."""
-        from unittest.mock import patch
-
         with patch("nerve.core.nodes.terminal.WezTermNode.attach") as mock_attach:
             mock_node = MagicMock()
             mock_node.id = "test-node"
@@ -396,8 +399,6 @@ class TestTimeoutParameters:
     @pytest.mark.asyncio
     async def test_create_claude_wezterm_node_with_timeouts(self, engine):
         """Test CREATE_NODE with claude-wezterm backend passes timeout values."""
-        from unittest.mock import patch
-
         with patch("nerve.core.nodes.terminal.ClaudeWezTermNode.create") as mock_create:
             mock_node = MagicMock()
             mock_node.id = "test-node"
@@ -447,7 +448,8 @@ class TestTimeoutParameters:
             )
 
         mock_node.execute = mock_execute
-        engine._default_session.nodes["test-node"] = mock_node
+        session = get_default_session(engine)
+        session.nodes["test-node"] = mock_node
 
         try:
             result = await engine.execute(
@@ -465,7 +467,7 @@ class TestTimeoutParameters:
             assert captured_context is not None
             assert captured_context.timeout == 2400.0
         finally:
-            engine._default_session.nodes.clear()
+            session.nodes.clear()
 
     @pytest.mark.asyncio
     async def test_execute_input_without_timeout(self, engine):
@@ -492,7 +494,8 @@ class TestTimeoutParameters:
             )
 
         mock_node.execute = mock_execute
-        engine._default_session.nodes["test-node"] = mock_node
+        session = get_default_session(engine)
+        session.nodes["test-node"] = mock_node
 
         try:
             result = await engine.execute(
@@ -510,4 +513,4 @@ class TestTimeoutParameters:
             assert captured_context is not None
             assert captured_context.timeout is None
         finally:
-            engine._default_session.nodes.clear()
+            session.nodes.clear()

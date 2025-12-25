@@ -27,7 +27,7 @@ class InProcessTransport:
 
     Example:
         >>> transport = InProcessTransport()
-        >>> engine = NerveEngine(event_sink=transport)
+        >>> engine = build_nerve_engine(event_sink=transport)
         >>>
         >>> # Send command directly through transport
         >>> result = await transport.send_command(Command(

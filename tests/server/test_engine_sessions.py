@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from nerve.server.engine import NerveEngine
+from nerve.server.engine import build_nerve_engine
 from nerve.server.protocols import Command, CommandType
 
 
@@ -18,6 +18,16 @@ class MockEventSink:
         self.events.append(event)
 
 
+def get_default_session(engine):
+    """Helper to get the default session from the engine's session registry."""
+    return engine.session_handler.session_registry.default_session
+
+
+def get_session_registry(engine):
+    """Helper to get the session registry from the engine."""
+    return engine.session_handler.session_registry
+
+
 class TestEngineSessionCommands:
     """Tests for session management commands."""
 
@@ -29,9 +39,9 @@ class TestEngineSessionCommands:
     @pytest.fixture
     def engine(self, event_sink):
         """Create engine with test configuration."""
-        return NerveEngine(
+        return build_nerve_engine(
             event_sink=event_sink,
-            _server_name="test-server",
+            server_name="test-server",
         )
 
     @pytest.mark.asyncio
@@ -49,7 +59,8 @@ class TestEngineSessionCommands:
 
         # Verify session exists
         session_id = result.data["session_id"]
-        assert session_id in engine._sessions
+        registry = get_session_registry(engine)
+        assert registry.has_session(session_id)
 
     @pytest.mark.asyncio
     async def test_delete_session(self, engine):
@@ -72,15 +83,17 @@ class TestEngineSessionCommands:
         )
 
         assert result.success is True
-        assert session_id not in engine._sessions
+        registry = get_session_registry(engine)
+        assert not registry.has_session(session_id)
 
     @pytest.mark.asyncio
     async def test_delete_default_session_raises(self, engine):
         """Cannot delete default session."""
+        default_session = get_default_session(engine)
         result = await engine.execute(
             Command(
                 type=CommandType.DELETE_SESSION,
-                params={"session_id": engine._default_session.id},
+                params={"session_id": default_session.name},
             )
         )
 
@@ -118,6 +131,7 @@ class TestEngineSessionCommands:
     @pytest.mark.asyncio
     async def test_get_session(self, engine):
         """GET_SESSION returns session info."""
+        default_session = get_default_session(engine)
         # Use default session (no session_id param means default)
         result = await engine.execute(
             Command(
@@ -127,7 +141,7 @@ class TestEngineSessionCommands:
         )
 
         assert result.success is True
-        assert result.data["session_id"] == engine._default_session.id
+        assert result.data["session_id"] == default_session.name
         assert "nodes" in result.data
         assert "graphs" in result.data
 
@@ -143,9 +157,9 @@ class TestEngineGraphCommands:
     @pytest.fixture
     def engine(self, event_sink):
         """Create engine with test configuration."""
-        return NerveEngine(
+        return build_nerve_engine(
             event_sink=event_sink,
-            _server_name="test-server",
+            server_name="test-server",
         )
 
     @pytest.mark.asyncio
@@ -160,7 +174,8 @@ class TestEngineGraphCommands:
 
         assert result.success is True
         assert result.data["graph_id"] == "test-graph"
-        assert "test-graph" in engine._default_session.graphs
+        default_session = get_default_session(engine)
+        assert "test-graph" in default_session.graphs
 
     @pytest.mark.asyncio
     async def test_delete_graph(self, engine):
@@ -182,7 +197,8 @@ class TestEngineGraphCommands:
         )
 
         assert result.success is True
-        assert "to-delete" not in engine._default_session.graphs
+        default_session = get_default_session(engine)
+        assert "to-delete" not in default_session.graphs
 
     @pytest.mark.asyncio
     async def test_list_graphs(self, engine):
@@ -225,9 +241,9 @@ class TestEngineSessionRouting:
     @pytest.fixture
     def engine(self, event_sink):
         """Create engine with test configuration."""
-        return NerveEngine(
+        return build_nerve_engine(
             event_sink=event_sink,
-            _server_name="test-server",
+            server_name="test-server",
         )
 
     @pytest.mark.asyncio
@@ -253,9 +269,11 @@ class TestEngineSessionRouting:
         assert graph_result.success is True, f"Graph creation failed: {graph_result.error}"
 
         # Verify it's in the specific session, not default
-        other_session = engine._sessions[session_id]
+        registry = get_session_registry(engine)
+        other_session = registry.get_session(session_id)
+        default_session = get_default_session(engine)
         assert "specific-graph" in other_session.graphs
-        assert "specific-graph" not in engine._default_session.graphs
+        assert "specific-graph" not in default_session.graphs
 
     @pytest.mark.asyncio
     async def test_create_graph_default_session(self, engine):
@@ -267,7 +285,8 @@ class TestEngineSessionRouting:
             )
         )
 
-        assert "default-graph" in engine._default_session.graphs
+        default_session = get_default_session(engine)
+        assert "default-graph" in default_session.graphs
 
     @pytest.mark.asyncio
     async def test_invalid_session_id_raises(self, engine):

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nerve.server.engine import NerveEngine
+from nerve.server.engine import build_nerve_engine
 from nerve.server.protocols import Command, CommandType, Event
 
 
@@ -18,6 +18,16 @@ class MockEventSink:
         self.events.append(event)
 
 
+def get_default_session(engine):
+    """Helper to get the default session from the engine's session registry."""
+    return engine.session_handler.session_registry.default_session
+
+
+def get_proxy_manager(engine):
+    """Helper to get the proxy manager from the engine."""
+    return engine.node_lifecycle_handler.proxy_manager
+
+
 class TestEngineProxyIntegration:
     """Tests for NerveEngine proxy management."""
 
@@ -29,8 +39,9 @@ class TestEngineProxyIntegration:
     @pytest.fixture
     def engine(self, event_sink, tmp_path):
         """Create a NerveEngine for testing."""
-        engine = NerveEngine(event_sink=event_sink, _server_name="test-server")
-        engine._default_session.history_base_dir = tmp_path
+        engine = build_nerve_engine(event_sink=event_sink, server_name="test-server")
+        session = get_default_session(engine)
+        session.history_base_dir = tmp_path
         return engine
 
     @pytest.fixture
@@ -60,6 +71,7 @@ class TestEngineProxyIntegration:
             "nerve.core.nodes.terminal.claude_wezterm_node.WezTermNode._create_internal",
             return_value=mock_inner_node,
         ):
+            proxy_manager = get_proxy_manager(engine)
             try:
                 result = await engine.execute(
                     Command(
@@ -81,8 +93,9 @@ class TestEngineProxyIntegration:
 
             finally:
                 # Cleanup
-                await engine._proxy_manager.stop_all()
-                engine._default_session.nodes.pop("test-claude", None)
+                await proxy_manager.stop_all()
+                session = get_default_session(engine)
+                session.nodes.pop("test-claude", None)
 
     async def test_delete_node_stops_proxy(self, engine):
         """Node deletion also stops the associated proxy.
@@ -99,15 +112,17 @@ class TestEngineProxyIntegration:
             api_key="test-key",
         )
 
+        proxy_manager = get_proxy_manager(engine)
+
         # Start proxy
-        await engine._proxy_manager.start_proxy("test-node", provider_config)
-        assert engine._proxy_manager.get_proxy_url("test-node") is not None
+        await proxy_manager.start_proxy("test-node", provider_config)
+        assert proxy_manager.get_proxy_url("test-node") is not None
 
         # Manually delete the proxy (simulating what _delete_node does)
-        await engine._proxy_manager.stop_proxy("test-node")
+        await proxy_manager.stop_proxy("test-node")
 
         # Verify proxy is stopped
-        assert engine._proxy_manager.get_proxy_url("test-node") is None
+        assert proxy_manager.get_proxy_url("test-node") is None
 
     async def test_engine_stop_cleans_up_all_proxies(self, engine):
         """Engine stop calls proxy_manager.stop_all().
@@ -115,6 +130,8 @@ class TestEngineProxyIntegration:
         When the engine is stopped, all proxies should be cleaned up.
         """
         from nerve.server.proxy_manager import ProviderConfig
+
+        proxy_manager = get_proxy_manager(engine)
 
         # Start multiple proxies
         config1 = ProviderConfig(
@@ -129,19 +146,19 @@ class TestEngineProxyIntegration:
             model="gpt-4o",
         )
 
-        await engine._proxy_manager.start_proxy("node-1", config1)
-        await engine._proxy_manager.start_proxy("node-2", config2)
+        await proxy_manager.start_proxy("node-1", config1)
+        await proxy_manager.start_proxy("node-2", config2)
 
         # Verify proxies are running
-        assert engine._proxy_manager.get_proxy_url("node-1") is not None
-        assert engine._proxy_manager.get_proxy_url("node-2") is not None
+        assert proxy_manager.get_proxy_url("node-1") is not None
+        assert proxy_manager.get_proxy_url("node-2") is not None
 
-        # Call cleanup (what _stop does internally)
-        await engine._cleanup_on_stop()
+        # Call cleanup (what ServerHandler._cleanup_on_stop does internally)
+        await engine.server_handler._cleanup_on_stop()
 
         # Verify all proxies are stopped
-        assert engine._proxy_manager.get_proxy_url("node-1") is None
-        assert engine._proxy_manager.get_proxy_url("node-2") is None
+        assert proxy_manager.get_proxy_url("node-1") is None
+        assert proxy_manager.get_proxy_url("node-2") is None
 
 
 class TestEngineProviderValidation:
@@ -153,8 +170,9 @@ class TestEngineProviderValidation:
 
     @pytest.fixture
     def engine(self, event_sink, tmp_path):
-        engine = NerveEngine(event_sink=event_sink, _server_name="test-server")
-        engine._default_session.history_base_dir = tmp_path
+        engine = build_nerve_engine(event_sink=event_sink, server_name="test-server")
+        session = get_default_session(engine)
+        session.history_base_dir = tmp_path
         return engine
 
     async def test_provider_only_allowed_for_claude_wezterm(self, engine):

@@ -10,11 +10,11 @@ This enables patterns like:
 
 Example:
     >>> from nerve.frontends.mcp import NerveMCPServer
-    >>> from nerve.server import NerveEngine
+    >>> from nerve.server import build_nerve_engine
     >>> from nerve.transport import InProcessTransport
     >>>
     >>> transport = InProcessTransport()
-    >>> engine = NerveEngine(event_sink=transport)
+    >>> engine = build_nerve_engine(event_sink=transport)
     >>> mcp = NerveMCPServer(engine)
     >>> await mcp.run()
 

@@ -30,7 +30,7 @@ class UnixSocketServer:
 
     Example:
         >>> transport = UnixSocketServer("/tmp/nerve.sock")
-        >>> engine = NerveEngine(event_sink=transport)
+        >>> engine = build_nerve_engine(event_sink=transport)
         >>> await transport.serve(engine)
     """
 

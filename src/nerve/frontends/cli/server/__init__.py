@@ -207,7 +207,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
 
     click.echo(f"Starting nerve daemon '{name}'...")
 
-    from nerve.server import NerveEngine
+    from nerve.server import build_nerve_engine
     from nerve.transport import HTTPServer, TCPSocketServer, UnixSocketServer
 
     # Determine transport type
@@ -233,7 +233,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
         transport = UnixSocketServer(socket_path)
         click.echo(f"Listening on {socket_path}")
 
-    engine = NerveEngine(event_sink=transport, _server_name=name)
+    engine = build_nerve_engine(event_sink=transport, server_name=name)
 
     # Create new process group so we can kill all children on force stop
     os.setpgrp()
@@ -258,7 +258,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
         async def force_cleanup_and_exit() -> None:
             """Force kill all nodes and exit."""
             click.echo("Killing nodes...")
-            for session in engine._sessions.values():
+            for session in engine.session_registry.get_all_sessions():
                 for node_id, node in list(session.nodes.items()):
                     try:
                         if hasattr(node, "stop"):
@@ -281,7 +281,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
             if shutdown_count[0] == 1:
                 click.echo(f"\nReceived {sig_name}, shutting down gracefully...")
                 click.echo("(Press Ctrl+C again to force quit)")
-                engine._shutdown_requested = True
+                engine.request_shutdown()
                 shutdown_event.set()
             else:
                 click.echo("\nForce quitting...")
@@ -296,7 +296,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
         finally:
             # Clean up all nodes before exiting
             click.echo("Cleaning up nodes...")
-            for session in engine._sessions.values():
+            for session in engine.session_registry.get_all_sessions():
                 for _node_id, node in list(session.nodes.items()):
                     try:
                         if hasattr(node, "stop"):

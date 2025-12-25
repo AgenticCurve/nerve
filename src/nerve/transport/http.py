@@ -29,7 +29,7 @@ class HTTPServer:
 
     Example:
         >>> transport = HTTPServer(host="0.0.0.0", port=8080)
-        >>> engine = NerveEngine(event_sink=transport)
+        >>> engine = build_nerve_engine(event_sink=transport)
         >>> await transport.serve(engine)
     """
 
@@ -189,7 +189,7 @@ class HTTPServer:
             )
 
         # Trigger engine shutdown (the serve loop polls this)
-        self._engine._shutdown_requested = True
+        self._engine.request_shutdown()
         self._running = False
 
         return web.json_response({"success": True, "message": "Shutdown initiated"})

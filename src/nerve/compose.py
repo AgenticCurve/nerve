@@ -71,11 +71,11 @@ def create_standalone() -> tuple[NerveEngine, InProcessTransport]:
         ...     params={"node_id": "my-node", "command": "claude"},
         ... ))
     """
-    from nerve.server import NerveEngine
+    from nerve.server import build_nerve_engine
     from nerve.transport import InProcessTransport
 
     transport = InProcessTransport()
-    engine = NerveEngine(event_sink=transport)
+    engine = build_nerve_engine(event_sink=transport)
     transport.bind(engine)
 
     return engine, transport
@@ -89,11 +89,11 @@ async def create_socket_server(socket_path: str = "/tmp/nerve.sock") -> None:
     Args:
         socket_path: Path for the Unix socket.
     """
-    from nerve.server import NerveEngine
+    from nerve.server import build_nerve_engine
     from nerve.transport import UnixSocketServer
 
     transport = UnixSocketServer(socket_path)
-    engine = NerveEngine(event_sink=transport)
+    engine = build_nerve_engine(event_sink=transport)
 
     await transport.serve(engine)
 
@@ -107,11 +107,11 @@ async def create_http_server(host: str = "127.0.0.1", port: int = 8080) -> None:
         host: Host to bind to.
         port: Port to bind to.
     """
-    from nerve.server import NerveEngine
+    from nerve.server import build_nerve_engine
     from nerve.transport import HTTPServer
 
     transport = HTTPServer(host=host, port=port)
-    engine = NerveEngine(event_sink=transport)
+    engine = build_nerve_engine(event_sink=transport)
 
     await transport.serve(engine)
 

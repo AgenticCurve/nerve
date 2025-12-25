@@ -11,10 +11,10 @@ Available transports:
 
 Example (in-process):
     >>> from nerve.transport import InProcessTransport
-    >>> from nerve.server import NerveEngine
+    >>> from nerve.server import build_nerve_engine
     >>>
     >>> transport = InProcessTransport()
-    >>> engine = NerveEngine(event_sink=transport)
+    >>> engine = build_nerve_engine(event_sink=transport)
     >>>
     >>> # Client uses transport directly
     >>> result = await transport.send_command(Command(...))
@@ -23,10 +23,10 @@ Example (in-process):
 
 Example (socket server):
     >>> from nerve.transport import UnixSocketTransport
-    >>> from nerve.server import NerveEngine
+    >>> from nerve.server import build_nerve_engine
     >>>
     >>> transport = UnixSocketTransport("/tmp/nerve.sock")
-    >>> engine = NerveEngine(event_sink=transport)
+    >>> engine = build_nerve_engine(event_sink=transport)
     >>> await transport.serve(engine)
 """
 

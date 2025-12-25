@@ -10,7 +10,7 @@ Usage:
 
 import asyncio
 
-from nerve.server import Command, CommandType, NerveEngine
+from nerve.server import Command, CommandType, build_nerve_engine
 from nerve.transport import InProcessTransport
 
 
@@ -19,7 +19,7 @@ async def main():
 
     # Create transport and engine
     transport = InProcessTransport()
-    engine = NerveEngine(event_sink=transport)
+    engine = build_nerve_engine(event_sink=transport)
     transport.bind(engine)
 
     print("Engine ready.")

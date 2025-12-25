@@ -1,7 +1,4 @@
 ./
-├── docs/
-│   └── prd/
-│       └── [L: 850] openai-provider-support.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -16,7 +13,7 @@
 │   ├── [L: 587] dev_coach.py
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 760] dev_coach_review.py
+│   ├── [L: 736] dev_coach_review.py
 │   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
@@ -77,7 +74,7 @@
 │       │   │   ├── [L: 108] manager.py
 │       │   │   ├── [L: 262] process.py
 │       │   │   ├── [L: 276] pty_backend.py
-│       │   │   └── [L: 520] wezterm_backend.py
+│       │   │   └── [L: 528] wezterm_backend.py
 │       │   ├── session/
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 125] manager.py
@@ -94,9 +91,10 @@
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
+│       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 841] core.py
+│       │   │   │   ├── [L: 852] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
@@ -131,10 +129,24 @@
 │       │       ├── [L: 115] types.py
 │       │       └── [L: 197] validation.py
 │       ├── server/
-│       │   ├── [L:  64] __init__.py
-│       │   ├── [L:1414] engine.py
+│       │   ├── [L:  65] __init__.py
+│       │   ├── [L: 295] engine.py
+│       │   ├── factories/
+│       │   │   ├── [L:  11] __init__.py
+│       │   │   └── [L: 136] node_factory.py
+│       │   ├── handlers/
+│       │   │   ├── [L:  29] __init__.py
+│       │   │   ├── [L: 346] graph_handler.py
+│       │   │   ├── [L: 287] node_interaction_handler.py
+│       │   │   ├── [L: 356] node_lifecycle_handler.py
+│       │   │   ├── [L: 249] python_executor.py
+│       │   │   ├── [L: 217] repl_command_handler.py
+│       │   │   ├── [L: 114] server_handler.py
+│       │   │   └── [L: 169] session_handler.py
 │       │   ├── [L: 154] protocols.py
-│       │   └── [L: 468] proxy_manager.py
+│       │   ├── [L: 466] proxy_manager.py
+│       │   ├── [L: 158] session_registry.py
+│       │   └── [L:  94] validation.py
 │       └── transport/
 │           ├── [L:  52] __init__.py
 │           ├── [L: 372] http.py
@@ -198,11 +210,13 @@
     │       └── [L: 148] test_tool_id_mapper.py
     ├── server/
     │   ├── [L:   0] __init__.py
-    │   ├── [L: 513] test_engine.py
-    │   ├── [L: 269] test_engine_proxy.py
-    │   ├── [L: 283] test_engine_sessions.py
-    │   └── [L: 284] test_proxy_manager.py
+    │   ├── [L: 516] test_engine.py
+    │   ├── [L: 287] test_engine_proxy.py
+    │   ├── [L: 302] test_engine_sessions.py
+    │   ├── [L: 284] test_proxy_manager.py
+    │   ├── [L: 194] test_session_registry.py
+    │   └── [L: 204] test_validation.py
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 162 files, 35,912 total lines
+44 directories, 176 files, 36,680 total lines
