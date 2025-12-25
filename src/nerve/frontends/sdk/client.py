@@ -197,7 +197,7 @@ class NerveClient:
         if self._transport:
             await self._transport.disconnect()
 
-        if self._standalone_session:
+        if self._standalone_session is not None:
             # Stop all nodes tracked in the session
             await self._standalone_session.stop()
 
@@ -231,10 +231,13 @@ class NerveClient:
 
         validate_name(name, "node")
 
-        if self._standalone_session:
-            # Use Session directly (node is auto-registered)
-            node = await self._standalone_session.create_node(
-                node_id=name,
+        if self._standalone_session is not None:
+            # Use PTYNode.create() directly (node is auto-registered)
+            from nerve.core.nodes.terminal import PTYNode
+
+            node = await PTYNode.create(
+                id=name,
+                session=self._standalone_session,
                 command=command,
                 cwd=cwd,
             )
@@ -286,7 +289,7 @@ class NerveClient:
         Returns:
             List of node IDs.
         """
-        if self._standalone_session:
+        if self._standalone_session is not None:
             return list(self._nodes.keys())
 
         from nerve.server.protocols import Command, CommandType

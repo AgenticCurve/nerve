@@ -13,14 +13,15 @@ Key Concepts:
     Node:       Executable unit (terminal, function, graph)
     Graph:      Orchestrates node execution with dependencies
     Parser:     How to interpret output (specified per-command)
-    Session:    Optional grouping of nodes with metadata
+    Session:    Groups nodes and graphs with metadata
 
 Quick Start (create a terminal node):
     >>> from nerve.core.nodes import ExecutionContext
+    >>> from nerve.core.nodes.terminal import PTYNode
     >>> from nerve.core.session import Session
     >>>
-    >>> session = Session()
-    >>> node = await session.create_node("my-node", command="claude")
+    >>> session = Session(name="my-session")
+    >>> node = await PTYNode.create(id="my-node", session=session, command="claude")
     >>> context = ExecutionContext(session=session, input="Hello!")
     >>> response = await node.execute(context)
     >>> print(response.sections)
@@ -28,11 +29,12 @@ Quick Start (create a terminal node):
 
 With Graph execution:
     >>> from nerve.core.nodes import FunctionNode, ExecutionContext
+    >>> from nerve.core.nodes.graph import Graph
     >>> from nerve.core.session import Session
     >>>
     >>> session = Session(name="my-session")
-    >>> graph = session.create_graph("pipeline")
-    >>> fetch = FunctionNode(id="fetch", fn=lambda ctx: fetch_data())
+    >>> graph = Graph(id="pipeline", session=session)
+    >>> fetch = FunctionNode(id="fetch", session=session, fn=lambda ctx: fetch_data())
     >>> graph.add_step(fetch, step_id="fetch")
     >>> results = await graph.execute(ExecutionContext(session=session))
 
@@ -46,7 +48,6 @@ from nerve.__version__ import __version__
 
 # Re-export core for convenience
 from nerve.core import (
-    BackendType,
     ClaudeWezTermNode,
     ExecutionContext,
     FunctionNode,
@@ -83,7 +84,6 @@ __all__ = [
     "SessionManager",
     "SessionState",
     # Types
-    "BackendType",
     "ParserType",
     "ParsedResponse",
     "Section",

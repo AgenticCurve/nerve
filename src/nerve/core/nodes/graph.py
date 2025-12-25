@@ -217,10 +217,16 @@ class Graph:
     - Budget enforcement across all steps
     - Cooperative cancellation
     - Execution tracing
+    - Auto-registers with session on creation
+
+    Args:
+        id: Unique identifier for this graph.
+        session: Session to register this graph with.
+        max_parallel: Maximum concurrent step executions (default 1 = sequential).
 
     Example:
         >>> session = Session(name="my-session")
-        >>> graph = session.create_graph("pipeline")
+        >>> graph = Graph(id="pipeline", session=session)
         >>>
         >>> # Add steps with nodes
         >>> graph.add_step(fetch_node, step_id="fetch", input="http://api")
@@ -235,20 +241,21 @@ class Graph:
     def __init__(self, id: str, session: Session, max_parallel: int = 1) -> None:
         """Initialize a graph and register it with the session.
 
-        IMPORTANT: Graphs must be created through a Session for proper lifecycle management.
-        Use session.create_graph() instead of calling this directly.
-
         Args:
             id: Unique identifier for this graph.
             session: Session to register this graph with.
             max_parallel: Maximum concurrent step executions (default 1 = sequential).
+
+        Raises:
+            ValueError: If graph_id is empty or already exists in session.
         """
         if not id or not id.strip():
             raise ValueError("graph_id cannot be empty")
         if id in session.graphs:
-            raise ValueError(f"Graph '{id}' already exists in session")
+            raise ValueError(f"Graph '{id}' already exists in session '{session.name}'")
 
         self._id = id
+        self._session = session
         self._steps: dict[str, Step] = {}
         self._max_parallel = max_parallel
 
@@ -264,6 +271,11 @@ class Graph:
     def id(self) -> str:
         """Unique identifier for this graph."""
         return self._id
+
+    @property
+    def session(self) -> Session:
+        """Session this graph is registered with."""
+        return self._session
 
     @property
     def persistent(self) -> bool:

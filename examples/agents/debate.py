@@ -11,7 +11,7 @@ Usage:
 import asyncio
 
 from nerve.core import ParserType
-from nerve.core.nodes import ExecutionContext
+from nerve.core.nodes import ExecutionContext, PTYNode
 from nerve.core.session import Session
 
 ROUNDS = 3
@@ -24,8 +24,8 @@ async def main():
     # Create session and nodes (nodes are auto-registered)
     session = Session()
 
-    advocate_python = await session.create_node(node_id="python-advocate", command="claude")
-    advocate_js = await session.create_node(node_id="js-advocate", command="claude")
+    advocate_python = await PTYNode.create(id="python-advocate", session=session, command="claude")
+    advocate_js = await PTYNode.create(id="js-advocate", session=session, command="claude")
 
     print(f"Python advocate: {advocate_python.id}")
     print(f"JavaScript advocate: {advocate_js.id}")

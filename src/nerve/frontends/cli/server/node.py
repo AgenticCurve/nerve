@@ -113,11 +113,12 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
 )
 @click.option("--cwd", default=None, help="Working directory for the node")
 @click.option(
-    "--backend",
-    "-b",
-    type=click.Choice(["pty", "wezterm", "claude-wezterm"]),
-    default="pty",
-    help="Backend (pty, wezterm, or claude-wezterm)",
+    "--type",
+    "-t",
+    "node_type",
+    type=click.Choice(["PTYNode", "WezTermNode", "ClaudeWezTermNode"]),
+    default="PTYNode",
+    help="Node type (PTYNode, WezTermNode, or ClaudeWezTermNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
@@ -133,7 +134,7 @@ def node_create(
     session_id: str | None,
     command: str | None,
     cwd: str | None,
-    backend: str,
+    node_type: str,
     pane_id: str | None,
     history: bool,
 ) -> None:
@@ -148,9 +149,9 @@ def node_create(
 
         nerve server node create gemini-1 --server myproject --command gemini
 
-        nerve server node create attached --server myproject --backend wezterm --pane-id 4
+        nerve server node create attached --server myproject --type WezTermNode --pane-id 4
 
-        nerve server node create claude --server myproject --session my-workspace
+        nerve server node create claude --server myproject --type ClaudeWezTermNode --command claude
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -160,6 +161,14 @@ def node_create(
     except ValueError as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
+
+    # Map node type to wire protocol backend value
+    type_to_backend = {
+        "PTYNode": "pty",
+        "WezTermNode": "wezterm",
+        "ClaudeWezTermNode": "claude-wezterm",
+    }
+    backend = type_to_backend.get(node_type, "pty")
 
     async def run() -> None:
         try:

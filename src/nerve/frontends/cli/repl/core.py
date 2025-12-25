@@ -76,8 +76,12 @@ async def run_interactive(
         ExecutionContext,
         FunctionNode,
         Graph,
+        PTYNode,
+        WezTermNode,
     )
-    from nerve.core.session import BackendType, Session
+    from nerve.core.nodes.bash import BashNode
+    from nerve.core.nodes.terminal import ClaudeWezTermNode
+    from nerve.core.session import Session
 
     # Determine mode and create adapter
     adapter: SessionAdapter
@@ -132,16 +136,23 @@ async def run_interactive(
     if python_exec_enabled:
         state.namespace = {
             "asyncio": asyncio,
+            # Node classes (use with session parameter)
+            "BashNode": BashNode,
             "FunctionNode": FunctionNode,
+            "Graph": Graph,
+            "PTYNode": PTYNode,
+            "WezTermNode": WezTermNode,
+            "ClaudeWezTermNode": ClaudeWezTermNode,
+            # Other classes
             "ExecutionContext": ExecutionContext,
             "Session": Session,
             "ParserType": ParserType,
-            "BackendType": BackendType,
+            # Internal state
             "nodes": state.nodes,  # Node tracking dict
+            # Pre-configured instances
             "session": session,  # Default session
             "context": ExecutionContext(session=session),  # Pre-configured context
             "_state": state,
-            # NOTE: Graph, PTYNode, WezTermNode removed - use session.create_*() instead
         }
     else:
         state.namespace = {}

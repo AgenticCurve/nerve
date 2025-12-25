@@ -3,10 +3,11 @@
 SessionManager manages sessions (groups of nodes).
 
 Example:
-    >>> from nerve.core.session import Session, SessionManager
+    >>> from nerve.core.session import Session
+    >>> from nerve.core.nodes.terminal import PTYNode
     >>>
-    >>> session = Session()
-    >>> node = await session.create_node("my-node", command="bash")
+    >>> session = Session(name="my-session")
+    >>> node = await PTYNode.create(id="my-node", session=session, command="bash")
 """
 
 from __future__ import annotations
@@ -26,13 +27,15 @@ class SessionManager:
     Use this when you need logical groupings of nodes with metadata.
 
     Example:
+        >>> from nerve.core.nodes.terminal import PTYNode
+        >>>
         >>> manager = SessionManager()
         >>>
         >>> # Create a session
         >>> session = manager.create_session(name="my-project")
         >>>
         >>> # Create nodes (auto-registered in session)
-        >>> shell = await session.create_node("shell", command="bash")
+        >>> shell = await PTYNode.create(id="shell", session=session, command="bash")
         >>>
         >>> # Close session (stops all its nodes)
         >>> await manager.close_session(session.id)

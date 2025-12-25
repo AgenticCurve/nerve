@@ -30,11 +30,14 @@ from nerve.core.types import ParsedResponse, ParserType
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
+    from nerve.core.session.session import Session
 
 
 @dataclass
 class PTYNode:
     """PTY-based terminal node.
+
+    IMPORTANT: Cannot be instantiated directly. Use PTYNode.create() instead.
 
     BUFFER SEMANTICS: Continuous accumulation.
     - Buffer grows continuously as output is received
@@ -46,61 +49,99 @@ class PTYNode:
     Input comes from ExecutionContext.input (string).
 
     Example:
-        >>> node = await PTYNode.create("shell", command="bash")
+        >>> session = Session("my-session")
+        >>> node = await PTYNode.create(
+        ...     id="shell",
+        ...     session=session,
+        ...     command="bash"
+        ... )
         >>> context = ExecutionContext(session=session, input="ls -la")
         >>> response = await node.execute(context)
         >>> print(response.raw)
         >>> await node.stop()
     """
 
+    # Required fields (set during .create())
     id: str
+    session: Session
     backend: PTYBackend
     command: str | None = None
     state: NodeState = NodeState.STARTING
+
+    # Internal fields (not in __init__)
     persistent: bool = field(default=True, init=False)
-    _default_parser: ParserType = ParserType.NONE
-    _last_input: str = field(default="", repr=False)
-    _ready_timeout: float = field(default=60.0, repr=False)
-    _response_timeout: float = field(default=1800.0, repr=False)
-    _reader_task: asyncio.Task[None] | None = field(default=None, repr=False)
-    _history_writer: HistoryWriter | None = field(default=None, repr=False)
+    _default_parser: ParserType = field(default=ParserType.NONE, init=False)
+    _last_input: str = field(default="", init=False, repr=False)
+    _ready_timeout: float = field(default=60.0, init=False, repr=False)
+    _response_timeout: float = field(default=1800.0, init=False, repr=False)
+    _reader_task: asyncio.Task[None] | None = field(default=None, init=False, repr=False)
+    _history_writer: HistoryWriter | None = field(default=None, init=False, repr=False)
+    _created_via_create: bool = field(default=False, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Prevent direct instantiation."""
+        if not self._created_via_create:
+            raise TypeError(
+                f"Cannot instantiate {self.__class__.__name__} directly. "
+                f"Use: await {self.__class__.__name__}.create(id, session, ...)"
+            )
 
     @classmethod
-    async def _create(
+    async def create(
         cls,
-        node_id: str,
+        id: str,
+        session: Session,
         command: list[str] | str | None = None,
         cwd: str | None = None,
         env: dict[str, str] | None = None,
+        history: bool | None = None,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
-        history_writer: HistoryWriter | None = None,
-        default_parser: ParserType = ParserType.NONE,
+        default_parser: ParserType | None = None,
     ) -> PTYNode:
-        """Internal: Create and start a new PTY node.
+        """Create a new PTY node and register with session.
 
-        IMPORTANT: This is an internal method. Use session.create_node() instead.
-        Nodes must be created through a Session for proper lifecycle management.
+        This is the ONLY way to create a PTYNode. Direct instantiation via
+        __init__ will raise TypeError.
 
         Args:
-            node_id: Unique node identifier (required).
-            command: Command to run (e.g., "claude" or ["bash"]).
-                     If not provided, starts a shell.
+            id: Unique identifier for the node.
+            session: Session to register this node with.
+            command: Command to run (e.g., "bash", ["bash", "-i"]).
             cwd: Working directory.
             env: Additional environment variables.
+            history: Enable history logging (default: session.history_enabled).
             ready_timeout: Timeout for terminal to become ready.
             response_timeout: Default timeout for responses.
-            history_writer: Optional history writer for logging operations.
             default_parser: Default parser for execute() calls.
 
         Returns:
-            A ready PTYNode.
+            A ready PTYNode, registered in the session.
 
         Raises:
-            ValueError: If node_id is not provided.
+            ValueError: If node_id already exists or is invalid.
+            TypeError: If called via __init__ instead of create().
+
+        Example:
+            >>> session = Session("my-session")
+            >>> node = await PTYNode.create(
+            ...     id="shell",
+            ...     session=session,
+            ...     command="bash"
+            ... )
+            >>> assert "shell" in session.nodes
         """
-        if not node_id:
-            raise ValueError("node_id is required")
+        import logging
+
+        from nerve.core.nodes.history import HistoryError, HistoryWriter
+        from nerve.core.validation import validate_name
+
+        logger = logging.getLogger(__name__)
+
+        # Validate
+        validate_name(id, "node")
+        if id in session.nodes:
+            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
 
         # Normalize command
         if command is None:
@@ -113,29 +154,62 @@ class PTYNode:
             command_list = command
             command_str = " ".join(command)
 
+        # Setup history
+        use_history = history if history is not None else session.history_enabled
+        history_writer = None
+        if use_history:
+            try:
+                history_writer = HistoryWriter.create(
+                    node_id=id,
+                    server_name=session.server_name,
+                    session_name=session.name,
+                    base_dir=session.history_base_dir,
+                    enabled=True,
+                )
+            except (HistoryError, ValueError) as e:
+                logger.warning(f"Failed to create history writer for {id}: {e}")
+
+        # Default parser
+        actual_parser = default_parser or ParserType.NONE
+
         config = BackendConfig(cwd=cwd, env=env or {})
         backend = PTYBackend(command_list, config)
 
-        await backend.start()
+        try:
+            await backend.start()
 
-        node = cls(
-            id=node_id,
-            backend=backend,
-            command=command_str,
-            state=NodeState.READY,
-            _default_parser=default_parser,
-            _ready_timeout=ready_timeout,
-            _response_timeout=response_timeout,
-            _history_writer=history_writer,
-        )
+            # Create instance with flag to bypass __post_init__ check
+            node = object.__new__(cls)
+            node._created_via_create = True
+            node.id = id
+            node.session = session
+            node.backend = backend
+            node.command = command_str
+            node.state = NodeState.READY
+            node.persistent = True
+            node._default_parser = actual_parser
+            node._last_input = ""
+            node._ready_timeout = ready_timeout
+            node._response_timeout = response_timeout
+            node._reader_task = None
+            node._history_writer = history_writer
 
-        # Start background reader
-        node._start_reader()
+            # Start background reader
+            node._start_reader()
 
-        # Give the shell a moment to start
-        await asyncio.sleep(0.5)
+            # Give the shell a moment to start
+            await asyncio.sleep(0.5)
 
-        return node
+            # NOW register (only after successful async init)
+            session.nodes[id] = node
+
+            return node
+
+        except Exception:
+            # Cleanup on failure
+            if history_writer is not None:
+                history_writer.close()
+            raise
 
     @property
     def buffer(self) -> str:
@@ -533,6 +607,8 @@ class PTYNode:
 class WezTermNode:
     """WezTerm-based terminal node.
 
+    IMPORTANT: Cannot be instantiated directly. Use WezTermNode.create() instead.
+
     BUFFER SEMANTICS: Always-fresh query.
     - WezTerm maintains pane content internally
     - Every buffer read queries WezTerm directly
@@ -540,58 +616,100 @@ class WezTermNode:
     - Polling interval: 2.0 seconds for ready detection
 
     Example:
-        >>> node = await WezTermNode.create("claude", command="claude")
+        >>> session = Session("my-session")
+        >>> node = await WezTermNode.create(
+        ...     id="claude",
+        ...     session=session,
+        ...     command="claude"
+        ... )
         >>> context = ExecutionContext(session=session, input="Hello!")
         >>> response = await node.execute(context)
         >>> print(response.raw)
     """
 
+    # Required fields (set during .create())
     id: str
+    session: Session
     backend: WezTermBackend
     pane_id: str | None = None
     command: str | None = None
     state: NodeState = NodeState.STARTING
+
+    # Internal fields (not in __init__)
     persistent: bool = field(default=True, init=False)
-    _default_parser: ParserType = ParserType.NONE
-    _last_input: str = field(default="", repr=False)
-    _ready_timeout: float = field(default=60.0, repr=False)
-    _response_timeout: float = field(default=1800.0, repr=False)
-    _history_writer: HistoryWriter | None = field(default=None, repr=False)
+    _default_parser: ParserType = field(default=ParserType.NONE, init=False)
+    _last_input: str = field(default="", init=False, repr=False)
+    _ready_timeout: float = field(default=60.0, init=False, repr=False)
+    _response_timeout: float = field(default=1800.0, init=False, repr=False)
+    _history_writer: HistoryWriter | None = field(default=None, init=False, repr=False)
+    _created_via_create: bool = field(default=False, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Prevent direct instantiation."""
+        if not self._created_via_create:
+            raise TypeError(
+                f"Cannot instantiate {self.__class__.__name__} directly. "
+                f"Use: await {self.__class__.__name__}.create(id, session, ...)"
+            )
 
     @classmethod
-    async def _create(
+    async def create(
         cls,
-        node_id: str,
+        id: str,
+        session: Session,
         command: list[str] | str | None = None,
         cwd: str | None = None,
+        history: bool | None = None,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
-        history_writer: HistoryWriter | None = None,
-        default_parser: ParserType = ParserType.NONE,
+        default_parser: ParserType | None = None,
     ) -> WezTermNode:
-        """Internal: Create a new WezTerm node by spawning a pane.
+        """Create a new WezTerm node by spawning a pane.
 
-        IMPORTANT: This is an internal method. Use session.create_node() instead.
-        Nodes must be created through a Session for proper lifecycle management.
+        This is the ONLY way to create a WezTermNode. Direct instantiation via
+        __init__ will raise TypeError.
 
         Args:
-            node_id: Unique node identifier (required).
+            id: Unique identifier for the node.
+            session: Session to register this node with.
             command: Command to run (e.g., "claude" or ["bash"]).
             cwd: Working directory.
+            history: Enable history logging (default: session.history_enabled).
             ready_timeout: Timeout for terminal to become ready.
             response_timeout: Default timeout for responses.
-            history_writer: Optional history writer for logging operations.
             default_parser: Default parser for execute() calls.
 
         Returns:
-            A ready WezTermNode.
+            A ready WezTermNode, registered in the session.
+
+        Raises:
+            ValueError: If node_id already exists or is invalid.
+            TypeError: If called via __init__ instead of create().
+
+        Example:
+            >>> session = Session("my-session")
+            >>> node = await WezTermNode.create(
+            ...     id="terminal",
+            ...     session=session,
+            ...     command="bash"
+            ... )
+            >>> assert "terminal" in session.nodes
         """
-        if not node_id:
-            raise ValueError("node_id is required")
+        import logging
+
+        from nerve.core.nodes.history import HistoryError, HistoryWriter
+        from nerve.core.validation import validate_name
+
+        logger = logging.getLogger(__name__)
+
+        # Validate
+        validate_name(id, "node")
+        if id in session.nodes:
+            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
 
         # Normalize command
         if command is None:
-            command_list = []
+            command_list: list[str] = []
             command_str = None
         elif isinstance(command, str):
             command_str = command
@@ -600,71 +718,228 @@ class WezTermNode:
             command_list = command
             command_str = " ".join(command)
 
+        # Setup history
+        use_history = history if history is not None else session.history_enabled
+        history_writer = None
+        if use_history:
+            try:
+                history_writer = HistoryWriter.create(
+                    node_id=id,
+                    server_name=session.server_name,
+                    session_name=session.name,
+                    base_dir=session.history_base_dir,
+                    enabled=True,
+                )
+            except (HistoryError, ValueError) as e:
+                logger.warning(f"Failed to create history writer for {id}: {e}")
+
+        # Default parser
+        actual_parser = default_parser or ParserType.NONE
+
+        config = BackendConfig(cwd=cwd)
+        backend = WezTermBackend(command_list, config)
+
+        try:
+            await backend.start()
+
+            # Create instance with flag to bypass __post_init__ check
+            node = object.__new__(cls)
+            node._created_via_create = True
+            node.id = id
+            node.session = session
+            node.backend = backend
+            node.pane_id = backend.pane_id
+            node.command = command_str
+            node.state = NodeState.READY
+            node.persistent = True
+            node._default_parser = actual_parser
+            node._last_input = ""
+            node._ready_timeout = ready_timeout
+            node._response_timeout = response_timeout
+            node._history_writer = history_writer
+
+            await asyncio.sleep(0.5)
+
+            # NOW register (only after successful async init)
+            session.nodes[id] = node
+
+            return node
+
+        except Exception:
+            # Cleanup on failure
+            if history_writer is not None:
+                history_writer.close()
+            raise
+
+    @classmethod
+    async def attach(
+        cls,
+        id: str,
+        session: Session,
+        pane_id: str,
+        history: bool | None = None,
+        ready_timeout: float = 60.0,
+        response_timeout: float = 1800.0,
+        default_parser: ParserType | None = None,
+    ) -> WezTermNode:
+        """Attach to an existing WezTerm pane.
+
+        This is an alternative way to create a WezTermNode by attaching to
+        an existing WezTerm pane instead of spawning a new one.
+
+        Args:
+            id: Unique identifier for the node.
+            session: Session to register this node with.
+            pane_id: WezTerm pane ID to attach to.
+            history: Enable history logging (default: session.history_enabled).
+            ready_timeout: Timeout for terminal to become ready.
+            response_timeout: Default timeout for responses.
+            default_parser: Default parser for execute() calls.
+
+        Returns:
+            A WezTermNode attached to the pane, registered in the session.
+
+        Raises:
+            ValueError: If node_id already exists or is invalid.
+            TypeError: If called via __init__ instead of attach().
+
+        Example:
+            >>> session = Session("my-session")
+            >>> node = await WezTermNode.attach(
+            ...     id="existing-pane",
+            ...     session=session,
+            ...     pane_id="12345"
+            ... )
+            >>> assert "existing-pane" in session.nodes
+        """
+        import logging
+
+        from nerve.core.nodes.history import HistoryError, HistoryWriter
+        from nerve.core.validation import validate_name
+
+        logger = logging.getLogger(__name__)
+
+        # Validate
+        validate_name(id, "node")
+        if id in session.nodes:
+            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
+
+        # Setup history
+        use_history = history if history is not None else session.history_enabled
+        history_writer = None
+        if use_history:
+            try:
+                history_writer = HistoryWriter.create(
+                    node_id=id,
+                    server_name=session.server_name,
+                    session_name=session.name,
+                    base_dir=session.history_base_dir,
+                    enabled=True,
+                )
+            except (HistoryError, ValueError) as e:
+                logger.warning(f"Failed to create history writer for {id}: {e}")
+
+        # Default parser
+        actual_parser = default_parser or ParserType.NONE
+
+        config = BackendConfig()
+        backend = WezTermBackend([], config, pane_id=pane_id)
+
+        try:
+            await backend.attach(pane_id)
+
+            # Create instance with flag to bypass __post_init__ check
+            node = object.__new__(cls)
+            node._created_via_create = True
+            node.id = id
+            node.session = session
+            node.backend = backend
+            node.pane_id = pane_id
+            node.command = None
+            node.state = NodeState.READY
+            node.persistent = True
+            node._default_parser = actual_parser
+            node._last_input = ""
+            node._ready_timeout = ready_timeout
+            node._response_timeout = response_timeout
+            node._history_writer = history_writer
+
+            # Register with session
+            session.nodes[id] = node
+
+            return node
+
+        except Exception:
+            # Cleanup on failure
+            if history_writer is not None:
+                history_writer.close()
+            raise
+
+    @classmethod
+    async def _create_internal(
+        cls,
+        id: str,
+        command: list[str] | str | None = None,
+        cwd: str | None = None,
+        ready_timeout: float = 60.0,
+        response_timeout: float = 1800.0,
+        default_parser: ParserType | None = None,
+    ) -> WezTermNode:
+        """Internal: Create a WezTermNode without session registration.
+
+        This is for internal use by wrapper classes like ClaudeWezTermNode.
+        The wrapper is responsible for session registration.
+
+        Args:
+            id: Unique identifier for the node.
+            command: Command to run.
+            cwd: Working directory.
+            ready_timeout: Timeout for terminal to become ready.
+            response_timeout: Default timeout for responses.
+            default_parser: Default parser for execute() calls.
+
+        Returns:
+            A ready WezTermNode (NOT registered with any session).
+        """
+        # Normalize command
+        if command is None:
+            command_list: list[str] = []
+            command_str = None
+        elif isinstance(command, str):
+            command_str = command
+            command_list = command.split()
+        else:
+            command_list = command
+            command_str = " ".join(command)
+
+        # Default parser
+        actual_parser = default_parser or ParserType.NONE
+
         config = BackendConfig(cwd=cwd)
         backend = WezTermBackend(command_list, config)
 
         await backend.start()
 
-        node = cls(
-            id=node_id,
-            backend=backend,
-            pane_id=backend.pane_id,
-            command=command_str,
-            state=NodeState.READY,
-            _default_parser=default_parser,
-            _ready_timeout=ready_timeout,
-            _response_timeout=response_timeout,
-            _history_writer=history_writer,
-        )
+        # Create instance with flag to bypass __post_init__ check
+        # Note: session is set to None for internal nodes
+        node = object.__new__(cls)
+        node._created_via_create = True
+        node.id = id
+        node.session = None  # type: ignore[assignment]  # Internal node, no session
+        node.backend = backend
+        node.pane_id = backend.pane_id
+        node.command = command_str
+        node.state = NodeState.READY
+        node.persistent = True
+        node._default_parser = actual_parser
+        node._last_input = ""
+        node._ready_timeout = ready_timeout
+        node._response_timeout = response_timeout
+        node._history_writer = None
 
         await asyncio.sleep(0.5)
 
         return node
-
-    @classmethod
-    async def _attach(
-        cls,
-        node_id: str,
-        pane_id: str,
-        ready_timeout: float = 60.0,
-        response_timeout: float = 1800.0,
-        history_writer: HistoryWriter | None = None,
-        default_parser: ParserType = ParserType.NONE,
-    ) -> WezTermNode:
-        """Internal: Attach to an existing WezTerm pane.
-
-        IMPORTANT: This is an internal method. Use session.create_node() instead.
-        Nodes must be created through a Session for proper lifecycle management.
-
-        Args:
-            node_id: Unique node identifier (required).
-            pane_id: WezTerm pane ID to attach to.
-            ready_timeout: Timeout for terminal to become ready.
-            response_timeout: Default timeout for responses.
-            history_writer: Optional history writer for logging operations.
-            default_parser: Default parser for execute() calls.
-
-        Returns:
-            A WezTermNode attached to the pane.
-        """
-        if not node_id:
-            raise ValueError("node_id is required")
-
-        config = BackendConfig()
-        backend = WezTermBackend([], config, pane_id=pane_id)
-
-        await backend.attach(pane_id)
-
-        return cls(
-            id=node_id,
-            backend=backend,
-            pane_id=pane_id,
-            state=NodeState.READY,
-            _default_parser=default_parser,
-            _ready_timeout=ready_timeout,
-            _response_timeout=response_timeout,
-            _history_writer=history_writer,
-        )
 
     @property
     def buffer(self) -> str:
@@ -982,6 +1257,8 @@ class WezTermNode:
 class ClaudeWezTermNode:
     """WezTerm node optimized for Claude CLI.
 
+    IMPORTANT: Cannot be instantiated directly. Use ClaudeWezTermNode.create() instead.
+
     A convenience wrapper that:
     - Validates command contains "claude"
     - Uses Claude parser by default
@@ -991,8 +1268,10 @@ class ClaudeWezTermNode:
     The inner WezTermNode has NO history writer.
 
     Example:
+        >>> session = Session("my-session")
         >>> node = await ClaudeWezTermNode.create(
-        ...     "my-claude",
+        ...     id="my-claude",
+        ...     session=session,
         ...     command="cd ~/project && claude --dangerously-skip-permissions"
         ... )
         >>> context = ExecutionContext(session=session, input="What is 2+2?")
@@ -1000,86 +1279,150 @@ class ClaudeWezTermNode:
         >>> print(response.sections)
     """
 
+    # Required fields (set during .create())
     id: str
+    session: Session
     _inner: WezTermNode
     _command: str = ""
-    _default_parser: ParserType = ParserType.CLAUDE
-    _last_input: str = ""
+
+    # Internal fields (not in __init__)
+    _default_parser: ParserType = field(default=ParserType.CLAUDE, init=False)
+    _last_input: str = field(default="", init=False)
     persistent: bool = field(default=True, init=False)
     state: NodeState = field(default=NodeState.READY, init=False)
-    _history_writer: HistoryWriter | None = field(default=None, repr=False)
+    _history_writer: HistoryWriter | None = field(default=None, init=False, repr=False)
+    _created_via_create: bool = field(default=False, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        """Prevent direct instantiation."""
+        if not self._created_via_create:
+            raise TypeError(
+                f"Cannot instantiate {self.__class__.__name__} directly. "
+                f"Use: await {self.__class__.__name__}.create(id, session, ...)"
+            )
 
     @classmethod
-    async def _create(
+    async def create(
         cls,
-        node_id: str,
+        id: str,
+        session: Session,
         command: str,
         cwd: str | None = None,
+        history: bool | None = None,
         parser: ParserType = ParserType.CLAUDE,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
-        history_writer: HistoryWriter | None = None,
     ) -> ClaudeWezTermNode:
-        """Internal: Create a new ClaudeWezTerm node.
+        """Create a new ClaudeWezTerm node and register with session.
 
-        IMPORTANT: This is an internal method. Use session.create_node() instead.
-        Nodes must be created through a Session for proper lifecycle management.
+        This is the ONLY way to create a ClaudeWezTermNode. Direct instantiation
+        via __init__ will raise TypeError.
 
         Args:
-            node_id: Unique node identifier.
+            id: Unique identifier for the node.
+            session: Session to register this node with.
             command: Command to run (MUST contain "claude").
             cwd: Working directory.
+            history: Enable history logging (default: session.history_enabled).
             parser: Default parser (defaults to CLAUDE).
             ready_timeout: Timeout for terminal to become ready.
             response_timeout: Default timeout for responses.
-            history_writer: Optional history writer for logging operations.
 
         Returns:
-            A ready ClaudeWezTermNode.
+            A ready ClaudeWezTermNode, registered in the session.
 
         Raises:
-            ValueError: If command doesn't contain "claude".
+            ValueError: If node_id already exists, is invalid, or command doesn't contain "claude".
+            TypeError: If called via __init__ instead of create().
+
+        Example:
+            >>> session = Session("my-session")
+            >>> node = await ClaudeWezTermNode.create(
+            ...     id="claude",
+            ...     session=session,
+            ...     command="claude --dangerously-skip-permissions"
+            ... )
+            >>> assert "claude" in session.nodes
         """
-        if not node_id:
-            raise ValueError("node_id is required")
+        import logging
+
+        from nerve.core.nodes.history import HistoryError, HistoryWriter
+        from nerve.core.validation import validate_name
+
+        logger = logging.getLogger(__name__)
+
+        # Validate
+        validate_name(id, "node")
+        if id in session.nodes:
+            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
 
         if "claude" not in command.lower():
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
 
-        # Create inner node WITHOUT history writer - wrapper owns history
-        inner = await WezTermNode._create(
-            node_id=node_id,
-            command=None,  # Use default shell
-            cwd=cwd,
-            ready_timeout=ready_timeout,
-            response_timeout=response_timeout,
-            history_writer=None,  # Inner has NO history
-            default_parser=parser,
-        )
+        # Setup history
+        use_history = history if history is not None else session.history_enabled
+        history_writer = None
+        if use_history:
+            try:
+                history_writer = HistoryWriter.create(
+                    node_id=id,
+                    server_name=session.server_name,
+                    session_name=session.name,
+                    base_dir=session.history_base_dir,
+                    enabled=True,
+                )
+            except (HistoryError, ValueError) as e:
+                logger.warning(f"Failed to create history writer for {id}: {e}")
 
-        await asyncio.sleep(0.5)
+        try:
+            # Create inner node WITHOUT history writer - wrapper owns history
+            # Use _create_internal which doesn't register with session
+            inner = await WezTermNode._create_internal(
+                id=id,
+                command=None,  # Use default shell
+                cwd=cwd,
+                ready_timeout=ready_timeout,
+                response_timeout=response_timeout,
+                default_parser=parser,
+            )
 
-        # Type the command into the shell
-        await inner.backend.write(command)
-        await asyncio.sleep(0.1)
-        await inner.backend.write("\r")
+            await asyncio.sleep(0.5)
 
-        wrapper = cls(
-            id=node_id,
-            _inner=inner,
-            _command=command,
-            _default_parser=parser,
-            _history_writer=history_writer,
-        )
+            # Type the command into the shell
+            await inner.backend.write(command)
+            await asyncio.sleep(0.1)
+            await inner.backend.write("\r")
 
-        # History: log the initial run command (buffer captured by first operation)
-        if history_writer and history_writer.enabled:
-            history_writer.log_run(command)
+            # Create wrapper with flag to bypass __post_init__ check
+            wrapper = object.__new__(cls)
+            wrapper._created_via_create = True
+            wrapper.id = id
+            wrapper.session = session
+            wrapper._inner = inner
+            wrapper._command = command
+            wrapper._default_parser = parser
+            wrapper._last_input = ""
+            wrapper.persistent = True
+            wrapper.state = NodeState.READY
+            wrapper._history_writer = history_writer
 
-        # Wait for Claude to start
-        await asyncio.sleep(2)
+            # History: log the initial run command (buffer captured by first operation)
+            if history_writer and history_writer.enabled:
+                history_writer.log_run(command)
 
-        return wrapper
+            # Wait for Claude to start
+            await asyncio.sleep(2)
+
+            # NOW register (only after successful async init)
+            session.nodes[id] = wrapper
+
+            return wrapper
+
+        except Exception:
+            # Cleanup on failure
+            if history_writer is not None:
+                history_writer.close()
+            raise
 
     @property
     def pane_id(self) -> str | None:

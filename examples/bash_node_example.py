@@ -6,7 +6,7 @@ and handle results in graphs.
 
 import asyncio
 
-from nerve.core.nodes import BashNode, ExecutionContext
+from nerve.core.nodes import BashNode, ExecutionContext, Graph
 from nerve.core.session import Session
 
 
@@ -19,7 +19,7 @@ async def main():
     print("Example 1: Basic Command Execution")
     print("=" * 60)
 
-    bash = BashNode(id="bash", cwd="/tmp", timeout=30.0)
+    bash = BashNode(id="bash", session=session, cwd="/tmp", timeout=30.0)
     context = ExecutionContext(session=session, input="ls -la")
     result = await bash.execute(context)
 
@@ -34,7 +34,7 @@ async def main():
     print("Example 2: Chained Commands")
     print("=" * 60)
 
-    bash2 = BashNode(id="bash2")
+    bash2 = BashNode(id="bash2", session=session)
     result = await bash2.execute(
         ExecutionContext(
             session=session,
@@ -51,12 +51,12 @@ async def main():
     print("=" * 60)
 
     # Create graph
-    graph = session.create_graph("deploy-pipeline")
+    graph = Graph(id="deploy-pipeline", session=session)
 
     # Create bash nodes for different steps
-    checkout = BashNode(id="checkout", cwd="/tmp")
-    test = BashNode(id="test", timeout=60.0)
-    build = BashNode(id="build")
+    checkout = BashNode(id="checkout", session=session, cwd="/tmp")
+    test = BashNode(id="test", session=session, timeout=60.0)
+    build = BashNode(id="build", session=session)
 
     # Add steps to graph
     graph.add_step(checkout, "checkout", input="echo 'Checking out code...' && sleep 0.5")
@@ -80,7 +80,7 @@ async def main():
     print("Example 4: Interrupting Long-Running Command")
     print("=" * 60)
 
-    bash_long = BashNode(id="long-running")
+    bash_long = BashNode(id="long-running", session=session)
 
     # Start long-running command
     task = asyncio.create_task(
@@ -103,7 +103,7 @@ async def main():
     print("Example 5: Error Handling")
     print("=" * 60)
 
-    bash_err = BashNode(id="error-test")
+    bash_err = BashNode(id="error-test", session=session)
     result = await bash_err.execute(
         ExecutionContext(session=session, input="ls /nonexistent/directory")
     )
@@ -120,6 +120,7 @@ async def main():
 
     bash_env = BashNode(
         id="env-test",
+        session=session,
         env={
             "MY_VAR": "Hello from environment",
             "MY_NUMBER": "42",

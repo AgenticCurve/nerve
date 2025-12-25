@@ -16,12 +16,12 @@ Nerve REPL - Interactive Python environment for AI CLI orchestration
 
 Pre-loaded:
   session     - Session named 'default' (ready to use)
-  Session, Graph, FunctionNode, ExecutionContext
-  ParserType, BackendType, PTYNode, WezTermNode
+  PTYNode, WezTermNode, ClaudeWezTermNode, BashNode
+  FunctionNode, Graph, ExecutionContext, ParserType
 
 Python Examples:
-  claude = await session.create_node("claude", command="claude")
-  graph = session.create_graph("my-pipeline")
+  claude = await PTYNode.create(id="claude", session=session, command="claude")
+  graph = Graph(id="my-pipeline", session=session)
   graph.add_step(claude, step_id="q1", input="What is 2+2?")
   results = await graph.execute(ExecutionContext(session=session))
 

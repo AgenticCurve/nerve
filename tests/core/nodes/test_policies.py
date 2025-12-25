@@ -4,10 +4,16 @@ import pytest
 
 from nerve.core.nodes.base import FunctionNode
 from nerve.core.nodes.policies import ErrorPolicy
+from nerve.core.session.session import Session
 
 
 class TestErrorPolicy:
     """Tests for ErrorPolicy dataclass."""
+
+    @pytest.fixture
+    def session(self):
+        """Create a test session."""
+        return Session(name="test-session")
 
     def test_default_values(self):
         """Test default values."""
@@ -45,9 +51,9 @@ class TestErrorPolicy:
         assert policy.on_error == "skip"
         assert policy.fallback_value == {"default": True}
 
-    def test_fallback_policy(self):
+    def test_fallback_policy(self, session):
         """Test fallback policy with fallback node."""
-        fallback_node = FunctionNode(id="fallback", fn=lambda ctx: "default")
+        fallback_node = FunctionNode(id="fallback", session=session, fn=lambda ctx: "default")
         policy = ErrorPolicy(
             on_error="fallback",
             fallback_node=fallback_node,

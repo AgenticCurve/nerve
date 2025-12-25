@@ -71,54 +71,56 @@ class TestNodeConfig:
 class TestFunctionNode:
     """Tests for FunctionNode."""
 
+    @pytest.fixture
+    def session(self):
+        """Create a test session."""
+        return Session(name="test-session")
+
     @pytest.mark.asyncio
-    async def test_sync_function(self):
+    async def test_sync_function(self, session):
         """Test wrapping a sync function."""
 
         def transform(ctx: ExecutionContext) -> str:
             return ctx.input.upper()
 
-        node = FunctionNode(id="transform", fn=transform)
-        session = Session()
+        node = FunctionNode(id="transform", session=session, fn=transform)
         context = ExecutionContext(session=session, input="hello")
 
         result = await node.execute(context)
         assert result == "HELLO"
 
     @pytest.mark.asyncio
-    async def test_async_function(self):
+    async def test_async_function(self, session):
         """Test wrapping an async function."""
 
         async def fetch(ctx: ExecutionContext) -> dict:
             return {"data": ctx.input}
 
-        node = FunctionNode(id="fetch", fn=fetch)
-        session = Session()
+        node = FunctionNode(id="fetch", session=session, fn=fetch)
         context = ExecutionContext(session=session, input="test")
 
         result = await node.execute(context)
         assert result == {"data": "test"}
 
     @pytest.mark.asyncio
-    async def test_lambda(self):
+    async def test_lambda(self, session):
         """Test wrapping a lambda."""
-        node = FunctionNode(id="add", fn=lambda ctx: ctx.input + 1)
-        session = Session()
+        node = FunctionNode(id="add", session=session, fn=lambda ctx: ctx.input + 1)
         context = ExecutionContext(session=session, input=5)
 
         result = await node.execute(context)
         assert result == 6
 
-    def test_properties(self):
+    def test_properties(self, session):
         """Test node properties."""
-        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
 
         assert node.id == "test"
         assert node.persistent is False
 
-    def test_to_info(self):
+    def test_to_info(self, session):
         """Test to_info method."""
-        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
         info = node.to_info()
 
         assert info.id == "test"
@@ -126,32 +128,31 @@ class TestFunctionNode:
         assert info.state == NodeState.READY
         assert info.persistent is False
 
-    def test_repr(self):
+    def test_repr(self, session):
         """Test repr."""
-        node = FunctionNode(id="my-node", fn=lambda ctx: ctx.input)
+        node = FunctionNode(id="my-node", session=session, fn=lambda ctx: ctx.input)
         assert "my-node" in repr(node)
 
     @pytest.mark.asyncio
-    async def test_upstream_access(self):
+    async def test_upstream_access(self, session):
         """Test accessing upstream results."""
 
         def process(ctx: ExecutionContext) -> str:
             return f"got {ctx.upstream['prev']}"
 
-        node = FunctionNode(id="process", fn=process)
-        session = Session()
+        node = FunctionNode(id="process", session=session, fn=process)
         context = ExecutionContext(session=session, input=None, upstream={"prev": "data"})
 
         result = await node.execute(context)
         assert result == "got data"
 
-    def test_is_node_protocol(self):
+    def test_is_node_protocol(self, session):
         """FunctionNode satisfies Node protocol."""
-        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
         assert isinstance(node, Node)
 
     @pytest.mark.asyncio
-    async def test_interrupt_cancels_async_task(self):
+    async def test_interrupt_cancels_async_task(self, session):
         """Test interrupt() cancels running async task."""
         import asyncio
 
@@ -165,8 +166,7 @@ class TestFunctionNode:
             execution_completed = True
             return "done"
 
-        node = FunctionNode(id="slow", fn=slow_function)
-        session = Session()
+        node = FunctionNode(id="slow", session=session, fn=slow_function)
         context = ExecutionContext(session=session, input=None)
 
         # Start execution in background
@@ -186,18 +186,17 @@ class TestFunctionNode:
         assert not execution_completed
 
     @pytest.mark.asyncio
-    async def test_interrupt_when_not_executing(self):
+    async def test_interrupt_when_not_executing(self, session):
         """Test interrupt() is safe to call when not executing."""
-        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
 
         # Should not raise
         await node.interrupt()
 
     @pytest.mark.asyncio
-    async def test_interrupt_clears_current_task(self):
+    async def test_interrupt_clears_current_task(self, session):
         """Test that _current_task is cleared after execution."""
-        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
-        session = Session()
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
         context = ExecutionContext(session=session, input="hello")
 
         # Before execution

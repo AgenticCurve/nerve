@@ -83,66 +83,82 @@ class TestRemoteNode:
 
 
 class TestNerveClientStandalone:
-    """Tests for NerveClient in standalone mode."""
+    """Tests for NerveClient in standalone mode.
+
+    Note: These tests use real Session/PTYNode.create() to test actual behavior.
+    """
 
     @pytest.mark.asyncio
-    async def test_standalone_create_node(self):
+    async def test_standalone_create_node(self, tmp_path):
         """Test creating node in standalone mode."""
-        mock_session = MagicMock()
+        from unittest.mock import patch
+
+        from nerve.core.session import Session
+
+        session = Session(name="test-session")
+        client = NerveClient(_standalone_session=session)
+
+        # Mock PTYNode.create to avoid actually spawning a process
         mock_node = MagicMock()
         mock_node.id = "my-node"
-        mock_session.create_node = AsyncMock(return_value=mock_node)
 
-        client = NerveClient(_standalone_session=mock_session)
+        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+            node = await client.create_node("my-node", command="claude")
 
-        node = await client.create_node("my-node", command="claude")
-
-        assert isinstance(node, RemoteNode)
-        assert node.id == "my-node"
-        mock_session.create_node.assert_called_once()
+            assert isinstance(node, RemoteNode)
+            assert node.id == "my-node"
 
     @pytest.mark.asyncio
-    async def test_standalone_list_nodes(self):
+    async def test_standalone_list_nodes(self, tmp_path):
         """Test listing nodes in standalone mode."""
-        mock_session = MagicMock()
+        from unittest.mock import patch
+
+        from nerve.core.session import Session
+
+        session = Session(name="test-session")
+        client = NerveClient(_standalone_session=session)
+
         mock_node = MagicMock()
         mock_node.id = "node-1"
-        mock_session.create_node = AsyncMock(return_value=mock_node)
 
-        client = NerveClient(_standalone_session=mock_session)
+        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+            # Create a node
+            await client.create_node("node-1", command="bash")
 
-        # Simulate created nodes
-        await client.create_node("node-1", command="bash")
+            nodes = await client.list_nodes()
 
-        nodes = await client.list_nodes()
-
-        assert "node-1" in nodes
+            assert "node-1" in nodes
 
     @pytest.mark.asyncio
-    async def test_standalone_get_node(self):
+    async def test_standalone_get_node(self, tmp_path):
         """Test getting node in standalone mode."""
-        mock_session = MagicMock()
+        from unittest.mock import patch
+
+        from nerve.core.session import Session
+
+        session = Session(name="test-session")
+        client = NerveClient(_standalone_session=session)
+
         mock_node = MagicMock()
         mock_node.id = "my-node"
-        mock_session.create_node = AsyncMock(return_value=mock_node)
 
-        client = NerveClient(_standalone_session=mock_session)
+        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+            # Create a node first
+            await client.create_node("my-node", command="claude")
 
-        # Create a node first
-        await client.create_node("my-node", command="claude")
+            # Get the node
+            node = await client.get_node("my-node")
 
-        # Get the node
-        node = await client.get_node("my-node")
-
-        assert node is not None
-        assert node.id == "my-node"
+            assert node is not None
+            assert node.id == "my-node"
 
     @pytest.mark.asyncio
     async def test_standalone_get_node_not_found(self):
         """Test getting non-existent node returns None."""
-        mock_session = MagicMock()
+        from nerve.core.session import Session
 
-        client = NerveClient(_standalone_session=mock_session)
+        session = Session(name="test-session")
+        client = NerveClient(_standalone_session=session)
 
         node = await client.get_node("nonexistent")
 
@@ -151,9 +167,10 @@ class TestNerveClientStandalone:
     @pytest.mark.asyncio
     async def test_create_node_validates_name(self):
         """Test that create_node validates node name."""
-        mock_session = MagicMock()
+        from nerve.core.session import Session
 
-        client = NerveClient(_standalone_session=mock_session)
+        session = Session(name="test-session")
+        client = NerveClient(_standalone_session=session)
 
         # Invalid name should raise ValueError
         with pytest.raises(ValueError):

@@ -23,21 +23,27 @@ async def run_from_file(
         PTYNode,
         WezTermNode,
     )
-    from nerve.core.session import BackendType, Session
+    from nerve.core.nodes.bash import BashNode
+    from nerve.core.nodes.terminal import ClaudeWezTermNode
+    from nerve.core.session import Session
 
     # Create default session for REPL
     session = Session(name="repl", server_name="repl")
 
     namespace = {
         "asyncio": asyncio,
-        "Graph": Graph,
+        # Node classes (use with session parameter)
+        "BashNode": BashNode,
         "FunctionNode": FunctionNode,
-        "ExecutionContext": ExecutionContext,
+        "Graph": Graph,
         "PTYNode": PTYNode,
         "WezTermNode": WezTermNode,
+        "ClaudeWezTermNode": ClaudeWezTermNode,
+        # Other classes
+        "ExecutionContext": ExecutionContext,
         "Session": Session,
         "ParserType": ParserType,
-        "BackendType": BackendType,
+        # Pre-configured instances
         "session": session,  # Default session
         "__name__": "__nerve_repl__",
     }

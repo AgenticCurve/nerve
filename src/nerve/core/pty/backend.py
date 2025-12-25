@@ -13,14 +13,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from enum import Enum
-
-
-class BackendType(Enum):
-    """Available backend types."""
-
-    PTY = "pty"
-    WEZTERM = "wezterm"
 
 
 @dataclass
@@ -133,42 +125,3 @@ class Backend(ABC):
     async def stop(self) -> None:
         """Stop the terminal process."""
         ...
-
-
-def get_backend(
-    backend_type: BackendType,
-    command: list[str],
-    config: BackendConfig | None = None,
-    pane_id: str | None = None,
-) -> Backend:
-    """Get a backend instance.
-
-    Args:
-        backend_type: Type of backend to create.
-        command: Command to run.
-        config: Backend configuration.
-        pane_id: For WezTerm, attach to existing pane instead of spawning.
-
-    Returns:
-        A Backend instance.
-
-    Raises:
-        ValueError: If backend type is not supported.
-    """
-    config = config or BackendConfig()
-
-    if backend_type == BackendType.PTY:
-        from nerve.core.pty.pty_backend import PTYBackend
-
-        if pane_id is not None:
-            raise ValueError("PTY backend does not support attaching to existing panes")
-
-        return PTYBackend(command, config)
-
-    elif backend_type == BackendType.WEZTERM:
-        from nerve.core.pty.wezterm_backend import WezTermBackend
-
-        return WezTermBackend(command, config, pane_id=pane_id)
-
-    else:
-        raise ValueError(f"Unknown backend type: {backend_type}")
