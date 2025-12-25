@@ -6,7 +6,8 @@ This module handles cleanup of all resources created during a REPL session:
 - All Graph instances (via session cleanup)
 - Namespace references
 
-Cleanup runs in the finally block, ensuring it executes even on Ctrl-C.
+Cleanup is protected from interruption by blocking SIGINT signals and using
+synchronous subprocess calls that cannot be cancelled by asyncio during shutdown.
 """
 
 from __future__ import annotations

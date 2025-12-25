@@ -350,21 +350,29 @@ class WezTermBackend(Backend):
             # Only kill panes we spawned, not ones we attached to
             cmd = ["wezterm", "cli", "kill-pane", "--pane-id", self._pane_id]
 
+            # Use synchronous subprocess to avoid asyncio cancellation during cleanup
+            import subprocess
+
             try:
-                result = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=5,  # 5 second timeout
                 )
-                _, stderr = await result.communicate()
                 if result.returncode != 0:
                     import logging
 
                     logging.getLogger(__name__).warning(
                         "Failed to kill WezTerm pane %s: %s",
                         self._pane_id,
-                        stderr.decode() if stderr else "unknown error",
+                        result.stderr.decode() if result.stderr else "unknown error",
                     )
+            except subprocess.TimeoutExpired:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Timeout killing WezTerm pane %s", self._pane_id
+                )
             except Exception as e:
                 import logging
 

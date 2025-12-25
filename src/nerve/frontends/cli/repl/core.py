@@ -833,11 +833,20 @@ async def run_interactive(
                 buffer = ""
     finally:
         # Comprehensive cleanup on REPL exit - destroy EVERYTHING created in REPL
+        import signal
+
         from nerve.frontends.cli.repl.cleanup import cleanup_repl_resources
 
-        await cleanup_repl_resources(
-            adapter=adapter,
-            namespace=state.namespace if python_exec_enabled else None,
-            is_local_mode=python_exec_enabled,
-            server_disconnected=server_disconnected,
-        )
+        # Block SIGINT during cleanup to ensure it completes
+        original_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        try:
+            await cleanup_repl_resources(
+                adapter=adapter,
+                namespace=state.namespace if python_exec_enabled else None,
+                is_local_mode=python_exec_enabled,
+                server_disconnected=server_disconnected,
+            )
+        finally:
+            # Restore original signal handler
+            signal.signal(signal.SIGINT, original_handler)

@@ -74,7 +74,7 @@
 │       │   │   ├── [L: 108] manager.py
 │       │   │   ├── [L: 262] process.py
 │       │   │   ├── [L: 276] pty_backend.py
-│       │   │   └── [L: 520] wezterm_backend.py
+│       │   │   └── [L: 528] wezterm_backend.py
 │       │   ├── session/
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 125] manager.py
@@ -91,10 +91,10 @@
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
-│       │   │   │   ├── [L: 128] cleanup.py
-│       │   │   │   ├── [L:  43] cli.py
+│       │   │   │   ├── [L: 127] cleanup.py
+│       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 843] core.py
+│       │   │   │   ├── [L: 852] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
@@ -219,4 +219,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 176 files, 36,657 total lines
+44 directories, 176 files, 36,668 total lines

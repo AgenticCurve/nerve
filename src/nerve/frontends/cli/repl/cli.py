@@ -28,15 +28,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    try:
-        if args.file:
-            asyncio.run(run_from_file(args.file, dry_run=args.dry_run))
-        else:
-            asyncio.run(run_interactive())
-    except KeyboardInterrupt:
-        # Ctrl-C during asyncio.run() - cleanup may have been interrupted
-        print("\nInterrupted. Some nodes may still be running.")
-        print("Use 'session.stop()' or restart to clean up.")
+    if args.file:
+        asyncio.run(run_from_file(args.file, dry_run=args.dry_run))
+    else:
+        asyncio.run(run_interactive())
 
 
 if __name__ == "__main__":
