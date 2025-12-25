@@ -218,8 +218,25 @@ class ProviderConfig:
 - For `api_format="openai"` (transform): `model` is **required** - specifies which OpenAI model to use
 - For `api_format="anthropic"` (passthrough): `model` is **optional** - if `None`, keeps original model from Claude Code's request; if set, overrides it
 
-**Debug directory:**
-- If `debug_dir` is `None`, automatically set to `{session.history_base_dir}/../logs/proxy/{node_id}/`
+**Log directory structure:**
+
+Default location (relative to cwd where server runs):
+```
+.nerve/logs/proxy/<server-name>/<session-name>/<node-name>/
+├── request-response/          # API request/response logs (JSON files)
+│   └── logs/
+│       └── {session_id}/      # e.g., 2025-12-25_20-49-39
+│           ├── 001_204939_1msgs_quota/
+│           │   ├── 1_anthropic_request.json
+│           │   ├── 2_openai_request.json
+│           │   └── 3_openai_response_chunks.json
+│           └── ...
+└── stdout-stderr/             # Proxy server logs (logger.info, logger.debug, etc.)
+    └── proxy.log
+```
+
+- If `debug_dir` is `None` (default), uses above structure
+- If `debug_dir` is specified, uses custom path (no stdout-stderr logging)
 - Request/response logs saved in same format as existing OpenAI proxy
 
 #### 3. ProxyInstance (NEW)
@@ -652,9 +669,11 @@ All new parameters must default to values that preserve existing behavior:
 2. Create node with `provider=openai`
 3. Verify proxy is running (`curl http://127.0.0.1:<port>/health`)
 4. Send message through node
-5. Check `.nerve/logs/` for request traces
+5. Check logs:
+   - Request/response: `.nerve/logs/proxy/<server>/<session>/<node>/request-response/logs/<timestamp>/<trace-id>/`
+   - Server logs: `.nerve/logs/proxy/<server>/<session>/<node>/stdout-stderr/proxy.log`
 6. Delete node
-7. Verify proxy is stopped
+7. Verify proxy is stopped and log handlers are cleaned up
 
 ---
 
@@ -824,5 +843,8 @@ export_cmd = f"export ANTHROPIC_BASE_URL={shlex.quote(proxy_url)}"
 4. **Same node API**: All nodes work identically regardless of backend (same `send()`, `execute()` methods)
 5. **Automatic lifecycle**: Proxy starts before node, stops when node is deleted
 6. **Multiple nodes**: Different nodes can use different providers/keys simultaneously
-7. **Request logging**: All proxied requests are logged to `.nerve/logs/`
+7. **Comprehensive logging**:
+   - Request/response logs in `.nerve/logs/proxy/<server>/<session>/<node>/request-response/`
+   - Server logs (stdout/stderr) in `.nerve/logs/proxy/<server>/<session>/<node>/stdout-stderr/proxy.log`
+   - User can override with custom `debug_dir`
 8. **Error handling**: Errors from proxy are surfaced clearly to user

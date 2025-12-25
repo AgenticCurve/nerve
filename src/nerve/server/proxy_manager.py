@@ -109,6 +109,7 @@ class ProxyInstance:
         server: The proxy server instance
         task: The asyncio task running the server
         config: The provider configuration
+        log_handler: Optional logging handler for stdout/stderr logs
     """
 
     node_id: str
@@ -116,6 +117,7 @@ class ProxyInstance:
     server: Any  # OpenAIProxyServer or PassthroughProxyServer
     task: asyncio.Task[Any]
     config: ProviderConfig
+    log_handler: logging.Handler | None = None
 
 
 def _find_free_port() -> int:
@@ -169,13 +171,15 @@ class ProxyManager:
         node_id: str,
         config: ProviderConfig,
         debug_dir: str | None = None,
+        log_dir: str | None = None,
     ) -> ProxyInstance:
         """Start a proxy for a node.
 
         Args:
             node_id: The node ID this proxy will serve
             config: Provider configuration
-            debug_dir: Override debug directory (optional)
+            debug_dir: Directory for request/response logs (optional)
+            log_dir: Directory for stdout/stderr logs (optional)
 
         Returns:
             ProxyInstance with port and server details
@@ -187,10 +191,36 @@ class ProxyManager:
         if node_id in self._proxies:
             raise ProxyStartError(f"Proxy already exists for node: {node_id}")
 
-        # Determine debug directory
+        # Determine debug directory for request/response logs
         effective_debug_dir = debug_dir or config.debug_dir
         if effective_debug_dir is None and self._default_debug_dir:
             effective_debug_dir = str(self._default_debug_dir / "proxy" / node_id)
+
+        # Set up file logging for proxy stdout/stderr if log_dir is provided
+        log_handler = None
+        if log_dir:
+            from pathlib import Path
+
+            log_path = Path(log_dir)
+            log_path.mkdir(parents=True, exist_ok=True)
+            log_file = log_path / "proxy.log"
+
+            # Create file handler for proxy server logs
+            log_handler = logging.FileHandler(log_file)
+            log_handler.setLevel(logging.DEBUG)
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            log_handler.setFormatter(formatter)
+
+            # Add handler to proxy server loggers
+            for logger_name in [
+                "nerve.gateway.openai_proxy",
+                "nerve.gateway.anthropic_proxy",
+                "nerve.gateway.passthrough_proxy",
+                "nerve.server.proxy_manager",
+            ]:
+                proxy_logger = logging.getLogger(logger_name)
+                proxy_logger.addHandler(log_handler)
+                proxy_logger.setLevel(logging.DEBUG)
 
         # Retry loop to handle TOCTOU race in port allocation
         max_retries = 5
@@ -240,6 +270,7 @@ class ProxyManager:
                     server=server,
                     task=task,
                     config=config,
+                    log_handler=log_handler,
                 )
                 self._proxies[node_id] = instance
 
@@ -297,6 +328,18 @@ class ProxyManager:
                 pass
         except asyncio.CancelledError:
             pass
+
+        # Clean up logging handler
+        if instance.log_handler:
+            for logger_name in [
+                "nerve.gateway.openai_proxy",
+                "nerve.gateway.anthropic_proxy",
+                "nerve.gateway.passthrough_proxy",
+                "nerve.server.proxy_manager",
+            ]:
+                proxy_logger = logging.getLogger(logger_name)
+                proxy_logger.removeHandler(instance.log_handler)
+            instance.log_handler.close()
 
         logger.debug(f"Proxy for node '{node_id}' stopped, port {instance.port} freed")
 

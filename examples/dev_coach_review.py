@@ -74,7 +74,11 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 # TASK
 # =============================================================================
 
-INITIAL_TASK = """Implement the refactoring described in the plan.
+INITIAL_TASK = """You are in the middle of implementing a PRD. Most of the work
+for PRD is done. However, there are some gaps especially around logging. Please
+go through the codebase and PRD (special focus on adding proper logging to
+proxy server). And if you find there is something else missing as well, please
+report/make a decision.
 
 docs/prd/openai-provider-support.md
 

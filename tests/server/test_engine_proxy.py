@@ -210,3 +210,60 @@ class TestEngineProviderValidation:
 
         assert result.success is False
         assert "model" in result.error.lower()
+
+    async def test_missing_provider_required_keys(self, engine):
+        """Provider config missing required keys should fail with clear message.
+
+        Provider config requires api_format, base_url, and api_key.
+        Missing any of these should return an error listing all missing keys.
+        """
+        # Test missing base_url and api_key
+        provider_config = {
+            "api_format": "anthropic",
+            # base_url missing
+            # api_key missing
+        }
+
+        result = await engine.execute(
+            Command(
+                type=CommandType.CREATE_NODE,
+                params={
+                    "node_id": "test-node",
+                    "command": "claude",
+                    "backend": "claude-wezterm",
+                    "provider": provider_config,
+                },
+            )
+        )
+
+        assert result.success is False
+        assert "missing required keys" in result.error.lower()
+        assert "base_url" in result.error
+        assert "api_key" in result.error
+
+    async def test_missing_single_provider_key(self, engine):
+        """Provider config missing a single required key should list it.
+
+        When only api_key is missing, the error should specifically mention it.
+        """
+        provider_config = {
+            "api_format": "anthropic",
+            "base_url": "https://api.anthropic.com",
+            # api_key missing
+        }
+
+        result = await engine.execute(
+            Command(
+                type=CommandType.CREATE_NODE,
+                params={
+                    "node_id": "test-node",
+                    "command": "claude",
+                    "backend": "claude-wezterm",
+                    "provider": provider_config,
+                },
+            )
+        )
+
+        assert result.success is False
+        assert "missing required keys" in result.error.lower()
+        assert "api_key" in result.error

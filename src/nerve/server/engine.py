@@ -253,10 +253,33 @@ class NerveEngine:
                 debug_dir=provider_dict.get("debug_dir"),
             )
 
+            # Determine debug directory for request/response logs
+            # Default: .nerve/logs/proxy/<server-name>/<session-name>/<node-name>/request-response/
+            debug_dir = provider_config.debug_dir
+            if debug_dir is None:
+                from pathlib import Path
+
+                base_log_path = (
+                    Path.cwd()
+                    / ".nerve"
+                    / "logs"
+                    / "proxy"
+                    / self._server_name
+                    / session.name
+                    / str(node_id)
+                )
+                debug_dir = str(base_log_path / "request-response")
+                log_dir = str(base_log_path / "stdout-stderr")
+            else:
+                # User provided custom debug_dir, don't set log_dir
+                log_dir = None
+
             # Start proxy before creating node
             instance = await self._proxy_manager.start_proxy(
                 node_id=str(node_id),
                 config=provider_config,
+                debug_dir=debug_dir,
+                log_dir=log_dir,
             )
             proxy_url = f"http://127.0.0.1:{instance.port}"
 
