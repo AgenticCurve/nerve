@@ -1,7 +1,4 @@
 ./
-├── docs/
-│   └── prd/
-│       └── [L:1902] engine-architectural-refactoring.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -94,9 +91,10 @@
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
-│       │   │   │   ├── [L:  38] cli.py
+│       │   │   │   ├── [L: 128] cleanup.py
+│       │   │   │   ├── [L:  43] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 841] core.py
+│       │   │   │   ├── [L: 843] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
@@ -221,4 +219,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-46 directories, 176 files, 38,424 total lines
+44 directories, 176 files, 36,657 total lines

@@ -832,10 +832,12 @@ async def run_interactive(
 
                 buffer = ""
     finally:
-        # Cleanup on REPL exit
-        if server_disconnected:
-            print("Server connection lost")
-        try:
-            await adapter.stop()
-        except Exception:
-            pass  # Best effort cleanup
+        # Comprehensive cleanup on REPL exit - destroy EVERYTHING created in REPL
+        from nerve.frontends.cli.repl.cleanup import cleanup_repl_resources
+
+        await cleanup_repl_resources(
+            adapter=adapter,
+            namespace=state.namespace if python_exec_enabled else None,
+            is_local_mode=python_exec_enabled,
+            server_disconnected=server_disconnected,
+        )
