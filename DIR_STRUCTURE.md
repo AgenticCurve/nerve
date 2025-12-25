@@ -1,4 +1,7 @@
 ./
+├── docs/
+│   └── prds/
+│       └── [L: 343] breaking-terminal.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -13,7 +16,8 @@
 │   ├── [L: 587] dev_coach.py
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 735] dev_coach_review.py
+│   ├── [L: 736] dev_coach_review.py
+│   ├── [L: 763] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -186,4 +190,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-40 directories, 147 files, 32,155 total lines
+42 directories, 149 files, 33,262 total lines
