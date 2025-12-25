@@ -1,7 +1,4 @@
 ./
-├── docs/
-│   └── prds/
-│       └── [L: 343] breaking-terminal.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -17,7 +14,7 @@
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
 │   ├── [L: 736] dev_coach_review.py
-│   ├── [L: 846] dev_coach_review_prd.py
+│   ├── [L: 863] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -53,8 +50,8 @@
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
 │       │   │   │   ├── [L: 446] claude_wezterm_node.py
-│       │   │   │   ├── [L: 592] pty_node.py
-│       │   │   │   └── [L: 672] wezterm_node.py
+│       │   │   │   ├── [L: 598] pty_node.py
+│       │   │   │   └── [L: 684] wezterm_node.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
@@ -194,4 +191,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-43 directories, 152 files, 33,456 total lines
+41 directories, 151 files, 33,148 total lines

@@ -198,6 +198,12 @@ class PTYNode:
             # Cleanup on failure
             if history_writer is not None:
                 history_writer.close()
+            # Stop backend if it was started
+            if backend.is_running:
+                try:
+                    await backend.stop()
+                except Exception:
+                    pass  # Ignore secondary exceptions during cleanup
             raise
 
     @property

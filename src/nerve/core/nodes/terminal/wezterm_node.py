@@ -156,9 +156,10 @@ class WezTermNode:
         actual_parser = default_parser or ParserType.NONE
 
         config = BackendConfig(cwd=cwd)
-        backend = WezTermBackend(command_list, config)
+        backend: WezTermBackend | None = None
 
         try:
+            backend = WezTermBackend(command_list, config)
             await backend.start()
 
             # Create instance with flag to bypass __post_init__ check
@@ -185,7 +186,12 @@ class WezTermNode:
             return node
 
         except Exception:
-            # Cleanup on failure
+            # Cleanup on failure - close both backend and history writer
+            if backend is not None:
+                try:
+                    await backend.stop()
+                except Exception as cleanup_err:
+                    logger.warning(f"Error during backend cleanup for {id}: {cleanup_err}")
             if history_writer is not None:
                 history_writer.close()
             raise
@@ -262,9 +268,10 @@ class WezTermNode:
         actual_parser = default_parser or ParserType.NONE
 
         config = BackendConfig()
-        backend = WezTermBackend([], config, pane_id=pane_id)
+        backend: WezTermBackend | None = None
 
         try:
+            backend = WezTermBackend([], config, pane_id=pane_id)
             await backend.attach(pane_id)
 
             # Create instance with flag to bypass __post_init__ check
@@ -289,7 +296,12 @@ class WezTermNode:
             return node
 
         except Exception:
-            # Cleanup on failure
+            # Cleanup on failure - close both backend and history writer
+            if backend is not None:
+                try:
+                    await backend.stop()
+                except Exception as cleanup_err:
+                    logger.warning(f"Error during backend cleanup for {id}: {cleanup_err}")
             if history_writer is not None:
                 history_writer.close()
             raise

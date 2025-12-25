@@ -66,7 +66,7 @@ _DEFAULT_LOG_FILE = "/tmp/prd-creation-conversation.log"
 # PRD OUTPUT PATH - Where the PRD will be written
 # =============================================================================
 
-PRD_OUTPUT_PATH = "docs/prds/breaking-terminal.md"  # Customize this per run
+PRD_OUTPUT_PATH = "docs/prds/breaking-graph.md"  # Customize this per run
 
 # =============================================================================
 # ADDITIONAL CONTEXT - Loaded from file at runtime
@@ -88,10 +88,9 @@ REVIEWER_WARMUP = ""
 
 INITIAL_TASK = f"""Create a comprehensive PRD for the following feature:
 
-- We want to break the terminal.py file into smaller, more manageable modules.
-- One file for each dataclass.
+- We want to break the nodes/graph.py file into smaller, more manageable modules.
 - Ensure it is a clean break, no backward compatibility.
-- Break the terminal.py file into terminal/ dir so that everything is still under terminal namespace.
+- Break the graph file into graph/ dir so that everything is still under terminal namespace.
 - Ensure PRD doesn't break any existing functionality. No feature regression.
 - This is a refactoring PRD.
 
