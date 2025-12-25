@@ -75,7 +75,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -95,9 +95,9 @@ class TestPTYNode:
         mock_backend.buffer = ""
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.pty_node.get_parser") as mock_parser,
         ):
             # Setup parser mock
             parser_instance = MagicMock()
@@ -132,9 +132,9 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.pty_node.get_parser") as mock_parser,
         ):
             parser_instance = MagicMock()
             parser_instance.is_ready = MagicMock(return_value=True)
@@ -159,7 +159,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -176,7 +176,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -195,7 +195,7 @@ class TestPTYNode:
         mock_backend.buffer = "test output"
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -212,7 +212,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -230,7 +230,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -248,7 +248,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -265,7 +265,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -292,7 +292,7 @@ class TestPTYNode:
         mock_backend = create_mock_pty_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.PTYBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.pty_node.PTYBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -321,7 +321,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -341,9 +341,9 @@ class TestWezTermNode:
         mock_backend.buffer = "hello\nHELLO\n$ "
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.wezterm_node.get_parser") as mock_parser,
         ):
             parser_instance = MagicMock()
             parser_instance.is_ready = MagicMock(return_value=True)
@@ -374,9 +374,9 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.wezterm_node.get_parser") as mock_parser,
         ):
             parser_instance = MagicMock()
             parser_instance.is_ready = MagicMock(return_value=True)
@@ -399,7 +399,7 @@ class TestWezTermNode:
         """Test WezTermNode.attach() method."""
         mock_backend = create_mock_wezterm_backend()
 
-        with patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend):
+        with patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend):
             session = Session(history_enabled=False)
             node = await WezTermNode.attach(id="test-node", session=session, pane_id="42")
 
@@ -414,7 +414,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -431,7 +431,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -448,7 +448,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -465,7 +465,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -489,7 +489,7 @@ class TestWezTermNode:
         mock_backend.buffer = "test output"
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -506,7 +506,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -523,7 +523,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -540,7 +540,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -557,7 +557,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -584,7 +584,7 @@ class TestWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -612,7 +612,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -641,9 +641,9 @@ class TestClaudeWezTermNode:
         mock_backend.buffer = "Claude> Hello\n"
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.wezterm_node.get_parser") as mock_parser,
         ):
             parser_instance = MagicMock()
             parser_instance.is_ready = MagicMock(return_value=True)
@@ -673,9 +673,9 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
-            patch("nerve.core.nodes.terminal.get_parser") as mock_parser,
+            patch("nerve.core.nodes.terminal.wezterm_node.get_parser") as mock_parser,
         ):
             parser_instance = MagicMock()
             parser_instance.is_ready = MagicMock(return_value=True)
@@ -699,7 +699,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -716,7 +716,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -740,7 +740,7 @@ class TestClaudeWezTermNode:
         mock_backend.buffer = "Claude response"
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -757,7 +757,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -774,7 +774,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -791,7 +791,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -808,7 +808,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -824,7 +824,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
@@ -853,7 +853,7 @@ class TestClaudeWezTermNode:
         mock_backend = create_mock_wezterm_backend()
 
         with (
-            patch("nerve.core.nodes.terminal.WezTermBackend", return_value=mock_backend),
+            patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend", return_value=mock_backend),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
