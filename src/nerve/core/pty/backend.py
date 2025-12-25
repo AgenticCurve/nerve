@@ -86,7 +86,7 @@ class Backend(ABC):
         ...
 
     @abstractmethod
-    async def read_stream(self, chunk_size: int = 4096) -> AsyncIterator[str]:
+    def read_stream(self, chunk_size: int = 4096) -> AsyncIterator[str]:
         """Stream output chunks as they arrive.
 
         Args:

@@ -15,7 +15,7 @@ import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 
@@ -289,7 +289,7 @@ class LLMClient:
                     json=request_body,
                 ) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(dict[str, Any], await response.json())
 
                     # Read error body
                     error_body = await response.text()

@@ -22,7 +22,12 @@ def create_mock_pty_backend():
     backend.stop = AsyncMock()
     backend.write = AsyncMock()
     backend.read_tail = MagicMock(return_value="HELLO\n$ ")
-    backend.clear_buffer = MagicMock()
+
+    # clear_buffer should actually clear the buffer attribute
+    def _clear_buffer():
+        backend.buffer = ""
+
+    backend.clear_buffer = MagicMock(side_effect=_clear_buffer)
 
     # Create a proper async generator for read_stream
     async def mock_read_stream():
@@ -45,7 +50,12 @@ def create_mock_wezterm_backend():
     backend.focus = AsyncMock()
     backend.get_pane_info = AsyncMock(return_value={"pane_id": "42"})
     backend.read_tail = MagicMock(return_value="HELLO\n$ ")
-    backend.clear_buffer = MagicMock()
+
+    # clear_buffer should actually clear the buffer attribute
+    def _clear_buffer():
+        backend.buffer = ""
+
+    backend.clear_buffer = MagicMock(side_effect=_clear_buffer)
 
     async def mock_read_stream():
         yield "HELLO"

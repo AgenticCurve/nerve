@@ -41,8 +41,8 @@ class InProcessTransport:
     """
 
     _engine: NerveEngine | None = None
-    _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)
-    _subscribers: list[asyncio.Queue] = field(default_factory=list)
+    _event_queue: asyncio.Queue[Event] = field(default_factory=asyncio.Queue)
+    _subscribers: list[asyncio.Queue[Event]] = field(default_factory=list)
 
     def bind(self, engine: NerveEngine) -> None:
         """Bind to an engine.
@@ -90,7 +90,7 @@ class InProcessTransport:
         Yields:
             Events as they occur.
         """
-        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=100)
         self._subscribers.append(queue)
 
         try:

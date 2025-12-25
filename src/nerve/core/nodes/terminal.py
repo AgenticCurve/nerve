@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
@@ -62,7 +62,7 @@ class PTYNode:
     _last_input: str = field(default="", repr=False)
     _ready_timeout: float = field(default=60.0, repr=False)
     _response_timeout: float = field(default=1800.0, repr=False)
-    _reader_task: asyncio.Task | None = field(default=None, repr=False)
+    _reader_task: asyncio.Task[None] | None = field(default=None, repr=False)
     _history_writer: HistoryWriter | None = field(default=None, repr=False)
 
     @classmethod
@@ -219,7 +219,7 @@ class PTYNode:
         result = parser_instance.parse(new_output)
 
         # History: log send
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             response_data = {
                 "sections": [
                     {"type": s.type, "content": s.content, "metadata": s.metadata}
@@ -288,7 +288,7 @@ class PTYNode:
                 break
 
         # History: log streaming operation
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             final_buffer = self.read_tail(HISTORY_BUFFER_LINES)
             self._history_writer.log_send_stream(
                 input=input_str,
@@ -440,13 +440,13 @@ class PTYNode:
         the underlying process. Useful for reusing the node for fresh
         interactions.
         """
-        self.backend.buffer = ""
+        self.backend.clear_buffer()
         self._last_input = ""
 
     def _start_reader(self) -> None:
         """Start background task to continuously read and buffer output."""
 
-        async def reader_loop():
+        async def reader_loop() -> None:
             try:
                 async for _chunk in self.backend.read_stream():
                     pass  # Output accumulated in backend.buffer
@@ -733,7 +733,7 @@ class WezTermNode:
         result = parser_instance.parse(buffer)
 
         # History: log send
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             response_data = {
                 "sections": [
                     {"type": s.type, "content": s.content, "metadata": s.metadata}
@@ -798,7 +798,7 @@ class WezTermNode:
                 break
 
         # History: log streaming operation
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             final_buffer = self.read_tail(HISTORY_BUFFER_LINES)
             self._history_writer.log_send_stream(
                 input=input_str,
@@ -904,7 +904,7 @@ class WezTermNode:
         """Focus (activate) the WezTerm pane."""
         await self.backend.focus()
 
-    async def get_pane_info(self) -> dict | None:
+    async def get_pane_info(self) -> dict[str, Any] | None:
         """Get information about the pane."""
         return await self.backend.get_pane_info()
 
@@ -1136,7 +1136,7 @@ class ClaudeWezTermNode:
         result = await self._inner.execute(exec_context)
 
         # History: log send
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             response_data = {
                 "sections": [
                     {"type": s.type, "content": s.content, "metadata": s.metadata}
@@ -1181,7 +1181,7 @@ class ClaudeWezTermNode:
             yield chunk
 
         # History: log streaming operation
-        if self._history_writer and self._history_writer.enabled:
+        if self._history_writer and self._history_writer.enabled and ts_start is not None:
             final_buffer = self._inner.read_tail(HISTORY_BUFFER_LINES)
             self._history_writer.log_send_stream(
                 input=self._last_input,

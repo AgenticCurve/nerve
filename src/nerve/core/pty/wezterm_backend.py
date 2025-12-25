@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 from collections.abc import AsyncIterator
+from typing import Any, cast
 
 from nerve.core.pty.backend import Backend, BackendConfig
 
@@ -110,8 +112,6 @@ class WezTermBackend(Backend):
         cmd = ["wezterm", "cli", "spawn"]
 
         # If not running from within WezTerm, we need to specify where to spawn
-        import os
-
         if not os.environ.get("WEZTERM_PANE"):
             # Check if there are existing panes we can spawn into
             existing_panes = list_wezterm_panes()
@@ -387,7 +387,7 @@ class WezTermBackend(Backend):
             )
             await result.communicate()
 
-    async def get_pane_info(self) -> dict | None:
+    async def get_pane_info(self) -> dict[str, Any] | None:
         """Get information about the pane.
 
         Returns:
@@ -407,7 +407,7 @@ class WezTermBackend(Backend):
 
         if result.returncode == 0:
             try:
-                panes = json.loads(stdout.decode())
+                panes: list[dict[str, Any]] = json.loads(stdout.decode())
                 for pane in panes:
                     if str(pane.get("pane_id")) == self._pane_id:
                         return pane
@@ -417,7 +417,7 @@ class WezTermBackend(Backend):
         return None
 
 
-def list_wezterm_panes() -> list[dict]:
+def list_wezterm_panes() -> list[dict[str, Any]]:
     """List all WezTerm panes.
 
     Returns:
@@ -430,7 +430,7 @@ def list_wezterm_panes() -> list[dict]:
             text=True,
         )
         if result.returncode == 0:
-            return json.loads(result.stdout)
+            return cast(list[dict[str, Any]], json.loads(result.stdout))
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 

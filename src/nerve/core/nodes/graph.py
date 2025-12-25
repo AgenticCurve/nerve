@@ -113,7 +113,7 @@ class GraphStep:
         self.depends_on: list[str] = depends_on or []
         self._registered = False
 
-    def _ensure_registered(self):
+    def _ensure_registered(self) -> None:
         """Add this step to the graph if not already registered."""
         if not self._registered:
             if self.node:
@@ -140,7 +140,9 @@ class GraphStep:
                 raise ValueError(f"Step {self.step_id} has neither node nor node_ref")
             self._registered = True
 
-    def __rshift__(self, other):
+    def __rshift__(
+        self, other: GraphStep | list[GraphStep] | GraphStepList
+    ) -> GraphStep | GraphStepList:
         """A >> B makes B depend on A.
 
         Supports:
@@ -164,18 +166,20 @@ class GraphStep:
         else:
             raise TypeError(f"Cannot use >> with {type(other)}")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"GraphStep(id={self.step_id!r}, depends_on={self.depends_on})"
 
 
-class GraphStepList(list):
+class GraphStepList(list[GraphStep]):
     """List wrapper that supports >> operator for parallel dependencies.
 
     Example:
         >>> [A, B] >> C  # C depends on both A and B
     """
 
-    def __rshift__(self, other):
+    def __rshift__(
+        self, other: GraphStep | list[GraphStep] | GraphStepList
+    ) -> GraphStep | GraphStepList:
         """[A, B] >> C makes C depend on all items in the list.
 
         Supports:
@@ -247,6 +251,11 @@ class Graph:
         self._id = id
         self._steps: dict[str, Step] = {}
         self._max_parallel = max_parallel
+
+        # Interrupt support
+        self._current_context: ExecutionContext | None = None
+        self._current_node: Node | None = None
+        self._interrupt_lock: asyncio.Lock = asyncio.Lock()
 
         # Auto-register with session
         session.graphs[id] = self
@@ -540,6 +549,8 @@ class Graph:
         if trace:
             trace.status = "running"
 
+        self._current_context = context
+
         try:
             for step_id in self.execution_order():
                 # Check cancellation and budget before each step
@@ -561,6 +572,10 @@ class Graph:
                 start_time = datetime.now()
                 start_mono = time.monotonic()
 
+                # Track current node for interrupt()
+                async with self._interrupt_lock:
+                    self._current_node = node
+
                 try:
                     result = await self._execute_with_policy(step, node, step_context)
                     error = None
@@ -570,6 +585,8 @@ class Graph:
                     raise
 
                 finally:
+                    async with self._interrupt_lock:
+                        self._current_node = None
                     end_time = datetime.now()
                     duration_ms = (time.monotonic() - start_mono) * 1000
 
@@ -602,7 +619,30 @@ class Graph:
                 trace.complete(error=str(e))
             raise
 
+        finally:
+            self._current_context = None
+            async with self._interrupt_lock:
+                self._current_node = None
+
         return results
+
+    async def interrupt(self) -> None:
+        """Request interruption of graph execution.
+
+        Sets the cancellation token (if present) AND interrupts the
+        currently executing node. This provides both:
+        - Immediate interruption of the current node
+        - Prevention of subsequent steps from starting
+        """
+        # Set cancellation token to prevent next steps
+        if self._current_context and self._current_context.cancellation:
+            self._current_context.cancellation.cancel()
+
+        # Interrupt the currently executing node
+        async with self._interrupt_lock:
+            node = self._current_node
+        if node is not None:
+            await node.interrupt()
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[StepEvent]:
         """Execute graph steps and stream events as they occur.
@@ -627,38 +667,53 @@ class Graph:
             raise ValueError(f"Invalid graph: {errors}")
 
         results: dict[str, Any] = {}
+        self._current_context = context
 
-        for step_id in self.execution_order():
-            context.check_cancelled()
-            context.check_budget()
+        try:
+            for step_id in self.execution_order():
+                context.check_cancelled()
+                context.check_budget()
 
-            step = self._steps[step_id]
-            node = self._resolve_node(step, context.session)
+                step = self._steps[step_id]
+                node = self._resolve_node(step, context.session)
 
-            step_input = self._resolve_input(step, results)
-            step_context = context.with_input(step_input).with_upstream(results)
-            if step.parser:
-                step_context = step_context.with_parser(step.parser)
+                step_input = self._resolve_input(step, results)
+                step_context = context.with_input(step_input).with_upstream(results)
+                if step.parser:
+                    step_context = step_context.with_parser(step.parser)
 
-            yield StepEvent("step_start", step_id, node.id)
+                yield StepEvent("step_start", step_id, node.id)
 
-            try:
-                # If terminal node with streaming support, stream chunks
-                if hasattr(node, "execute_stream") and callable(node.execute_stream):
-                    chunks = []
-                    async for chunk in node.execute_stream(step_context):
-                        chunks.append(chunk)
-                        yield StepEvent("step_chunk", step_id, node.id, chunk)
-                    result = "".join(chunks) if chunks else None
-                else:
-                    result = await self._execute_with_policy(step, node, step_context)
+                # Track current node for interrupt()
+                async with self._interrupt_lock:
+                    self._current_node = node
 
-                results[step_id] = result
-                yield StepEvent("step_complete", step_id, node.id, result)
+                try:
+                    # If terminal node with streaming support, stream chunks
+                    if hasattr(node, "execute_stream") and callable(node.execute_stream):
+                        chunks = []
+                        async for chunk in node.execute_stream(step_context):
+                            chunks.append(chunk)
+                            yield StepEvent("step_chunk", step_id, node.id, chunk)
+                        result = "".join(chunks) if chunks else None
+                    else:
+                        result = await self._execute_with_policy(step, node, step_context)
 
-            except Exception as e:
-                yield StepEvent("step_error", step_id, node.id, str(e))
-                raise
+                    results[step_id] = result
+                    yield StepEvent("step_complete", step_id, node.id, result)
+
+                except Exception as e:
+                    yield StepEvent("step_error", step_id, node.id, str(e))
+                    raise
+
+                finally:
+                    async with self._interrupt_lock:
+                        self._current_node = None
+
+        finally:
+            self._current_context = None
+            async with self._interrupt_lock:
+                self._current_node = None
 
     def collect_persistent_nodes(self) -> list[Node]:
         """Recursively find all persistent nodes in this graph.
@@ -689,12 +744,12 @@ class Graph:
             metadata={"steps": len(self._steps)},
         )
 
-    def _resolve_node(self, step: Step, session: Session) -> Node:
+    def _resolve_node(self, step: Step, session: Session | None) -> Node:
         """Resolve node from step configuration.
 
         Args:
             step: The step containing node or node_ref.
-            session: Session for node lookup.
+            session: Session for node lookup (required if step uses node_ref).
 
         Returns:
             The resolved node.
@@ -706,6 +761,8 @@ class Graph:
             return step.node
 
         if step.node_ref is not None:
+            if session is None:
+                raise ValueError(f"Session required to resolve node_ref '{step.node_ref}'")
             node = session.get_node(step.node_ref)
             if node is None:
                 raise ValueError(f"Node '{step.node_ref}' not found in session")

@@ -12,7 +12,7 @@ from nerve.frontends.cli.utils import create_client
 
 
 @server.group()
-def session():
+def session() -> None:
     """Manage sessions (workspaces).
 
     Sessions are isolated workspaces that contain nodes and graphs.
@@ -35,7 +35,7 @@ def session():
 @session.command("list")
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def session_list(server_name: str, json_output: bool):
+def session_list(server_name: str, json_output: bool) -> None:
     """List all sessions on a server.
 
     **Examples:**
@@ -46,7 +46,7 @@ def session_list(server_name: str, json_output: bool):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -61,7 +61,7 @@ def session_list(server_name: str, json_output: bool):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             sessions = result.data.get("sessions", [])
 
             if json_output:
@@ -93,7 +93,7 @@ def session_list(server_name: str, json_output: bool):
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
 @click.option("--description", "-d", default="", help="Session description")
 @click.option("--tags", "-t", multiple=True, help="Session tags")
-def session_create(name: str, server_name: str, description: str, tags: tuple):
+def session_create(name: str, server_name: str, description: str, tags: tuple[str, ...]) -> None:
     """Create a new session.
 
     NAME is required and serves as the unique session identifier.
@@ -106,7 +106,7 @@ def session_create(name: str, server_name: str, description: str, tags: tuple):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -114,7 +114,7 @@ def session_create(name: str, server_name: str, description: str, tags: tuple):
             click.echo(f"Error: Server '{server_name}' not running", err=True)
             sys.exit(1)
 
-        params = {"name": name}
+        params: dict[str, str | list[str]] = {"name": name}
         if description:
             params["description"] = description
         if tags:
@@ -127,7 +127,7 @@ def session_create(name: str, server_name: str, description: str, tags: tuple):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             session_name = result.data.get("name")
             click.echo(f"Created session: {session_name}")
         else:
@@ -141,7 +141,7 @@ def session_create(name: str, server_name: str, description: str, tags: tuple):
 @session.command("delete")
 @click.argument("session_id")
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
-def session_delete(session_id: str, server_name: str):
+def session_delete(session_id: str, server_name: str) -> None:
     """Delete a session.
 
     Stops all nodes in the session and removes it.
@@ -157,7 +157,7 @@ def session_delete(session_id: str, server_name: str):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -186,7 +186,7 @@ def session_delete(session_id: str, server_name: str):
 @click.argument("session_id", required=False)
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def session_info(session_id: str | None, server_name: str, json_output: bool):
+def session_info(session_id: str | None, server_name: str, json_output: bool) -> None:
     """Get session info.
 
     If SESSION_ID is not provided, shows info for the default session.
@@ -199,7 +199,7 @@ def session_info(session_id: str | None, server_name: str, json_output: bool):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -218,7 +218,7 @@ def session_info(session_id: str | None, server_name: str, json_output: bool):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             if json_output:
                 import json
 
@@ -245,7 +245,7 @@ def session_info(session_id: str | None, server_name: str, json_output: bool):
 @session.command("switch")
 @click.argument("session_id")
 @click.option("--server", "-s", "server_name", required=True, help="Server name")
-def session_switch(session_id: str, server_name: str):
+def session_switch(session_id: str, server_name: str) -> None:
     """Switch active session (for REPL use).
 
     Verifies the session exists and displays its info.
@@ -261,7 +261,7 @@ def session_switch(session_id: str, server_name: str):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -276,7 +276,7 @@ def session_switch(session_id: str, server_name: str):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             data = result.data
             click.echo(f"Switched to session: {data.get('name', session_id)}")
             click.echo(f"  ID: {data.get('session_id')}")

@@ -149,3 +149,62 @@ class TestFunctionNode:
         """FunctionNode satisfies Node protocol."""
         node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
         assert isinstance(node, Node)
+
+    @pytest.mark.asyncio
+    async def test_interrupt_cancels_async_task(self):
+        """Test interrupt() cancels running async task."""
+        import asyncio
+
+        execution_started = asyncio.Event()
+        execution_completed = False
+
+        async def slow_function(ctx: ExecutionContext):
+            nonlocal execution_completed
+            execution_started.set()
+            await asyncio.sleep(10)  # Long running task
+            execution_completed = True
+            return "done"
+
+        node = FunctionNode(id="slow", fn=slow_function)
+        session = Session()
+        context = ExecutionContext(session=session, input=None)
+
+        # Start execution in background
+        task = asyncio.create_task(node.execute(context))
+
+        # Wait for execution to start
+        await execution_started.wait()
+
+        # Interrupt the node
+        await node.interrupt()
+
+        # Task should be cancelled
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Execution should not have completed
+        assert not execution_completed
+
+    @pytest.mark.asyncio
+    async def test_interrupt_when_not_executing(self):
+        """Test interrupt() is safe to call when not executing."""
+        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+
+        # Should not raise
+        await node.interrupt()
+
+    @pytest.mark.asyncio
+    async def test_interrupt_clears_current_task(self):
+        """Test that _current_task is cleared after execution."""
+        node = FunctionNode(id="test", fn=lambda ctx: ctx.input)
+        session = Session()
+        context = ExecutionContext(session=session, input="hello")
+
+        # Before execution
+        assert node._current_task is None
+
+        # Execute
+        await node.execute(context)
+
+        # After execution, task should be cleared
+        assert node._current_task is None

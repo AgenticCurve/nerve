@@ -11,7 +11,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.server import NerveEngine
@@ -151,7 +151,7 @@ class TCPSocketServer:
                 self._clients.remove(writer)
             writer.close()
 
-    async def _handle_message(self, message: dict) -> dict:
+    async def _handle_message(self, message: dict[str, Any]) -> dict[str, Any]:
         """Handle an incoming message."""
         from nerve.server.protocols import Command, CommandType
 
@@ -201,9 +201,9 @@ class TCPSocketClient:
     port: int
     _reader: asyncio.StreamReader | None = None
     _writer: asyncio.StreamWriter | None = None
-    _event_queue: asyncio.Queue = field(default_factory=asyncio.Queue)  # type: ignore[type-arg]
+    _event_queue: asyncio.Queue[Any] = field(default_factory=asyncio.Queue)
     _connected: bool = False
-    _reader_task: asyncio.Task | None = None
+    _reader_task: asyncio.Task[Any] | None = None
     _last_error: Exception | None = field(default=None, repr=False)
     _error_count: int = field(default=0, repr=False)
 

@@ -70,7 +70,7 @@ async def run_graph_file(
     socket_path: str = "/tmp/nerve.sock",
     dry_run: bool = False,
     nodes: dict[str, str] | None = None,
-):
+) -> None:
     """Run a Graph file on the server.
 
     Args:
@@ -129,7 +129,7 @@ async def run_graph_file(
                     params={"node_id": node_name, "command": "claude"},
                 )
             )
-            if result.success:
+            if result.success and result.data:
                 node_map[node_name] = result.data["node_id"]
                 print(f"  -> {result.data['node_id']}")
             else:
@@ -161,7 +161,7 @@ async def run_graph_file(
         )
     )
 
-    if result.success:
+    if result.success and result.data:
         print("\nResults:")
         print("=" * 50)
         for step_id, res in result.data.get("results", {}).items():
@@ -183,7 +183,7 @@ async def run_graph_file(
 
 
 @server.group()
-def graph():
+def graph() -> None:
     """Manage and execute graphs on the server.
 
     Graphs are multi-step workflows that orchestrate node execution.
@@ -208,7 +208,7 @@ def graph():
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def graph_list(server_name: str, session_id: str | None, json_output: bool):
+def graph_list(server_name: str, session_id: str | None, json_output: bool) -> None:
     """List registered graphs in a session.
 
     **Examples:**
@@ -221,7 +221,7 @@ def graph_list(server_name: str, session_id: str | None, json_output: bool):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -240,7 +240,7 @@ def graph_list(server_name: str, session_id: str | None, json_output: bool):
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             graphs = result.data.get("graphs", [])
 
             if json_output:
@@ -266,7 +266,7 @@ def graph_list(server_name: str, session_id: str | None, json_output: bool):
 @click.argument("graph_id")
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def graph_create(graph_id: str, server_name: str, session_id: str | None):
+def graph_create(graph_id: str, server_name: str, session_id: str | None) -> None:
     """Create an empty graph.
 
     Creates a graph that can have steps added later.
@@ -285,7 +285,7 @@ def graph_create(graph_id: str, server_name: str, session_id: str | None):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -318,7 +318,7 @@ def graph_create(graph_id: str, server_name: str, session_id: str | None):
 @click.argument("graph_id")
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def graph_delete(graph_id: str, server_name: str, session_id: str | None):
+def graph_delete(graph_id: str, server_name: str, session_id: str | None) -> None:
     """Delete a graph.
 
     **Arguments:**
@@ -333,7 +333,7 @@ def graph_delete(graph_id: str, server_name: str, session_id: str | None):
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -367,7 +367,7 @@ def graph_delete(graph_id: str, server_name: str, session_id: str | None):
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def graph_info(graph_id: str, server_name: str, session_id: str | None, json_output: bool):
+def graph_info(graph_id: str, server_name: str, session_id: str | None, json_output: bool) -> None:
     """Get graph info.
 
     **Arguments:**
@@ -382,7 +382,7 @@ def graph_info(graph_id: str, server_name: str, session_id: str | None, json_out
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run():
+    async def run() -> None:
         try:
             client = create_client(server_name)
             await client.connect()
@@ -401,7 +401,7 @@ def graph_info(graph_id: str, server_name: str, session_id: str | None, json_out
             )
         )
 
-        if result.success:
+        if result.success and result.data:
             if json_output:
                 import json
 
@@ -429,7 +429,7 @@ def graph_info(graph_id: str, server_name: str, session_id: str | None, json_out
 @click.argument("file")
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--dry-run", "-d", is_flag=True, help="Show execution order without running")
-def graph_run(file: str, server_name: str, dry_run: bool):
+def graph_run(file: str, server_name: str, dry_run: bool) -> None:
     """Run a graph definition file on the server.
 
     The file should define a `graph` dict or Graph object with steps.

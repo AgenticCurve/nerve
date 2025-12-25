@@ -68,7 +68,7 @@ class DebateConfig:
     max_words: int = 100
     prompt_template: str = DEFAULT_DEBATE_PROMPT
     on_turn: Callable[[int, str, str], None] | None = None
-    on_complete: Callable[[list], None] | None = None
+    on_complete: Callable[[list[DebateTurn]], None] | None = None
 
 
 @dataclass

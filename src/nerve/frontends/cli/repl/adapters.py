@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from nerve.core.nodes import Graph
 
 
 class SessionAdapter(Protocol):
@@ -36,7 +39,7 @@ class SessionAdapter(Protocol):
         """List graph IDs."""
         ...
 
-    async def get_graph(self, graph_id: str):
+    async def get_graph(self, graph_id: str) -> Graph | None:
         """Get graph by ID (returns Graph object or None)."""
         ...
 
@@ -61,11 +64,11 @@ class LocalSessionAdapter:
 
     @property
     def name(self) -> str:
-        return self.session.name
+        return str(self.session.name)
 
     @property
     def id(self) -> str:
-        return self.session.id
+        return str(self.session.id)
 
     @property
     def node_count(self) -> int:
@@ -87,13 +90,16 @@ class LocalSessionAdapter:
         return result
 
     async def list_graphs(self) -> list[str]:
-        return self.session.list_graphs()
+        result: list[str] = self.session.list_graphs()
+        return result
 
-    async def get_graph(self, graph_id: str):
-        return self.session.get_graph(graph_id)
+    async def get_graph(self, graph_id: str) -> Graph | None:
+        result: Graph | None = self.session.get_graph(graph_id)
+        return result
 
     async def delete_node(self, node_id: str) -> bool:
-        return await self.session.delete_node(node_id)
+        result: bool = await self.session.delete_node(node_id)
+        return result
 
     async def execute_on_node(self, node_id: str, text: str) -> str:
         """Execute on a node (for send command)."""
@@ -121,8 +127,8 @@ class RemoteSessionAdapter:
         self.server_name = server_name
         self._name = session_name or "default"  # Use provided or default
         self.session_id = session_name  # None means use server's default
-        self._cached_nodes_info: list[dict] = []
-        self._cached_graphs: list[dict] = []
+        self._cached_nodes_info: list[dict[str, Any]] = []
+        self._cached_graphs: list[dict[str, Any]] = []
 
     def _add_session_id(self, params: dict[str, Any]) -> dict[str, Any]:
         """Add session_id to params if specified."""
@@ -177,7 +183,7 @@ class RemoteSessionAdapter:
             return [g["id"] for g in graphs]
         return []
 
-    async def get_graph(self, graph_id: str):
+    async def get_graph(self, graph_id: str) -> Graph | None:
         """Get graph - not supported in remote mode.
 
         In remote mode, REPL commands (show, dry, validate) are executed
@@ -198,7 +204,7 @@ class RemoteSessionAdapter:
                 params=self._add_session_id({"node_id": node_id}),
             )
         )
-        return result.success
+        return bool(result.success)
 
     async def execute_on_node(self, node_id: str, text: str) -> str:
         """Execute on a server node."""
@@ -211,7 +217,8 @@ class RemoteSessionAdapter:
             )
         )
         if result.success:
-            return result.data.get("response", "")
+            data = result.data or {}
+            return str(data.get("response", ""))
         else:
             raise ValueError(result.error)
 

@@ -60,10 +60,10 @@ class NerveEngine:
     _python_namespaces: dict[str, dict[str, Any]] = field(
         default_factory=dict, repr=False
     )  # session_id -> namespace
-    _running_graphs: dict[str, asyncio.Task] = field(default_factory=dict)
+    _running_graphs: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize default session."""
         if self._default_session is None:
             self._default_session = Session(
@@ -95,6 +95,7 @@ class NerveEngine:
             if session is None:
                 raise ValueError(f"Session not found: {session_name}")
             return session
+        assert self._default_session is not None
         return self._default_session
 
     async def execute(self, command: Command) -> CommandResult:
@@ -196,6 +197,8 @@ class NerveEngine:
         session = self._get_session(params)
 
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
         command = params.get("command")  # e.g., "claude" or ["claude", "--flag"]
         cwd = params.get("cwd")
         backend = params.get("backend", "pty")  # "pty" or "wezterm"
@@ -203,7 +206,7 @@ class NerveEngine:
         history = params.get("history", True)  # Enable history by default
 
         node = await session.create_node(
-            node_id=node_id,
+            node_id=str(node_id),
             command=command,
             backend=backend,
             cwd=cwd,
@@ -231,8 +234,10 @@ class NerveEngine:
         """Delete a node."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
 
-        deleted = await session.delete_node(node_id)
+        deleted = await session.delete_node(str(node_id))
         if not deleted:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -269,12 +274,14 @@ class NerveEngine:
         """Get node info."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
-        info = node.to_info()
+        info = node.to_info()  # type: ignore[attr-defined]
         result = {
             "node_id": node.id,
             "type": info.node_type,
@@ -301,13 +308,15 @@ class NerveEngine:
         """
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
         command = params["command"]
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
-        await node.run(command)
+        await node.run(command)  # type: ignore[attr-defined]
 
         return {"started": True, "command": command}
 
@@ -315,11 +324,13 @@ class NerveEngine:
         """Execute input on a node and wait for response."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
         text = params["text"]
         parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -341,7 +352,7 @@ class NerveEngine:
                 input=text,
                 parser=parser_type,
             )
-            async for chunk in node.execute_stream(stream_context):
+            async for chunk in node.execute_stream(stream_context):  # type: ignore[attr-defined]
                 await self._emit(
                     EventType.OUTPUT_CHUNK,
                     data={"chunk": chunk},
@@ -351,7 +362,7 @@ class NerveEngine:
             # Parse final response
             actual_parser = parser_type or ParserType.NONE
             parser = get_parser(actual_parser)
-            response = parser.parse(node.buffer)
+            response = parser.parse(node.buffer)  # type: ignore[attr-defined]
         else:
             # Wait for complete response using ExecutionContext
             context.parser = parser_type
@@ -394,8 +405,8 @@ class NerveEngine:
         from dataclasses import asdict, is_dataclass
 
         # Convert dataclasses to dicts for JSON serialization
-        def convert_to_serializable(obj):
-            if is_dataclass(obj):
+        def convert_to_serializable(obj: Any) -> Any:
+            if is_dataclass(obj) and not isinstance(obj, type):
                 return asdict(obj)
             elif isinstance(obj, dict):
                 return {k: convert_to_serializable(v) for k, v in obj.items()}
@@ -594,8 +605,8 @@ class NerveEngine:
                 errors = graph.validate()
                 if errors:
                     output_buffer.write("Validation FAILED:\n")
-                    for e in errors:
-                        output_buffer.write(f"  - {e}\n")
+                    for err in errors:
+                        output_buffer.write(f"  - {err}\n")
                 else:
                     output_buffer.write("Validation PASSED\n")
 
@@ -629,12 +640,12 @@ class NerveEngine:
                     return {"output": "", "error": "Usage: read <node>"}
 
                 node_name = args[0]
-                node = session.get_node(node_name)
-                if not node:
+                read_node = session.get_node(node_name)
+                if not read_node:
                     return {"output": "", "error": f"Node not found: {node_name}"}
 
-                if hasattr(node, "read"):
-                    buffer_content = await node.read()
+                if hasattr(read_node, "read"):
+                    buffer_content = await read_node.read()
                     output_buffer.write(buffer_content)
                 else:
                     return {"output": "", "error": "Node does not support read"}
@@ -659,8 +670,10 @@ class NerveEngine:
         """Send interrupt to a node."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
@@ -672,13 +685,15 @@ class NerveEngine:
         """Write raw data to a node (no waiting)."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
         data = params["data"]
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
-        await node.write(data)
+        await node.write(data)  # type: ignore[attr-defined]
 
         return {"written": len(data)}
 
@@ -686,16 +701,18 @@ class NerveEngine:
         """Get node buffer."""
         session = self._get_session(params)
         node_id = params.get("node_id")
+        if not node_id:
+            raise ValueError("node_id is required")
         lines = params.get("lines")
 
-        node = session.get_node(node_id)
+        node = session.get_node(str(node_id))
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
         if lines:
-            buffer = node.read_tail(lines)
+            buffer = node.read_tail(lines)  # type: ignore[attr-defined]
         else:
-            buffer = await node.read()
+            buffer = await node.read()  # type: ignore[attr-defined]
 
         return {"buffer": buffer}
 
@@ -800,7 +817,7 @@ class NerveEngine:
 
         # Execute graph with streaming
         results = {}
-        async for event in graph.stream(context):
+        async for event in graph.stream(context):  # type: ignore[attr-defined]
             if event.event == "step_started":
                 await self._emit(
                     EventType.STEP_STARTED,
@@ -902,6 +919,7 @@ class NerveEngine:
         if not session_id:
             raise ValueError("session_id is required")
 
+        assert self._default_session is not None
         if session_id == self._default_session.name:
             raise ValueError("Cannot delete the default session")
 
@@ -924,6 +942,7 @@ class NerveEngine:
         Returns:
             Dict with sessions list.
         """
+        assert self._default_session is not None
         sessions = []
         for session in self._sessions.values():
             sessions.append(
@@ -952,6 +971,7 @@ class NerveEngine:
         Returns:
             Dict with session info including detailed node info.
         """
+        assert self._default_session is not None
         session = self._get_session(params)
 
         # Get detailed node info
@@ -1137,7 +1157,7 @@ class NerveEngine:
 
         # Execute graph with streaming
         results = {}
-        async for event in graph.stream(context):
+        async for event in graph.stream(context):  # type: ignore[attr-defined]
             if event.event == "step_started":
                 await self._emit(
                     EventType.STEP_STARTED,
@@ -1215,7 +1235,7 @@ class NerveEngine:
     # Internal
     # =========================================================================
 
-    async def _monitor_node(self, node) -> None:
+    async def _monitor_node(self, node: Any) -> None:
         """Monitor node for state changes.
 
         This runs in the background and emits events when

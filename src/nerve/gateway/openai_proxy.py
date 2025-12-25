@@ -86,7 +86,7 @@ class OpenAIProxyServer:
     _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
     _tracer: RequestTracer = field(init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize tracer with debug directory from config."""
         self._tracer = RequestTracer(debug_dir=self.config.debug_dir)
 
@@ -155,7 +155,7 @@ class OpenAIProxyServer:
             await self._runner.cleanup()
             self._runner = None
 
-    async def _handle_messages(self, request: web.Request) -> web.Response:
+    async def _handle_messages(self, request: web.Request) -> web.StreamResponse:
         """Handle POST /v1/messages - main proxy endpoint."""
         # Header validation
         content_type = request.headers.get("Content-Type", "")

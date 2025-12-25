@@ -9,7 +9,7 @@ from nerve.frontends.cli.repl.core import run_interactive
 from nerve.frontends.cli.repl.file_runner import run_from_file
 
 
-def main():
+def main() -> None:
     """CLI entry point for REPL."""
     parser = argparse.ArgumentParser(
         description="Nerve Graph REPL - Interactive Graph definition and execution"
