@@ -16,21 +16,21 @@ Classes:
     Event: Event message type.
 
 Example:
-    >>> from nerve.server import NerveEngine
+    >>> from nerve.server import build_nerve_engine, Command, CommandType
     >>> from nerve.server.protocols import EventSink, Event
     >>>
     >>> class MySink(EventSink):
     ...     async def emit(self, event: Event) -> None:
     ...         print(f"Event: {event.type}")
     >>>
-    >>> engine = NerveEngine(event_sink=MySink())
+    >>> engine = build_nerve_engine(event_sink=MySink())
     >>> result = await engine.execute(Command(
     ...     type=CommandType.CREATE_NODE,
     ...     params={"command": "claude"},
     ... ))
 """
 
-from nerve.server.engine import NerveEngine
+from nerve.server.engine import NerveEngine, build_nerve_engine
 from nerve.server.protocols import (
     Command,
     CommandResult,
@@ -49,6 +49,7 @@ from nerve.server.proxy_manager import (
 
 __all__ = [
     "NerveEngine",
+    "build_nerve_engine",
     "EventSink",
     "Event",
     "EventType",

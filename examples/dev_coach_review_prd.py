@@ -85,17 +85,17 @@ REVIEWER_WARMUP = ""
 # TASK - Describe the feature/change that needs a PRD
 # =============================================================================
 
-INITIAL_TASK = f"""Create a comprehensive PRD for the following feature:
+INITIAL_TASK = """
+Review the PRD and see if something is missing.
 
-- We want to break the nodes/graph.py file into smaller, more manageable modules.
-- Ensure it is a clean break, no backward compatibility.
-- Break the graph file into graph/ dir so that everything is still under terminal namespace.
-- Ensure PRD doesn't break any existing functionality. No feature regression.
-- This is a refactoring PRD.
+Essentially we want to break engine.py into small files/classes while ensuring
+no feature regression.
 
-The PRD should be written to: {PRD_OUTPUT_PATH}
+Make sure the PRD proposes a clean break with no backward compatability.
 
-Follow the PRD template structure and ensure the document is implementation-ready."""
+PRD can be found here: docs/prd/engine-architectural-refactoring.md
+
+"""
 
 TASK_REFRESHER = INITIAL_TASK
 

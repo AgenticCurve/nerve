@@ -17,7 +17,7 @@ class NerveMCPServer:
     the Model Context Protocol.
 
     Example:
-        >>> engine = NerveEngine(event_sink=transport)
+        >>> engine = build_nerve_engine(event_sink=transport)
         >>> mcp = NerveMCPServer(engine)
         >>> await mcp.run()  # Start MCP server
 

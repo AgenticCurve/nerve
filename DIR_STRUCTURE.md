@@ -1,7 +1,7 @@
 ./
 ├── docs/
 │   └── prd/
-│       └── [L: 850] openai-provider-support.md
+│       └── [L:1902] engine-architectural-refactoring.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -16,7 +16,7 @@
 │   ├── [L: 587] dev_coach.py
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 760] dev_coach_review.py
+│   ├── [L: 736] dev_coach_review.py
 │   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
@@ -131,10 +131,24 @@
 │       │       ├── [L: 115] types.py
 │       │       └── [L: 197] validation.py
 │       ├── server/
-│       │   ├── [L:  64] __init__.py
-│       │   ├── [L:1414] engine.py
+│       │   ├── [L:  65] __init__.py
+│       │   ├── [L: 295] engine.py
+│       │   ├── factories/
+│       │   │   ├── [L:  11] __init__.py
+│       │   │   └── [L: 136] node_factory.py
+│       │   ├── handlers/
+│       │   │   ├── [L:  29] __init__.py
+│       │   │   ├── [L: 322] graph_handler.py
+│       │   │   ├── [L: 286] node_interaction_handler.py
+│       │   │   ├── [L: 329] node_lifecycle_handler.py
+│       │   │   ├── [L: 249] python_executor.py
+│       │   │   ├── [L: 217] repl_command_handler.py
+│       │   │   ├── [L: 108] server_handler.py
+│       │   │   └── [L: 169] session_handler.py
 │       │   ├── [L: 154] protocols.py
-│       │   └── [L: 468] proxy_manager.py
+│       │   ├── [L: 466] proxy_manager.py
+│       │   ├── [L: 154] session_registry.py
+│       │   └── [L:  94] validation.py
 │       └── transport/
 │           ├── [L:  52] __init__.py
 │           ├── [L: 372] http.py
@@ -198,11 +212,13 @@
     │       └── [L: 148] test_tool_id_mapper.py
     ├── server/
     │   ├── [L:   0] __init__.py
-    │   ├── [L: 513] test_engine.py
-    │   ├── [L: 269] test_engine_proxy.py
-    │   ├── [L: 283] test_engine_sessions.py
-    │   └── [L: 284] test_proxy_manager.py
+    │   ├── [L: 516] test_engine.py
+    │   ├── [L: 287] test_engine_proxy.py
+    │   ├── [L: 302] test_engine_sessions.py
+    │   ├── [L: 284] test_proxy_manager.py
+    │   ├── [L: 194] test_session_registry.py
+    │   └── [L: 204] test_validation.py
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 162 files, 35,912 total lines
+46 directories, 176 files, 38,362 total lines
