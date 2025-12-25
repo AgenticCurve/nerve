@@ -372,7 +372,9 @@ def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     default=None,
     help="Submit sequence (e.g., '\\n', '\\r', '\\x1b\\r'). Default: auto based on parser.",
 )
-def node_send(node_name: str, text: str, server_name: str, parser: str | None, submit: str | None) -> None:
+def node_send(
+    node_name: str, text: str, server_name: str, parser: str | None, submit: str | None
+) -> None:
     """Send input to a node and get JSON response.
 
     **Arguments:**

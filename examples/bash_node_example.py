@@ -60,8 +60,12 @@ async def main():
 
     # Add steps to graph
     graph.add_step(checkout, "checkout", input="echo 'Checking out code...' && sleep 0.5")
-    graph.add_step(test, "test", input="echo 'Running tests...' && sleep 0.5", depends_on=["checkout"])
-    graph.add_step(build, "build", input="echo 'Building project...' && sleep 0.5", depends_on=["test"])
+    graph.add_step(
+        test, "test", input="echo 'Running tests...' && sleep 0.5", depends_on=["checkout"]
+    )
+    graph.add_step(
+        build, "build", input="echo 'Building project...' && sleep 0.5", depends_on=["test"]
+    )
 
     # Execute graph
     results = await graph.execute(ExecutionContext(session=session))
@@ -80,9 +84,7 @@ async def main():
 
     # Start long-running command
     task = asyncio.create_task(
-        bash_long.execute(
-            ExecutionContext(session=session, input="echo 'Starting...' && sleep 10")
-        )
+        bash_long.execute(ExecutionContext(session=session, input="echo 'Starting...' && sleep 10"))
     )
 
     # Wait a bit, then interrupt

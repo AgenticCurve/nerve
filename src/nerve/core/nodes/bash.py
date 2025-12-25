@@ -13,6 +13,7 @@ Key features:
 from __future__ import annotations
 
 import asyncio
+import os
 import signal
 from dataclasses import dataclass, field
 from typing import Any
@@ -119,7 +120,6 @@ class BashNode:
             # Build environment
             env = None
             if self.env:
-                import os
                 env = os.environ.copy()
                 env.update(self.env)
 
@@ -145,8 +145,8 @@ class BashNode:
                 )
 
                 # Decode output
-                result["stdout"] = stdout_bytes.decode('utf-8', errors='replace')
-                result["stderr"] = stderr_bytes.decode('utf-8', errors='replace')
+                result["stdout"] = stdout_bytes.decode("utf-8", errors="replace")
+                result["stderr"] = stderr_bytes.decode("utf-8", errors="replace")
                 result["exit_code"] = proc.returncode
 
                 # Handle exit code

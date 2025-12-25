@@ -50,10 +50,11 @@ build-backend = "hatchling.build"
 path = "src/nerve/__version__.py"
 
 [tool.hatch.envs.default.scripts]
-lint = "ruff check . --fix && ruff format ."
+lint = "ruff check . --fix"
+format = "ruff format ."
 typecheck = "mypy src/"
 test = "pytest"
-check = ["lint", "typecheck", "test"]
+check = ["lint", "format", "typecheck", "test"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nerve"]

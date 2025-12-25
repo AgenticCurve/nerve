@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from code import compile_command
 from typing import Any
 
@@ -36,7 +37,6 @@ async def run_interactive(
     # Set up readline for history and editing
     try:
         import atexit
-        import os
         import readline
 
         # Key bindings for word movement
@@ -53,7 +53,9 @@ async def run_interactive(
             if os.path.exists(histfile):
                 size = os.path.getsize(histfile)
                 if size > 1_000_000:  # 1MB
-                    print(f"Warning: History file is too large ({size // 1_000_000}MB), skipping load")
+                    print(
+                        f"Warning: History file is too large ({size // 1_000_000}MB), skipping load"
+                    )
                     print(f"Consider removing: {histfile}")
                 else:
                     readline.read_history_file(histfile)

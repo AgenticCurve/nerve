@@ -138,7 +138,9 @@ def _run_cli() -> None:
         default=None,
         help="Session to connect to (default: server's default session)",
     )
-    def repl(file: str | None, dry_run: bool, server_name: str | None, session_name: str | None) -> None:
+    def repl(
+        file: str | None, dry_run: bool, server_name: str | None, session_name: str | None
+    ) -> None:
         """Interactive graph definition and execution.
 
         A REPL for defining and running graphs (node execution pipelines)

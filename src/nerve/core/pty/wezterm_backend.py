@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 from collections.abc import AsyncIterator
 from typing import Any, cast
@@ -111,8 +112,6 @@ class WezTermBackend(Backend):
         cmd = ["wezterm", "cli", "spawn"]
 
         # If not running from within WezTerm, we need to specify where to spawn
-        import os
-
         if not os.environ.get("WEZTERM_PANE"):
             # Check if there are existing panes we can spawn into
             existing_panes = list_wezterm_panes()

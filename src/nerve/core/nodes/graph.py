@@ -140,7 +140,9 @@ class GraphStep:
                 raise ValueError(f"Step {self.step_id} has neither node nor node_ref")
             self._registered = True
 
-    def __rshift__(self, other: GraphStep | list[GraphStep] | GraphStepList) -> GraphStep | GraphStepList:
+    def __rshift__(
+        self, other: GraphStep | list[GraphStep] | GraphStepList
+    ) -> GraphStep | GraphStepList:
         """A >> B makes B depend on A.
 
         Supports:
@@ -175,7 +177,9 @@ class GraphStepList(list[GraphStep]):
         >>> [A, B] >> C  # C depends on both A and B
     """
 
-    def __rshift__(self, other: GraphStep | list[GraphStep] | GraphStepList) -> GraphStep | GraphStepList:
+    def __rshift__(
+        self, other: GraphStep | list[GraphStep] | GraphStepList
+    ) -> GraphStep | GraphStepList:
         """[A, B] >> C makes C depend on all items in the list.
 
         Supports:
@@ -749,9 +753,7 @@ class Graph:
 
         if step.node_ref is not None:
             if session is None:
-                raise ValueError(
-                    f"Session required to resolve node_ref '{step.node_ref}'"
-                )
+                raise ValueError(f"Session required to resolve node_ref '{step.node_ref}'")
             node = session.get_node(step.node_ref)
             if node is None:
                 raise ValueError(f"Node '{step.node_ref}' not found in session")

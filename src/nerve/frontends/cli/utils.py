@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 
 def get_server_client(
     server_name: str,
-) -> tuple[type[HTTPClient] | type[TCPSocketClient] | type[UnixSocketClient], str | tuple[str, int]]:
+) -> tuple[
+    type[HTTPClient] | type[TCPSocketClient] | type[UnixSocketClient], str | tuple[str, int]
+]:
     """Get the appropriate client class and connection info for a server.
 
     Returns (ClientClass, connection_info) tuple where:

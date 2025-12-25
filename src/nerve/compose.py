@@ -6,11 +6,55 @@ without manually wiring up all the layers.
 
 from __future__ import annotations
 
+import asyncio
+import os
+from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from nerve.server import NerveEngine
     from nerve.transport import InProcessTransport
+
+
+async def _load_proxy_config(
+    config_file: str | None,
+    env_config_key: str = "NERVE_PROXY_CONFIG",
+) -> tuple[dict[str, Any], Callable[[str | None, str, str, str], str]]:
+    """Load proxy config file and return (file_config, get_value_fn).
+
+    Args:
+        config_file: Path to config file, or None to check env var.
+        env_config_key: Environment variable name for config path.
+
+    Returns:
+        Tuple of (file_config dict, get_value function).
+        The get_value function resolves config values with priority:
+        arg > env > file > default.
+    """
+    file_config: dict[str, Any] = {}
+    config_path = config_file or os.environ.get(env_config_key)
+    if config_path:
+        try:
+            import yaml  # type: ignore[import-untyped]
+
+            content = await asyncio.to_thread(Path(config_path).read_text)
+            file_config = yaml.safe_load(content) or {}
+        except (ImportError, FileNotFoundError):
+            pass
+
+    def get_value(arg: str | None, env_key: str, file_key: str, default: str) -> str:
+        if arg is not None:
+            return arg
+        env_val = os.environ.get(env_key)
+        if env_val:
+            return env_val
+        file_val = file_config.get(file_key)
+        if file_val:
+            return str(file_val)
+        return default
+
+    return file_config, get_value
 
 
 def create_standalone() -> tuple[NerveEngine, InProcessTransport]:
@@ -115,39 +159,13 @@ async def create_openai_proxy(
         ...     upstream_model="gpt-4o",
         ... )
     """
-    import os
-
     from nerve.gateway.openai_proxy import (
         OpenAIProxyConfig,
         OpenAIProxyServer,
     )
 
-    # Load config file if specified
-    file_config: dict[str, Any] = {}
-    config_path = config_file or os.environ.get("NERVE_PROXY_CONFIG")
-    if config_path:
-        try:
-            import yaml  # type: ignore[import-untyped]
-
-            with open(config_path) as f:
-                file_config = yaml.safe_load(f) or {}
-        except ImportError:
-            # YAML not available, skip config file
-            pass
-        except FileNotFoundError:
-            pass
-
-    # Build config with priority: args > env > file > defaults
-    def get_value(arg: str | None, env_key: str, file_key: str, default: str) -> str:
-        if arg is not None:
-            return arg
-        env_val = os.environ.get(env_key)
-        if env_val:
-            return env_val
-        file_val = file_config.get(file_key)
-        if file_val:
-            return str(file_val)
-        return default
+    # Load config file and get value resolver
+    _, get_value = await _load_proxy_config(config_file)
 
     config = OpenAIProxyConfig(
         host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
@@ -192,44 +210,20 @@ async def create_anthropic_proxy(
         upstream_api_key: Upstream API key.
         config_file: Path to YAML config (or NERVE_PROXY_CONFIG env var).
     """
-    import os
-
     from nerve.gateway.anthropic_proxy import (
         AnthropicProxyConfig,
         AnthropicProxyServer,
     )
 
-    # Load config file if specified
-    file_config: dict[str, Any] = {}
-    config_path = config_file or os.environ.get("NERVE_PROXY_CONFIG")
-    if config_path:
-        try:
-            import yaml
-
-            with open(config_path) as f:
-                file_config = yaml.safe_load(f) or {}
-        except ImportError:
-            # YAML not available, skip config file
-            pass
-        except FileNotFoundError:
-            pass
-
-    # Build config with priority: args > env > file > defaults
-    def get_value(arg: str | None, env_key: str, file_key: str, default: str) -> str:
-        if arg is not None:
-            return arg
-        env_val = os.environ.get(env_key)
-        if env_val:
-            return env_val
-        file_val = file_config.get(file_key)
-        if file_val:
-            return str(file_val)
-        return default
+    # Load config file and get value resolver
+    _, get_value = await _load_proxy_config(config_file)
 
     config = AnthropicProxyConfig(
         host=get_value(host if host != "127.0.0.1" else None, "PROXY_HOST", "host", "127.0.0.1"),
         port=int(get_value(str(port) if port != 3457 else None, "PROXY_PORT", "port", "3457")),
-        upstream_base_url=get_value(upstream_base_url, "ANTHROPIC_BASE_URL", "upstream_base_url", ""),
+        upstream_base_url=get_value(
+            upstream_base_url, "ANTHROPIC_BASE_URL", "upstream_base_url", ""
+        ),
         upstream_api_key=get_value(upstream_api_key, "ANTHROPIC_API_KEY", "upstream_api_key", ""),
     )
 
