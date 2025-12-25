@@ -102,7 +102,9 @@ class TestNerveClientStandalone:
         mock_node = MagicMock()
         mock_node.id = "my-node"
 
-        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+        with patch(
+            "nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)
+        ):
             node = await client.create_node("my-node", command="claude")
 
             assert isinstance(node, RemoteNode)
@@ -121,7 +123,9 @@ class TestNerveClientStandalone:
         mock_node = MagicMock()
         mock_node.id = "node-1"
 
-        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+        with patch(
+            "nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)
+        ):
             # Create a node
             await client.create_node("node-1", command="bash")
 
@@ -142,7 +146,9 @@ class TestNerveClientStandalone:
         mock_node = MagicMock()
         mock_node.id = "my-node"
 
-        with patch("nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)):
+        with patch(
+            "nerve.core.nodes.terminal.PTYNode.create", new=AsyncMock(return_value=mock_node)
+        ):
             # Create a node first
             await client.create_node("my-node", command="claude")
 

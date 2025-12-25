@@ -102,9 +102,7 @@ class BashNode:
 
         # Check for duplicates
         if self.id in self.session.nodes:
-            raise ValueError(
-                f"Node '{self.id}' already exists in session '{self.session.name}'"
-            )
+            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
 
         # Auto-register with session
         self.session.nodes[self.id] = self

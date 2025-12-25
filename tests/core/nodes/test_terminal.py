@@ -616,7 +616,9 @@ class TestClaudeWezTermNode:
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
-            node = await ClaudeWezTermNode.create(id="test-node", session=session, command="claude --dangerously-skip-permissions")
+            node = await ClaudeWezTermNode.create(
+                id="test-node", session=session, command="claude --dangerously-skip-permissions"
+            )
 
             assert node.id == "test-node"
             assert node.persistent is True
@@ -826,7 +828,9 @@ class TestClaudeWezTermNode:
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             session = Session(history_enabled=False)
-            node = await ClaudeWezTermNode.create(id="test-node", session=session, command="claude --skip")
+            node = await ClaudeWezTermNode.create(
+                id="test-node", session=session, command="claude --skip"
+            )
 
             info = node.to_info()
 

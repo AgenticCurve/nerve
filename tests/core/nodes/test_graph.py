@@ -272,7 +272,11 @@ class TestGraph:
         outer = Graph(id="outer", session=session2)
         outer.add_step(inner, step_id="nested")
         outer.add_step(
-            FunctionNode(id="outer-fn", session=session2, fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']}"),
+            FunctionNode(
+                id="outer-fn",
+                session=session2,
+                fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']}",
+            ),
             step_id="after",
             depends_on=["nested"],
         )
@@ -465,7 +469,9 @@ class TestGraph:
             return "step2"
 
         graph.add_step(FunctionNode(id="fn1", session=session, fn=step1), step_id="step1")
-        graph.add_step(FunctionNode(id="fn2", session=session, fn=step2), step_id="step2", depends_on=["step1"])
+        graph.add_step(
+            FunctionNode(id="fn2", session=session, fn=step2), step_id="step2", depends_on=["step1"]
+        )
 
         token = CancellationToken()
         context = ExecutionContext(session=session, cancellation=token)

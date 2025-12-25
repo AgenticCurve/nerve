@@ -194,6 +194,16 @@ class NerveEngine:
 
         Requires node_id (name) in params. Names must be unique.
         Uses direct node class instantiation with session parameter.
+
+        Parameters:
+            node_id: Node identifier (required)
+            command: Command to run (e.g., "claude" or ["claude", "--flag"])
+            cwd: Working directory
+            backend: Node backend ("pty", "wezterm", "claude-wezterm")
+            pane_id: For attaching to existing WezTerm pane
+            history: Enable history logging (default: True)
+            response_timeout: Max wait for terminal response in seconds (default: 1800.0)
+            ready_timeout: Max wait for terminal ready state in seconds (default: 60.0)
         """
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
@@ -211,8 +221,11 @@ class NerveEngine:
         backend = params.get("backend", "pty")  # "pty" or "wezterm"
         pane_id = params.get("pane_id")  # For attaching to existing WezTerm pane
         history = params.get("history", True)  # Enable history by default
+        response_timeout = params.get("response_timeout", 1800.0)
+        ready_timeout = params.get("ready_timeout", 60.0)
 
         # Dispatch to appropriate node class based on backend
+        node: PTYNode | WezTermNode | ClaudeWezTermNode
         if backend == "pty":
             node = await PTYNode.create(
                 id=str(node_id),
@@ -220,6 +233,8 @@ class NerveEngine:
                 command=command,
                 cwd=cwd,
                 history=history,
+                response_timeout=response_timeout,
+                ready_timeout=ready_timeout,
             )
         elif backend == "wezterm":
             if pane_id:
@@ -229,6 +244,8 @@ class NerveEngine:
                     session=session,
                     pane_id=pane_id,
                     history=history,
+                    response_timeout=response_timeout,
+                    ready_timeout=ready_timeout,
                 )
             else:
                 # Create new pane
@@ -238,6 +255,8 @@ class NerveEngine:
                     command=command,
                     cwd=cwd,
                     history=history,
+                    response_timeout=response_timeout,
+                    ready_timeout=ready_timeout,
                 )
         elif backend == "claude-wezterm":
             if not command:
@@ -248,6 +267,8 @@ class NerveEngine:
                 command=command,
                 cwd=cwd,
                 history=history,
+                response_timeout=response_timeout,
+                ready_timeout=ready_timeout,
             )
         else:
             raise ValueError(f"Unknown backend: {backend}")
@@ -359,7 +380,15 @@ class NerveEngine:
         return {"started": True, "command": command}
 
     async def _execute_input(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Execute input on a node and wait for response."""
+        """Execute input on a node and wait for response.
+
+        Parameters:
+            node_id: Node identifier (required)
+            text: Input text to send (required)
+            parser: Parser type ("claude", "gemini", "none")
+            stream: Stream output as events (default: False)
+            timeout: Override node's response_timeout for this execution (optional)
+        """
         session = self._get_session(params)
         node_id = params.get("node_id")
         if not node_id:
@@ -367,6 +396,7 @@ class NerveEngine:
         text = params["text"]
         parser_str = params.get("parser")  # None means use node's default
         stream = params.get("stream", False)
+        timeout = params.get("timeout")  # Optional per-execution timeout override
 
         node = session.get_node(str(node_id))
         if not node:
@@ -377,10 +407,11 @@ class NerveEngine:
 
         await self._emit(EventType.NODE_BUSY, node_id=node_id)
 
-        # Create execution context
+        # Create execution context with optional timeout
         context = ExecutionContext(
             session=session,
             input=text,
+            timeout=timeout,
         )
 
         if stream:
@@ -389,6 +420,7 @@ class NerveEngine:
                 session=session,
                 input=text,
                 parser=parser_type,
+                timeout=timeout,
             )
             async for chunk in node.execute_stream(stream_context):  # type: ignore[attr-defined]
                 await self._emit(

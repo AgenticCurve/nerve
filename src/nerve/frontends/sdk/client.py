@@ -22,13 +22,20 @@ class RemoteNode:
     command: str
     _client: NerveClient
 
-    async def send(self, text: str, parser: str = "none", stream: bool = False) -> ParsedResponse:
+    async def send(
+        self,
+        text: str,
+        parser: str = "none",
+        stream: bool = False,
+        timeout: float | None = None,
+    ) -> ParsedResponse:
         """Send input and get response.
 
         Args:
             text: Text to send.
             parser: Parser type ("claude", "gemini", "none").
             stream: Whether to stream output (events emitted).
+            timeout: Override node's response_timeout for this execution (optional).
 
         Returns:
             Parsed response.
@@ -36,15 +43,19 @@ class RemoteNode:
         from nerve.core.types import ParsedResponse
         from nerve.server.protocols import Command, CommandType
 
+        params: dict[str, Any] = {
+            "node_id": self.id,
+            "text": text,
+            "parser": parser,
+            "stream": stream,
+        }
+        if timeout is not None:
+            params["timeout"] = timeout
+
         result = await self._client._send_command(
             Command(
                 type=CommandType.EXECUTE_INPUT,
-                params={
-                    "node_id": self.id,
-                    "text": text,
-                    "parser": parser,
-                    "stream": stream,
-                },
+                params=params,
             )
         )
 
@@ -212,6 +223,8 @@ class NerveClient:
         name: str,
         command: str | list[str] | None = None,
         cwd: str | None = None,
+        response_timeout: float = 1800.0,
+        ready_timeout: float = 60.0,
     ) -> RemoteNode:
         """Create a new node.
 
@@ -219,6 +232,8 @@ class NerveClient:
             name: Node name (required, must be unique).
             command: Command to run (e.g., "claude" or ["claude", "--flag"]).
             cwd: Working directory.
+            response_timeout: Max wait for terminal response in seconds (default: 1800.0).
+            ready_timeout: Max wait for terminal ready state in seconds (default: 60.0).
 
         Returns:
             Node proxy.
@@ -240,6 +255,8 @@ class NerveClient:
                 session=self._standalone_session,
                 command=command,
                 cwd=cwd,
+                response_timeout=response_timeout,
+                ready_timeout=ready_timeout,
             )
             cmd_str = command if isinstance(command, str) else " ".join(command or [])
             remote = RemoteNode(
@@ -256,7 +273,13 @@ class NerveClient:
         result = await self._send_command(
             Command(
                 type=CommandType.CREATE_NODE,
-                params={"node_id": name, "command": command, "cwd": cwd},
+                params={
+                    "node_id": name,
+                    "command": command,
+                    "cwd": cwd,
+                    "response_timeout": response_timeout,
+                    "ready_timeout": ready_timeout,
+                },
             )
         )
 

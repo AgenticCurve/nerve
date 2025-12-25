@@ -257,3 +257,257 @@ class TestGetHistory:
         finally:
             history_writer.close()
             engine._default_session.nodes.clear()
+
+
+class TestTimeoutParameters:
+    """Tests for timeout parameters in CREATE_NODE and EXECUTE_INPUT."""
+
+    @pytest.fixture
+    def event_sink(self):
+        """Create mock event sink."""
+        return MockEventSink()
+
+    @pytest.fixture
+    def engine(self, event_sink):
+        """Create engine with test configuration."""
+        return NerveEngine(
+            event_sink=event_sink,
+            _server_name="test-server",
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_node_with_default_timeouts(self, engine):
+        """Test CREATE_NODE uses default timeout values when not specified."""
+        from unittest.mock import patch
+
+        with patch("nerve.core.nodes.terminal.PTYNode.create") as mock_create:
+            mock_node = MagicMock()
+            mock_node.id = "test-node"
+            mock_node.state = MagicMock()
+            mock_create.return_value = mock_node
+
+            result = await engine.execute(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params={
+                        "node_id": "test-node",
+                        "command": "echo",
+                        "backend": "pty",
+                    },
+                )
+            )
+
+            assert result.success is True
+            # Verify default timeout values were passed
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["response_timeout"] == 1800.0
+            assert call_kwargs["ready_timeout"] == 60.0
+
+    @pytest.mark.asyncio
+    async def test_create_node_with_custom_timeouts(self, engine):
+        """Test CREATE_NODE accepts custom timeout values."""
+        from unittest.mock import patch
+
+        with patch("nerve.core.nodes.terminal.PTYNode.create") as mock_create:
+            mock_node = MagicMock()
+            mock_node.id = "test-node"
+            mock_node.state = MagicMock()
+            mock_create.return_value = mock_node
+
+            result = await engine.execute(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params={
+                        "node_id": "test-node",
+                        "command": "echo",
+                        "backend": "pty",
+                        "response_timeout": 3600.0,
+                        "ready_timeout": 120.0,
+                    },
+                )
+            )
+
+            assert result.success is True
+            # Verify custom timeout values were passed
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["response_timeout"] == 3600.0
+            assert call_kwargs["ready_timeout"] == 120.0
+
+    @pytest.mark.asyncio
+    async def test_create_wezterm_node_with_timeouts(self, engine):
+        """Test CREATE_NODE with wezterm backend passes timeout values."""
+        from unittest.mock import patch
+
+        with patch("nerve.core.nodes.terminal.WezTermNode.create") as mock_create:
+            mock_node = MagicMock()
+            mock_node.id = "test-node"
+            mock_node.state = MagicMock()
+            mock_create.return_value = mock_node
+
+            result = await engine.execute(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params={
+                        "node_id": "test-node",
+                        "command": "echo",
+                        "backend": "wezterm",
+                        "response_timeout": 2400.0,
+                        "ready_timeout": 90.0,
+                    },
+                )
+            )
+
+            assert result.success is True
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["response_timeout"] == 2400.0
+            assert call_kwargs["ready_timeout"] == 90.0
+
+    @pytest.mark.asyncio
+    async def test_create_wezterm_attach_with_timeouts(self, engine):
+        """Test CREATE_NODE with wezterm attach passes timeout values."""
+        from unittest.mock import patch
+
+        with patch("nerve.core.nodes.terminal.WezTermNode.attach") as mock_attach:
+            mock_node = MagicMock()
+            mock_node.id = "test-node"
+            mock_node.state = MagicMock()
+            mock_attach.return_value = mock_node
+
+            result = await engine.execute(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params={
+                        "node_id": "test-node",
+                        "backend": "wezterm",
+                        "pane_id": "123",
+                        "response_timeout": 2400.0,
+                        "ready_timeout": 90.0,
+                    },
+                )
+            )
+
+            assert result.success is True
+            call_kwargs = mock_attach.call_args.kwargs
+            assert call_kwargs["response_timeout"] == 2400.0
+            assert call_kwargs["ready_timeout"] == 90.0
+
+    @pytest.mark.asyncio
+    async def test_create_claude_wezterm_node_with_timeouts(self, engine):
+        """Test CREATE_NODE with claude-wezterm backend passes timeout values."""
+        from unittest.mock import patch
+
+        with patch("nerve.core.nodes.terminal.ClaudeWezTermNode.create") as mock_create:
+            mock_node = MagicMock()
+            mock_node.id = "test-node"
+            mock_node.state = MagicMock()
+            mock_create.return_value = mock_node
+
+            result = await engine.execute(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params={
+                        "node_id": "test-node",
+                        "command": "claude",
+                        "backend": "claude-wezterm",
+                        "response_timeout": 3600.0,
+                        "ready_timeout": 120.0,
+                    },
+                )
+            )
+
+            assert result.success is True
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["response_timeout"] == 3600.0
+            assert call_kwargs["ready_timeout"] == 120.0
+
+    @pytest.mark.asyncio
+    async def test_execute_input_with_timeout(self, engine):
+        """Test EXECUTE_INPUT passes timeout to ExecutionContext."""
+        from nerve.core import ExecutionContext
+        from nerve.core.types import ParsedResponse
+
+        # Create a mock node
+        mock_node = MagicMock()
+        mock_node.id = "test-node"
+        mock_node.state = MagicMock()
+
+        # Capture the context passed to execute
+        captured_context = None
+
+        async def mock_execute(context: ExecutionContext):
+            nonlocal captured_context
+            captured_context = context
+            return ParsedResponse(
+                raw="test output",
+                sections=(),
+                is_complete=True,
+                is_ready=True,
+            )
+
+        mock_node.execute = mock_execute
+        engine._default_session.nodes["test-node"] = mock_node
+
+        try:
+            result = await engine.execute(
+                Command(
+                    type=CommandType.EXECUTE_INPUT,
+                    params={
+                        "node_id": "test-node",
+                        "text": "hello",
+                        "timeout": 2400.0,
+                    },
+                )
+            )
+
+            assert result.success is True
+            assert captured_context is not None
+            assert captured_context.timeout == 2400.0
+        finally:
+            engine._default_session.nodes.clear()
+
+    @pytest.mark.asyncio
+    async def test_execute_input_without_timeout(self, engine):
+        """Test EXECUTE_INPUT uses None timeout when not specified."""
+        from nerve.core import ExecutionContext
+        from nerve.core.types import ParsedResponse
+
+        # Create a mock node
+        mock_node = MagicMock()
+        mock_node.id = "test-node"
+        mock_node.state = MagicMock()
+
+        # Capture the context passed to execute
+        captured_context = None
+
+        async def mock_execute(context: ExecutionContext):
+            nonlocal captured_context
+            captured_context = context
+            return ParsedResponse(
+                raw="test output",
+                sections=(),
+                is_complete=True,
+                is_ready=True,
+            )
+
+        mock_node.execute = mock_execute
+        engine._default_session.nodes["test-node"] = mock_node
+
+        try:
+            result = await engine.execute(
+                Command(
+                    type=CommandType.EXECUTE_INPUT,
+                    params={
+                        "node_id": "test-node",
+                        "text": "hello",
+                        # No timeout specified
+                    },
+                )
+            )
+
+            assert result.success is True
+            assert captured_context is not None
+            assert captured_context.timeout is None
+        finally:
+            engine._default_session.nodes.clear()

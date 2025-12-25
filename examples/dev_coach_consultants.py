@@ -385,6 +385,7 @@ async def run_dev_coach_consultants(
                     "command": "claude",
                     "cwd": cwd,
                     "backend": "claude-wezterm",
+                    "response_timeout": 2400.0,  # 40 minutes for long operations
                 },
             )
         )
