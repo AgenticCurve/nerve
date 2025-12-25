@@ -14,6 +14,7 @@ Key Concepts:
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import socket
 from dataclasses import dataclass, field
@@ -122,7 +123,7 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         s.listen(1)
-        port = s.getsockname()[1]
+        port: int = s.getsockname()[1]
     return port
 
 
@@ -180,59 +181,91 @@ class ProxyManager:
             ProxyInstance with port and server details
 
         Raises:
-            ProxyStartError: If proxy fails to start
+            ProxyStartError: If proxy fails to start after retries
             ProxyHealthError: If health check times out
         """
         if node_id in self._proxies:
             raise ProxyStartError(f"Proxy already exists for node: {node_id}")
-
-        # Find a free port
-        port = _find_free_port()
-        logger.debug(f"Allocated port {port} for proxy serving node '{node_id}'")
 
         # Determine debug directory
         effective_debug_dir = debug_dir or config.debug_dir
         if effective_debug_dir is None and self._default_debug_dir:
             effective_debug_dir = str(self._default_debug_dir / "proxy" / node_id)
 
-        # Create appropriate proxy server
-        if config.proxy_type == "passthrough":
-            server = await self._create_passthrough_proxy(port, config, effective_debug_dir)
-        elif config.proxy_type == "openai":
-            server = await self._create_openai_proxy(port, config, effective_debug_dir)
-        else:
-            raise ProxyStartError(f"Unknown proxy type: {config.proxy_type}")
+        # Retry loop to handle TOCTOU race in port allocation
+        max_retries = 5
+        last_error: Exception | None = None
 
-        # Start the server in a task
-        task = asyncio.create_task(server.serve())
+        for attempt in range(max_retries):
+            # Find a free port
+            port = _find_free_port()
+            logger.debug(
+                f"Allocated port {port} for proxy serving node '{node_id}' "
+                f"(attempt {attempt + 1}/{max_retries})"
+            )
 
-        # Wait for server to become healthy
-        try:
-            await self._wait_for_health(port)
-        except TimeoutError:
-            task.cancel()
             try:
-                await task
-            except asyncio.CancelledError:
-                pass
-            raise ProxyHealthError(f"Proxy not healthy after {self._health_timeout}s") from None
+                # Create appropriate proxy server
+                if config.proxy_type == "passthrough":
+                    server = await self._create_passthrough_proxy(port, config, effective_debug_dir)
+                elif config.proxy_type == "openai":
+                    server = await self._create_openai_proxy(port, config, effective_debug_dir)
+                else:
+                    raise ProxyStartError(f"Unknown proxy type: {config.proxy_type}")
 
-        # Create and store instance
-        instance = ProxyInstance(
-            node_id=node_id,
-            port=port,
-            server=server,
-            task=task,
-            config=config,
-        )
-        self._proxies[node_id] = instance
+                # Start the server in a task
+                task = asyncio.create_task(server.serve())
 
-        logger.info(
-            f"Started {config.proxy_type} proxy for node '{node_id}' on port {port} "
-            f"-> {config.base_url}"
-        )
+                # Wait for server to become healthy
+                try:
+                    await self._wait_for_health(port)
+                except TimeoutError:
+                    # Health check failed - cleanup and retry
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    last_error = ProxyHealthError(
+                        f"Health check timeout on port {port} (attempt {attempt + 1}/{max_retries})"
+                    )
+                    logger.debug(f"Health check failed on port {port}, retrying...")
+                    await asyncio.sleep(0.1 * (attempt + 1))  # Backoff
+                    continue
 
-        return instance
+                # Success! Create and store instance
+                instance = ProxyInstance(
+                    node_id=node_id,
+                    port=port,
+                    server=server,
+                    task=task,
+                    config=config,
+                )
+                self._proxies[node_id] = instance
+
+                logger.info(
+                    f"Started {config.proxy_type} proxy for node '{node_id}' on port {port} "
+                    f"-> {config.base_url}"
+                )
+
+                return instance
+
+            except OSError as e:
+                # Handle port already in use (TOCTOU race)
+                if e.errno == errno.EADDRINUSE:
+                    logger.debug(f"Port {port} already in use (TOCTOU race), retrying...")
+                    last_error = e
+                    await asyncio.sleep(0.1 * (attempt + 1))  # Backoff
+                    continue
+                # Other OS errors are fatal
+                raise ProxyStartError(f"Failed to start proxy: {e}") from e
+
+        # All retries exhausted
+        error_msg = f"Failed to start proxy for node '{node_id}' after {max_retries} attempts"
+        if last_error:
+            raise ProxyStartError(error_msg) from last_error
+        else:
+            raise ProxyStartError(error_msg)
 
     async def stop_proxy(self, node_id: str) -> None:
         """Stop proxy for a specific node.

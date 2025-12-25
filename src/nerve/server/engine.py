@@ -235,6 +235,15 @@ class NerveEngine:
             if backend != "claude-wezterm":
                 raise ValueError("provider config is only supported for claude-wezterm backend")
 
+            # Validate required keys are present
+            required_keys = ["api_format", "base_url", "api_key"]
+            missing = [k for k in required_keys if k not in provider_dict]
+            if missing:
+                raise ValueError(
+                    f"Provider config missing required keys: {', '.join(missing)}. "
+                    f"Required: {', '.join(required_keys)}"
+                )
+
             # Convert dict to ProviderConfig
             provider_config = ProviderConfig(
                 api_format=provider_dict["api_format"],

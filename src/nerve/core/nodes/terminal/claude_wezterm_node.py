@@ -7,6 +7,7 @@ with Claude-specific defaults and behavior.
 from __future__ import annotations
 
 import asyncio
+import shlex
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -171,7 +172,7 @@ class ClaudeWezTermNode:
 
             # If proxy_url is set, export ANTHROPIC_BASE_URL before running claude
             if proxy_url:
-                export_cmd = f"export ANTHROPIC_BASE_URL={proxy_url}"
+                export_cmd = f"export ANTHROPIC_BASE_URL={shlex.quote(proxy_url)}"
                 await inner.backend.write(export_cmd)
                 await asyncio.sleep(0.1)
                 await inner.backend.write("\r")

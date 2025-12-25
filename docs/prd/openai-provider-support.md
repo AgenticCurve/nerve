@@ -709,8 +709,10 @@ Errors from proxies must be surfaced clearly to users with actionable messages.
 
 | Error | Exception Type | User-Facing Message |
 |-------|----------------|---------------------|
-| Proxy fails to start | `ProxyStartError` | `Failed to start proxy on port {port}: {reason}` |
-| Health check timeout | `ProxyHealthError` | `Proxy not healthy after {timeout}s` |
+| Missing provider config keys | `ValueError` | `Provider config missing required keys: {missing}. Required: {required}` |
+| Port allocation retry exhausted | `ProxyStartError` | `Failed to start proxy for node '{node_id}' after {max_retries} attempts` |
+| Proxy fails to start | `ProxyStartError` | `Failed to start proxy: {reason}` |
+| Health check timeout | `ProxyHealthError` | `Health check timeout on port {port} (attempt {n}/{max})` |
 | Upstream unreachable | `UpstreamError` | `Cannot reach {base_url}: {reason}` |
 | Upstream 401 | `AuthenticationError` | `Invalid API key for {base_url}` |
 | Upstream 429 | `RateLimitError` | `Rate limited by provider` |
@@ -722,6 +724,95 @@ Errors from proxies must be surfaced clearly to users with actionable messages.
 2. Node receives error in Anthropic format (same as if talking to real Anthropic)
 3. Claude Code sees error and can retry or surface to user
 4. Proxy logs error to debug_dir for debugging
+
+**Retry behavior:**
+- Port allocation retries up to 5 times with exponential backoff (0.1s, 0.2s, 0.3s, 0.4s, 0.5s)
+- Handles both EADDRINUSE (port taken) and health check timeouts
+- Logs each retry attempt for diagnostics
+
+---
+
+## Security and Robustness
+
+### Port Allocation Race Condition (TOCTOU)
+
+**Problem**: The original implementation had a TOCTOU (Time-Of-Check-Time-Of-Use) race condition where `_find_free_port()` would bind to port 0, get an assigned port, close the socket, and return the port number. Between closing the socket and the proxy binding to that port, another process could grab it.
+
+**Solution**: Implemented retry logic in `ProxyManager.start_proxy()`:
+
+```python
+# Retry up to 5 times to handle TOCTOU races
+for attempt in range(max_retries):
+    port = _find_free_port()
+
+    try:
+        # Create and start proxy
+        server = await self._create_proxy(port, config)
+        task = asyncio.create_task(server.serve())
+        await self._wait_for_health(port)
+        return instance  # Success!
+
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            # Port was taken between check and use - retry
+            logger.debug(f"Port {port} already in use (TOCTOU race), retrying...")
+            await asyncio.sleep(0.1 * (attempt + 1))  # Backoff
+            continue
+        raise
+```
+
+**Benefits**:
+- Handles race conditions gracefully with automatic retry
+- Exponential backoff prevents tight retry loops
+- Clear logging for diagnostics
+- Fails with clear error after max retries
+
+### Provider Configuration Validation
+
+**Problem**: Missing required keys in provider configuration (e.g., `api_format`, `base_url`, `api_key`) would raise unclear `KeyError` exceptions.
+
+**Solution**: Added validation in `NerveEngine._create_node()` before constructing `ProviderConfig`:
+
+```python
+# Validate required keys are present
+required_keys = ["api_format", "base_url", "api_key"]
+missing = [k for k in required_keys if k not in provider_dict]
+if missing:
+    raise ValueError(
+        f"Provider config missing required keys: {', '.join(missing)}. "
+        f"Required: {', '.join(required_keys)}"
+    )
+```
+
+**Benefits**:
+- Clear, actionable error messages
+- Lists all missing keys at once (not one at a time)
+- Fails fast before attempting proxy creation
+
+### Shell Injection Prevention
+
+**Problem**: The `proxy_url` was directly interpolated into a shell `export` command without escaping, creating a potential shell injection vulnerability:
+
+```python
+# UNSAFE (before):
+export_cmd = f"export ANTHROPIC_BASE_URL={proxy_url}"
+```
+
+While `proxy_url` is internally generated (`http://127.0.0.1:{port}`), defense-in-depth requires proper escaping.
+
+**Solution**: Added `shlex.quote()` to properly escape the value:
+
+```python
+# SAFE (after):
+import shlex
+export_cmd = f"export ANTHROPIC_BASE_URL={shlex.quote(proxy_url)}"
+```
+
+**Benefits**:
+- Prevents shell injection even if `proxy_url` generation changes
+- Defense-in-depth security posture
+- No performance impact
+- Follows security best practices
 
 ---
 
