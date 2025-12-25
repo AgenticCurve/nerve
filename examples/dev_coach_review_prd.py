@@ -67,7 +67,7 @@ REVIEWER_WARMUP = ""
 # TASK - Describe the feature/change that needs a PRD
 # =============================================================================
 
-INITIAL_TASK = """Create a comprehensive PRD for the following feature:
+INITIAL_TASK = f"""Create a comprehensive PRD for the following feature:
 
 - We want to break the terminal.py file into smaller, more manageable modules.
 - One file for each dataclass.
@@ -76,11 +76,9 @@ INITIAL_TASK = """Create a comprehensive PRD for the following feature:
 - Ensure PRD doesn't break any existing functionality. No feature regression.
 - This is a refactoring PRD.
 
-The PRD should be written to: {prd_path}
+The PRD should be written to: {PRD_OUTPUT_PATH}
 
-Follow the PRD template structure and ensure the document is implementation-ready.""".format(
-    prd_path=PRD_OUTPUT_PATH
-)
+Follow the PRD template structure and ensure the document is implementation-ready."""
 
 TASK_REFRESHER = INITIAL_TASK
 
