@@ -91,7 +91,7 @@
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
-│       │   │   │   ├── [L: 127] cleanup.py
+│       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
 │       │   │   │   ├── [L: 852] core.py
@@ -219,4 +219,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 176 files, 36,668 total lines
+44 directories, 176 files, 36,680 total lines

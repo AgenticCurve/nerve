@@ -66,6 +66,9 @@ async def _cleanup_local_mode(namespace: dict[str, Any]) -> None:
     print("Cleaning up REPL resources...")
     cleanup_errors = []
 
+    # Track nodes already stopped by sessions to avoid double-stop
+    stopped_node_ids: set[int] = set()
+
     # 1. Stop all Session instances found in namespace
     from nerve.core.session import Session
 
@@ -73,6 +76,11 @@ async def _cleanup_local_mode(namespace: dict[str, Any]) -> None:
     for name, obj in list(namespace.items()):
         if isinstance(obj, Session):
             try:
+                # Collect node IDs from this session before stopping
+                if hasattr(obj, "_collect_persistent_nodes"):
+                    for node in obj._collect_persistent_nodes():
+                        stopped_node_ids.add(id(node))
+
                 await obj.stop()
                 sessions_stopped += 1
             except Exception as e:
@@ -82,12 +90,16 @@ async def _cleanup_local_mode(namespace: dict[str, Any]) -> None:
     if sessions_stopped > 0:
         print(f"  ✓ Stopped {sessions_stopped} session(s)")
 
-    # 2. Stop any orphaned Node instances not in sessions
+    # 2. Stop any orphaned Node instances not already stopped by sessions
     from nerve.core.nodes.base import Node
 
     nodes_stopped = 0
     for name, obj in list(namespace.items()):
         if isinstance(obj, Node) and hasattr(obj, "stop"):
+            # Skip if already stopped by session
+            if id(obj) in stopped_node_ids:
+                continue
+
             try:
                 await obj.stop()
                 nodes_stopped += 1
