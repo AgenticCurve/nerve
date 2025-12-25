@@ -746,6 +746,9 @@ async def run_interactive(
                     # If in server mode, send to server anyway (it can handle await)
                     if not python_exec_enabled:
                         should_execute = True  # Server can handle it
+                    elif "await " in buffer:
+                        # Local mode with await - skip compile, handle in async block
+                        should_execute = True
                     else:
                         raise
             else:
@@ -759,12 +762,20 @@ async def run_interactive(
                     try:
                         # Handle async code
                         if "await " in buffer:
-                            # Wrap in async function and run
+                            # Wrap in async function and await it
+                            # (we're already in an async context)
                             async_code = "async def __repl_async__():\n"
                             for ln in buffer.split("\n"):
                                 async_code += f"    {ln}\n"
-                            async_code += "\n__repl_result__ = asyncio.get_event_loop().run_until_complete(__repl_async__())"
+                            async_code += "    return locals()\n"
                             exec(compile(async_code, "<repl>", "exec"), state.namespace)
+                            # Await the async function and merge locals
+                            repl_locals = await state.namespace["__repl_async__"]()
+                            # Clean up the temp function
+                            state.namespace.pop("__repl_async__", None)
+                            # Merge captured locals back into namespace
+                            if repl_locals:
+                                state.namespace.update(repl_locals)
                         elif code is not None:
                             exec(code, state.namespace)
 
