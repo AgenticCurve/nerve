@@ -17,7 +17,7 @@
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
 │   ├── [L: 736] dev_coach_review.py
-│   ├── [L: 763] dev_coach_review_prd.py
+│   ├── [L: 761] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -50,7 +50,11 @@
 │       │   │   ├── [L: 898] graph.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 109] policies.py
-│       │   │   ├── [L:1675] terminal.py
+│       │   │   ├── terminal/
+│       │   │   │   ├── [L:  24] __init__.py
+│       │   │   │   ├── [L: 443] claude_wezterm_node.py
+│       │   │   │   ├── [L: 592] pty_node.py
+│       │   │   │   └── [L: 672] wezterm_node.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
@@ -156,7 +160,7 @@
     │   │   ├── [L: 258] test_context.py
     │   │   ├── [L: 524] test_graph.py
     │   │   ├── [L: 121] test_policies.py
-    │   │   ├── [L: 872] test_terminal.py
+    │   │   ├── [L: 924] test_terminal.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
     │   ├── session/
@@ -190,4 +194,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-42 directories, 149 files, 33,262 total lines
+43 directories, 152 files, 33,368 total lines
