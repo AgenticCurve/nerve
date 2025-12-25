@@ -14,16 +14,24 @@ from nerve.core.session.session import Session
 class TestStep:
     """Tests for Step dataclass."""
 
-    def test_default_values(self):
-        """Test default values."""
-        step = Step()
-        assert step.node is None
-        assert step.node_ref is None
-        assert step.input is None
-        assert step.input_fn is None
-        assert step.depends_on == []
-        assert step.error_policy is None
-        assert step.parser is None
+    def test_requires_node_or_node_ref(self):
+        """Test that Step requires either node or node_ref."""
+        with pytest.raises(ValueError, match="must have either 'node' or 'node_ref'"):
+            Step()
+
+    def test_node_and_node_ref_mutually_exclusive(self):
+        """Test that Step cannot have both node and node_ref."""
+        session = Session(name="test")
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
+        with pytest.raises(ValueError, match="cannot have both 'node' and 'node_ref'"):
+            Step(node=node, node_ref="other")
+
+    def test_input_and_input_fn_mutually_exclusive(self):
+        """Test that Step cannot have both input and input_fn."""
+        session = Session(name="test")
+        node = FunctionNode(id="test", session=session, fn=lambda ctx: ctx.input)
+        with pytest.raises(ValueError, match="cannot have both 'input' and 'input_fn'"):
+            Step(node=node, input="static", input_fn=lambda u: u)
 
     def test_with_node(self):
         """Test step with direct node reference."""
@@ -34,6 +42,17 @@ class TestStep:
         assert step.node is node
         assert step.input == "hello"
         assert step.depends_on == ["prev"]
+
+    def test_with_node_ref(self):
+        """Test step with node reference by ID."""
+        step = Step(node_ref="my-node", input="hello")
+
+        assert step.node is None
+        assert step.node_ref == "my-node"
+        assert step.input == "hello"
+        assert step.depends_on == []
+        assert step.error_policy is None
+        assert step.parser is None
 
 
 class TestGraph:
@@ -145,27 +164,8 @@ class TestGraph:
         assert len(errors) == 1
         assert "unknown step" in errors[0]
 
-    def test_validate_missing_node(self):
-        """Test validate catches step without node or node_ref."""
-        session = Session(name="test")
-        graph = Graph(id="test", session=session)
-        graph._steps["a"] = Step()  # No node or node_ref
-
-        errors = graph.validate()
-        assert len(errors) == 1
-        assert "node or node_ref" in errors[0]
-
-    def test_validate_mutually_exclusive_input(self):
-        """Test validate catches input and input_fn together."""
-        session = Session(name="test")
-        graph = Graph(id="test", session=session)
-        node = FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
-
-        graph._steps["a"] = Step(node=node, input="static", input_fn=lambda u: u)
-
-        errors = graph.validate()
-        assert len(errors) == 1
-        assert "mutually exclusive" in errors[0]
+    # Note: Step validation for missing node/node_ref and mutually exclusive
+    # input/input_fn is now done in Step.__post_init__ - see TestStep tests
 
     def test_execution_order(self):
         """Test execution order respects dependencies."""

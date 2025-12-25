@@ -14,7 +14,7 @@
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
 │   ├── [L: 736] dev_coach_review.py
-│   ├── [L: 863] dev_coach_review_prd.py
+│   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -44,7 +44,12 @@
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 202] context.py
-│       │   │   ├── [L: 898] graph.py
+│       │   │   ├── graph/
+│       │   │   │   ├── [L:  21] __init__.py
+│       │   │   │   ├── [L: 151] builder.py
+│       │   │   │   ├── [L:  29] events.py
+│       │   │   │   ├── [L: 712] graph.py
+│       │   │   │   └── [L:  65] step.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
@@ -191,4 +196,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-41 directories, 151 files, 33,148 total lines
+42 directories, 155 files, 33,209 total lines
