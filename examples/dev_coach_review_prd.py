@@ -1,25 +1,44 @@
 #!/usr/bin/env python3
-"""Dev + Coach + Reviewer collaboration DAG template.
+"""PRD Creation collaboration DAG template.
 
-Three Claude agents collaborate with nested loops:
-- Developer: ONLY one who can modify code
-- Coach: Reviews, tests, guides - cannot modify code
-- Reviewer: Final review before merge - cannot modify code
+Three Claude agents collaborate with nested loops to create a PRD:
+- Writer: ONLY one who can create/modify the PRD document
+- Coach: Reviews for completeness, clarity, feasibility - cannot modify
+- Reviewer: Final approval before PRD is ready for implementation
 
 Flow:
-1. Dev implements based on task
-2. Inner loop: Dev <-> Coach (until Coach accepts)
+1. Writer creates initial PRD draft
+2. Inner loop: Writer <-> Coach (until Coach accepts)
 3. Reviewer reviews
 4. If Reviewer rejects -> Coach processes feedback -> back to inner loop
-5. If Reviewer accepts -> COMPLETE
+5. If Reviewer accepts -> PRD COMPLETE
 
 Usage:
-    python examples/dev_coach_review.py [server_name] [transport] [context_file]
-    python examples/dev_coach_review.py my-impl unix
-    python examples/dev_coach_review.py my-impl unix /path/to/plan.md
+    python examples/dev_coach_review_prd.py [options]
+
+Options:
+    --server NAME       Server name (default: prd-creation)
+    --transport TYPE    Transport type: unix or tcp (default: unix)
+    --context FILE      Path to additional context file
+    --prd-cwd DIR       Working directory for agents (default: current directory)
+    --output-file PATH  Output file path (default: /tmp/prd-creation-output.md)
+    --log-file PATH     Log file path (default: /tmp/prd-creation-conversation.log)
+
+Environment Variables:
+    PRD_CWD             Working directory for agents
+    PRD_OUTPUT_FILE     Output file path
+    PRD_LOG_FILE        Log file path
+
+Examples:
+    python examples/dev_coach_review_prd.py
+    python examples/dev_coach_review_prd.py --prd-cwd /path/to/project
+    python examples/dev_coach_review_prd.py --server my-prd --transport tcp
+    PRD_CWD=/my/project python examples/dev_coach_review_prd.py
 """
 
+import argparse
 import asyncio
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -35,18 +54,22 @@ COACH_ACCEPTANCE = "703915371087060708847372329929997501916767038811785861905618
 REVIEWER_ACCEPTANCE = "3074534537879130702861883897028027136683483790914618147589778734"
 
 # Loop limits
-MAX_INNER_ROUNDS = 30  # Dev <-> Coach rounds per outer iteration
-MAX_OUTER_ROUNDS = 10  # Reviewer iterations
+MAX_INNER_ROUNDS = 15  # Writer <-> Coach rounds per outer iteration
+MAX_OUTER_ROUNDS = 5  # Reviewer iterations
 
-# Paths
-DEV_CWD = "/Users/pb/agentic-curve/projects/nerve"
-COACH_CWD = "/Users/pb/agentic-curve/projects/nerve"
-REVIEWER_CWD = "/Users/pb/agentic-curve/projects/nerve"
-OUTPUT_FILE = "/tmp/dev-coach-review-output.md"
-LOG_FILE = "/tmp/dev-coach-review-conversation.log"
+# Paths - configured via CLI args or environment variables
+# Defaults used only if no CLI/env value provided
+_DEFAULT_OUTPUT_FILE = "/tmp/prd-creation-output.md"
+_DEFAULT_LOG_FILE = "/tmp/prd-creation-conversation.log"
 
 # =============================================================================
-# ADDITIONAL CONTEXT - Loaded from file at runtime (use {additional_context} in prompts)
+# PRD OUTPUT PATH - Where the PRD will be written
+# =============================================================================
+
+PRD_OUTPUT_PATH = "docs/prds/breaking-graph.md"  # Customize this per run
+
+# =============================================================================
+# ADDITIONAL CONTEXT - Loaded from file at runtime
 # =============================================================================
 
 ADDITIONAL_CONTEXT = ""  # Populated from CLI argument if provided
@@ -55,59 +78,55 @@ ADDITIONAL_CONTEXT = ""  # Populated from CLI argument if provided
 # WARMUP - Optional system-like instructions sent once before task begins
 # =============================================================================
 
-DEV_WARMUP = ""  # Leave empty to skip warmup
-# Example:
-# DEV_WARMUP = """You are an expert Python developer. You write clean, tested code.
-# Always run tests before claiming something works."""
-
-COACH_WARMUP = ""  # Leave empty to skip warmup
-# Example:
-# COACH_WARMUP = """You are a strict but fair technical coach. You don't accept
-# work without tests. You make decisions quickly when the developer is stuck."""
-
-REVIEWER_WARMUP = ""  # Leave empty to skip warmup
-# Example:
-# REVIEWER_WARMUP = """You are a thorough code reviewer. You actually run tests
-# and verify functionality works. You check git diff carefully."""
+WRITER_WARMUP = ""
+COACH_WARMUP = ""
+REVIEWER_WARMUP = ""
 
 # =============================================================================
-# TASK
+# TASK - Describe the feature/change that needs a PRD
 # =============================================================================
 
-INITIAL_TASK = """Implement the refactoring described in the plan.
+INITIAL_TASK = f"""Create a comprehensive PRD for the following feature:
 
-docs/prds/breaking-terminal.md
+- We want to break the nodes/graph.py file into smaller, more manageable modules.
+- Ensure it is a clean break, no backward compatibility.
+- Break the graph file into graph/ dir so that everything is still under terminal namespace.
+- Ensure PRD doesn't break any existing functionality. No feature regression.
+- This is a refactoring PRD.
 
-Read the plan, explore the codebase, and implement step by step.
-Write clean, well-tested code following existing patterns."""
+The PRD should be written to: {PRD_OUTPUT_PATH}
+
+Follow the PRD template structure and ensure the document is implementation-ready."""
 
 TASK_REFRESHER = INITIAL_TASK
 
 # =============================================================================
-# PROMPTS - Developer
+# PROMPTS - Writer (creates the PRD)
 # =============================================================================
 
-DEV_INITIAL_PROMPT = """You are a Senior Software Developer.
+DEV_INITIAL_PROMPT = """You are a Senior Technical Writer / Product Manager.
 
 {initial_task}
 
 {additional_context}
 
-Explore/Review the existing code before proceeding.
-You still have the whole ownership and accountability for the implementation.
-
 YOUR ROLE:
-- You are the ONLY person who can modify code
-- Write clean, well-tested code
-- Follow existing patterns in the codebase
-- Ensure ALL PHASES are completed (ALL MEANS ALL)
-- Make a clean break (no backward compatibility). Enusre there's no feature regression.
+- You are the ONLY person who can create and modify the PRD document
+- Explore the codebase to understand existing patterns and architecture
+- Write a comprehensive, well-structured PRD
 
-You are working with a Coach who will review your work.
-If you are stuck, ask the Coach for help. Coach will help you make decisions.
-Start by understanding the task and proposing your approach."""
+QUALITY STANDARDS:
+- Be specific, not vague. "Improve performance" is bad. "Reduce API latency by 50%" is good.
+- Include code examples for complex concepts
+- Consider edge cases and error handling
+- Make a clean break, no backward compatibility
+- Make it implementable without further clarification
+- This is a refactoring PRD - ensure no feature regression
 
-DEV_LOOP_PROMPT_TEMPLATE = """The Coach reviewed your work and provided feedback:
+You are working with a Coach who will review your PRD.
+Start by exploring the codebase and creating your initial draft."""
+
+DEV_LOOP_PROMPT_TEMPLATE = """The Coach reviewed your PRD and provided feedback:
 
 \"\"\"
 {coach_response}
@@ -117,59 +136,70 @@ DEV_LOOP_PROMPT_TEMPLATE = """The Coach reviewed your work and provided feedback
 
 Please:
 1. Address each point the Coach raised
-2. Make the necessary code changes
-3. Run tests if applicable
-4. Summarize what you changed
-- Ensure ALL PHASES are completed (ALL MEANS ALL)
-- Make a clean break (no backward compatibility). Enusre there's no feature regression.
+2. Update the PRD document accordingly
+3. Explain what changes you made and why
 
-Remember: You are the ONLY one who can modify code."""
+Remember: You are the ONLY one who can modify the PRD."""
 
 # =============================================================================
-# PROMPTS - Coach
+# PROMPTS - Coach (reviews the PRD)
 # =============================================================================
 
-COACH_INITIAL_PROMPT_TEMPLATE = """You are a Technical Coach overseeing implementation.
+COACH_INITIAL_PROMPT_TEMPLATE = """You are a Technical Coach reviewing a PRD.
 
 {initial_task}
 
 {additional_context}
 
-The Developer just provided their initial work:
+The Writer just created their initial PRD draft:
 
 \"\"\"
 {dev_response}
 \"\"\"
 
 YOUR ROLE:
-- Review the Developer's implementation
-- You CANNOT modify code - only the Developer can
-- Make decisions where the developer is stuck
-- Ensure dev stays on track
+- Review the PRD for completeness, clarity, and technical accuracy
+- You CANNOT modify the document - only the Writer can
+- Provide actionable feedback
+- Help the Writer improve the PRD
 
-REQUIREMENTS FOR ACCEPTANCE:
-1. Tests exist for new functionality
-2. All tests pass
-3. Feature has been demonstrated to work
-4. Code follows existing patterns
-5. No existing functionality is broken and no feature regression
-6. Code is clean and well-structured
-7. Ask developer to refactor if needed
-8. Ensure ALL PHASES are completed (ALL MEANS ALL)
-9. Ensure old code is deleted.
-10. Make a clean break (no backward compatibility).
+REVIEW CRITERIA:
 
-Read CLAUDE.md file to see how to handle your role effectively.
+1. **Completeness**
+   - Are all required sections present?
+   - Are there gaps in the specification?
+   - Could a developer implement this without asking questions?
 
-If ALL requirements are met, respond with a one linear, EXACTLY:
+2. **Clarity**
+   - Is the problem statement clear?
+   - Are the goals measurable?
+   - Is the technical design understandable?
+
+3. **Technical Accuracy**
+   - Does the solution fit the existing architecture?
+   - Are the code examples correct?
+   - Are edge cases considered?
+
+4. **Feasibility**
+   - Is the scope reasonable?
+   - Are the phases well-defined?
+   - Are there hidden complexities?
+
+5. **Testability**
+   - Are testing requirements specific?
+   - Can success be objectively measured?
+
+Read the PRD file to verify its current state.
+
+If the PRD meets ALL criteria and is implementation-ready, respond with EXACTLY:
 "{acceptance_phrase}"
 
-Otherwise, provide specific feedback."""
+Otherwise, provide specific feedback with:
+- What's good (acknowledge progress)
+- What needs improvement (be specific)
+- Priority ranking (critical vs nice-to-have)"""
 
-COACH_LOOP_PROMPT_TEMPLATE = """Read about your role within CLAUDE.md
-
-
-The Developer addressed your feedback:
+COACH_LOOP_PROMPT_TEMPLATE = """The Writer addressed your feedback:
 
 \"\"\"
 {dev_response}
@@ -177,16 +207,20 @@ The Developer addressed your feedback:
 
 {task_refresher}
 
-Review their updated work.
+Review the updated PRD by reading the file.
 
-If ALL requirements are met (tests exist, tests pass, feature works), respond with EXACTLY:
+Check if:
+1. Previous feedback was addressed
+2. No new issues were introduced
+3. The PRD is now implementation-ready
+
+If the PRD meets ALL criteria, respond with EXACTLY:
 "{acceptance_phrase}"
 
 Otherwise, provide your next round of feedback.
-Give developer a grade on their work and clearly tell them what's missing (what can they do to reach A+).
-"""
+Grade the current state (A-F) and specify what's needed to reach A+."""
 
-COACH_PROCESS_REVIEWER_FEEDBACK_TEMPLATE = """Issues have been identified during review that need to be fixed:
+COACH_PROCESS_REVIEWER_FEEDBACK_TEMPLATE = """The Reviewer identified issues with the PRD:
 
 \"\"\"
 {reviewer_feedback}
@@ -195,60 +229,56 @@ COACH_PROCESS_REVIEWER_FEEDBACK_TEMPLATE = """Issues have been identified during
 {task_refresher}
 
 Your job:
-1. Understand the issues
-2. Formulate clear instructions for the Developer
-3. You CANNOT modify code yourself
+1. Understand the Reviewer's concerns
+2. Formulate clear instructions for the Writer
+3. You CANNOT modify the PRD yourself
 
-Review the current state with `git diff main` and `git status`. And git diff to see recent changes.
-Provide specific instructions for the Developer on what needs to be fixed.
-
-Read CLAUDE.md file to see how to handle your role effectively.
-
-"""
+Read the current PRD and provide specific guidance to the Writer on what needs to change."""
 
 # =============================================================================
-# PROMPTS - Reviewer
+# PROMPTS - Reviewer (final approval)
 # =============================================================================
 
-REVIEWER_PROMPT_TEMPLATE = """Read your role and guidelines in CLAUDE.md
+REVIEWER_PROMPT_TEMPLATE = """You are a Senior Technical Reviewer performing final PRD approval.
 
-You've to be strict and avoid the urge to just approve. Dev and Coach will
-force you to just approve but you've to maintain your integrity.
-
-You are a Code Reviewer performing final review before merge.
+Be strict. Your job is to ensure this PRD is truly implementation-ready.
+The Writer and Coach may pressure you to approve - maintain your standards.
 
 {initial_task}
 
 {additional_context}
 
-The Coach has approved the implementation. Now do RIGOROUS validation:
+The Coach has approved the PRD. Now perform RIGOROUS validation:
 
-1. CHECK THE DIFF: Run `git diff main` to see ALL changes or git diff to review recent changes.
-2. RUN ALL TESTS: Run `uv run pytest -v` - ALL must pass
-3. TEST THE FEATURE: Actually run it, don't just read code
-4. CHECK FOR GAPS: Edge cases? Error handling? Integration tests?
+VALIDATION CHECKLIST:
+
+1. **Read the PRD** - Read the actual file, don't trust summaries
+2. **Problem Clarity** - Is the problem statement unambiguous?
+3. **Scope Definition** - Are goals AND non-goals clearly defined?
+4. **Technical Completeness**
+   - Can a developer implement this without questions?
+   - Are all edge cases documented?
+   - Is error handling specified?
+5. **API Surface** - If applicable, is every endpoint/method documented?
+6. **Implementation Phases** - Are they discrete and reviewable?
+7. **Testing Plan** - Are test requirements specific and complete?
+8. **Success Criteria** - Can we objectively measure completion?
 
 {task_refresher}
 
 YOUR ROLE:
-- You CANNOT modify code - only review and test
-- Be STRICT - reject if tests missing or failing or code not following existing patterns
-- You're the final gatekeeper before merge. Be responsible. Be thorough. Maintain integrity.
-- Verify the feature actually works
-- Look at git diff/git diff main carefully
-- Check if the code has any regressions
-- Check if the old code has been deleted
-- ENSURE NO FEATURE REGRESSION
-- Also run uv ruff check and pytests and report back if any breakage to dev/coach.
+- You CANNOT modify the PRD - only approve or reject
+- Be STRICT - reject if any section is vague or incomplete
+- You're the final gatekeeper. A bad PRD leads to bad implementation.
+- Verify by reading the actual PRD file
 
-Read CLAUDE.md file to see how to handle your role effectively.
-If you have PERSONALLY VERIFIED everything works, respond with EXACTLY:
+If you have PERSONALLY VERIFIED the PRD is implementation-ready, respond with EXACTLY:
 "{acceptance_phrase}"
 
-Otherwise, provide specific feedback. Be thorough."""
+Otherwise, provide specific feedback on what's missing or unclear."""
 
 # =============================================================================
-# SCRIPT
+# SCRIPT (same structure as dev_coach_review.py)
 # =============================================================================
 
 
@@ -274,13 +304,21 @@ def log_to_file(log_file: str, label: str, content: str) -> None:
         f.write("\n")
 
 
-async def run_dev_coach_review(
-    server_name: str = "dev-coach-review",
+async def run_prd_creation(
+    server_name: str = "prd-creation",
     transport: str = "unix",
     context_file: str | None = None,
+    prd_cwd: str | None = None,
+    output_file: str | None = None,
+    log_file: str | None = None,
 ):
-    """Run the dev + coach + reviewer collaboration DAG."""
+    """Run the PRD creation collaboration DAG."""
     global ADDITIONAL_CONTEXT
+
+    # Use provided paths or fall back to defaults
+    prd_cwd = prd_cwd or os.getcwd()
+    output_file = output_file or _DEFAULT_OUTPUT_FILE
+    log_file = log_file or _DEFAULT_LOG_FILE
 
     # Load additional context from file if provided
     if context_file:
@@ -327,13 +365,13 @@ async def run_dev_coach_review(
 
     # Create three agents
     print("\n" + "=" * 80)
-    print("CREATING AGENTS")
+    print("CREATING AGENTS FOR PRD CREATION")
     print("=" * 80)
 
-    for agent_id, cwd, desc in [
-        ("dev", DEV_CWD, "CAN modify code"),
-        ("coach", COACH_CWD, "reviews, tests - CANNOT modify"),
-        ("reviewer", REVIEWER_CWD, "final review - CANNOT modify"),
+    for agent_id, desc in [
+        ("writer", "Creates/modifies PRD - ONLY one who can edit"),
+        ("coach", "Reviews PRD - provides feedback"),
+        ("reviewer", "Final approval - gatekeeps quality"),
     ]:
         print(f"\nCreating {agent_id} agent...")
         result = await client.send_command(
@@ -342,9 +380,9 @@ async def run_dev_coach_review(
                 params={
                     "node_id": agent_id,
                     "command": "claude --dangerously-skip-permissions",
-                    "cwd": cwd,
+                    "cwd": prd_cwd,
                     "backend": "claude-wezterm",
-                    "response_timeout": 2400.0,  # 40 minutes for long operations
+                    "response_timeout": 1800.0,  # 30 minutes (PRD work is less intensive)
                 },
             )
         )
@@ -357,18 +395,20 @@ async def run_dev_coach_review(
     await asyncio.sleep(5)
 
     # Setup files
-    Path(LOG_FILE).unlink(missing_ok=True)
-    with open(OUTPUT_FILE, "w") as f:
-        f.write("# Dev + Coach + Review Collaboration\n\n")
+    Path(log_file).unlink(missing_ok=True)
+    with open(output_file, "w") as f:
+        f.write("# PRD Creation Collaboration\n\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n\n")
+        f.write(f"PRD Output: {PRD_OUTPUT_PATH}\n\n")
         f.write("---\n\n")
 
-    print(f"Output: {OUTPUT_FILE}")
-    print(f"Log: {LOG_FILE}")
+    print(f"Output: {output_file}")
+    print(f"Log: {log_file}")
+    print(f"PRD will be written to: {PRD_OUTPUT_PATH}")
 
     # Warmup prompts (optional)
     for agent_id, warmup in [
-        ("dev", DEV_WARMUP),
+        ("writer", WRITER_WARMUP),
         ("coach", COACH_WARMUP),
         ("reviewer", REVIEWER_WARMUP),
     ]:
@@ -387,50 +427,50 @@ async def run_dev_coach_review(
             )
             if result.success:
                 log_to_file(
-                    LOG_FILE,
+                    log_file,
                     f"{agent_id.title()} - Warmup",
                     extract_text_response(result.data.get("response", {})),
                 )
                 print(f"  {agent_id.title()} warmed up")
 
     # =========================================================================
-    # INITIAL DEV WORK
+    # INITIAL WRITER WORK
     # =========================================================================
     print("\n" + "=" * 80)
-    print("INITIAL PHASE")
+    print("INITIAL PHASE - WRITER CREATES DRAFT")
     print("=" * 80)
 
-    dev_prompt = DEV_INITIAL_PROMPT.format(
+    writer_prompt = DEV_INITIAL_PROMPT.format(
         initial_task=INITIAL_TASK,
         additional_context=ADDITIONAL_CONTEXT,
     )
 
-    print("\n[DEV: Starting work...]")
+    print("\n[WRITER: Creating initial PRD draft...]")
     print("-" * 80)
 
     result = await client.send_command(
         Command(
             type=CommandType.EXECUTE_INPUT,
             params={
-                "node_id": "dev",
-                "text": dev_prompt,
+                "node_id": "writer",
+                "text": writer_prompt,
                 "parser": "claude",
             },
         ),
-        timeout=2400.0,  # 40 minutes
+        timeout=1800.0,  # 30 minutes
     )
 
     if not result.success:
         print(f"Error: {result.error}")
         return
 
-    dev_response = extract_text_response(result.data.get("response", {}))
-    print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
-    log_to_file(LOG_FILE, "Dev - Initial", dev_response)
+    writer_response = extract_text_response(result.data.get("response", {}))
+    print(writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response)
+    log_to_file(log_file, "Writer - Initial", writer_response)
 
-    with open(OUTPUT_FILE, "a") as f:
-        f.write("## Initial Work\n\n")
-        f.write(dev_response)
+    with open(output_file, "a") as f:
+        f.write("## Initial Draft\n\n")
+        f.write(writer_response)
         f.write("\n\n---\n\n")
 
     # =========================================================================
@@ -470,7 +510,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=2400.0,  # 40 minutes
+                timeout=1800.0,
             )
 
             if not result.success:
@@ -480,49 +520,51 @@ async def run_dev_coach_review(
             coach_response = extract_text_response(result.data.get("response", {}))
             print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Coach - Processing Feedback (Outer {outer_round})",
                 coach_response,
             )
 
-            # Dev addresses Coach's instructions
-            dev_prompt = DEV_LOOP_PROMPT_TEMPLATE.format(
+            # Writer addresses Coach's instructions
+            writer_prompt = DEV_LOOP_PROMPT_TEMPLATE.format(
                 coach_response=coach_response,
                 task_refresher=TASK_REFRESHER,
                 additional_context=ADDITIONAL_CONTEXT,
             )
 
-            print("\n[DEV: Addressing feedback...]")
+            print("\n[WRITER: Addressing feedback...]")
             print("-" * 80)
 
             result = await client.send_command(
                 Command(
                     type=CommandType.EXECUTE_INPUT,
                     params={
-                        "node_id": "dev",
-                        "text": dev_prompt,
+                        "node_id": "writer",
+                        "text": writer_prompt,
                         "parser": "claude",
                     },
                 ),
-                timeout=2400.0,  # 40 minutes
+                timeout=1800.0,
             )
 
             if not result.success:
                 print(f"Error: {result.error}")
                 break
 
-            dev_response = extract_text_response(result.data.get("response", {}))
-            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
+            writer_response = extract_text_response(result.data.get("response", {}))
+            print(
+                writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response
+            )
             log_to_file(
-                LOG_FILE,
-                f"Dev - Addressing Feedback (Outer {outer_round})",
-                dev_response,
+                log_file,
+                f"Writer - Addressing Feedback (Outer {outer_round})",
+                writer_response,
             )
 
             reviewer_feedback = None  # Clear after processing
 
         # =====================================================================
-        # INNER LOOP: Dev <-> Coach
+        # INNER LOOP: Writer <-> Coach
         # =====================================================================
         inner_round = 0
         coach_accepted = False
@@ -531,13 +573,13 @@ async def run_dev_coach_review(
         coach_prompt = (
             COACH_INITIAL_PROMPT_TEMPLATE.format(
                 initial_task=INITIAL_TASK,
-                dev_response=dev_response,
+                dev_response=writer_response,
                 acceptance_phrase=COACH_ACCEPTANCE,
                 additional_context=ADDITIONAL_CONTEXT,
             )
             if outer_round == 1 and not reviewer_feedback
             else COACH_LOOP_PROMPT_TEMPLATE.format(
-                dev_response=dev_response,
+                dev_response=writer_response,
                 task_refresher=TASK_REFRESHER,
                 acceptance_phrase=COACH_ACCEPTANCE,
                 additional_context=ADDITIONAL_CONTEXT,
@@ -550,7 +592,7 @@ async def run_dev_coach_review(
             print(f"INNER LOOP {inner_round}/{MAX_INNER_ROUNDS} (Outer: {outer_round})")
             print("=" * 80)
 
-            print("\n[COACH: Reviewing...]")
+            print("\n[COACH: Reviewing PRD...]")
             print("-" * 80)
 
             result = await client.send_command(
@@ -562,7 +604,7 @@ async def run_dev_coach_review(
                         "parser": "claude",
                     },
                 ),
-                timeout=2400.0,  # 40 minutes
+                timeout=1800.0,
             )
 
             if not result.success:
@@ -572,7 +614,7 @@ async def run_dev_coach_review(
             coach_response = extract_text_response(result.data.get("response", {}))
             print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Coach - Outer {outer_round} Inner {inner_round}",
                 coach_response,
             )
@@ -585,39 +627,45 @@ async def run_dev_coach_review(
                 coach_accepted = True
                 break
 
-            # Dev addresses feedback
-            dev_prompt = DEV_LOOP_PROMPT_TEMPLATE.format(
+            # Writer addresses feedback
+            writer_prompt = DEV_LOOP_PROMPT_TEMPLATE.format(
                 coach_response=coach_response,
                 task_refresher=TASK_REFRESHER,
                 additional_context=ADDITIONAL_CONTEXT,
             )
 
-            print("\n[DEV: Addressing feedback...]")
+            print("\n[WRITER: Addressing feedback...]")
             print("-" * 80)
 
             result = await client.send_command(
                 Command(
                     type=CommandType.EXECUTE_INPUT,
                     params={
-                        "node_id": "dev",
-                        "text": dev_prompt,
+                        "node_id": "writer",
+                        "text": writer_prompt,
                         "parser": "claude",
                     },
                 ),
-                timeout=2400.0,  # 40 minutes
+                timeout=1800.0,
             )
 
             if not result.success:
                 print(f"Error: {result.error}")
                 break
 
-            dev_response = extract_text_response(result.data.get("response", {}))
-            print(dev_response[:2000] + "..." if len(dev_response) > 2000 else dev_response)
-            log_to_file(LOG_FILE, f"Dev - Outer {outer_round} Inner {inner_round}", dev_response)
+            writer_response = extract_text_response(result.data.get("response", {}))
+            print(
+                writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response
+            )
+            log_to_file(
+                log_file,
+                f"Writer - Outer {outer_round} Inner {inner_round}",
+                writer_response,
+            )
 
             # Prepare next coach prompt
             coach_prompt = COACH_LOOP_PROMPT_TEMPLATE.format(
-                dev_response=dev_response,
+                dev_response=writer_response,
                 task_refresher=TASK_REFRESHER,
                 acceptance_phrase=COACH_ACCEPTANCE,
                 additional_context=ADDITIONAL_CONTEXT,
@@ -640,7 +688,7 @@ async def run_dev_coach_review(
             additional_context=ADDITIONAL_CONTEXT,
         )
 
-        print("\n[REVIEWER: Final review...]")
+        print("\n[REVIEWER: Final PRD review...]")
         print("-" * 80)
 
         result = await client.send_command(
@@ -652,7 +700,7 @@ async def run_dev_coach_review(
                     "parser": "claude",
                 },
             ),
-            timeout=2400.0,  # 40 minutes
+            timeout=1800.0,
         )
 
         if not result.success:
@@ -663,28 +711,29 @@ async def run_dev_coach_review(
         print(
             reviewer_response[:2000] + "..." if len(reviewer_response) > 2000 else reviewer_response
         )
-        log_to_file(LOG_FILE, f"Reviewer - Outer {outer_round}", reviewer_response)
+        log_to_file(log_file, f"Reviewer - Outer {outer_round}", reviewer_response)
 
         # Check reviewer acceptance
         if REVIEWER_ACCEPTANCE in reviewer_response:
             print("\n" + "#" * 80)
-            print("REVIEWER ACCEPTED - COMPLETE!")
+            print("REVIEWER ACCEPTED - PRD COMPLETE!")
             print("#" * 80)
             reviewer_accepted = True
 
-            with open(OUTPUT_FILE, "a") as f:
+            with open(output_file, "a") as f:
                 f.write(f"## Accepted (Outer Round {outer_round})\n\n")
-                f.write("### Reviewer's Final Review\n\n")
+                f.write("### Reviewer's Final Assessment\n\n")
                 f.write(reviewer_response)
                 f.write("\n\n---\n\n")
-                f.write(f"*Completed on {datetime.now().isoformat()}*\n")
+                f.write(f"*PRD Completed on {datetime.now().isoformat()}*\n")
+                f.write(f"*PRD Location: {PRD_OUTPUT_PATH}*\n")
             break
 
         # Store feedback for next iteration
         reviewer_feedback = reviewer_response
         print("\nReviewer has concerns - feeding back to Coach")
 
-        with open(OUTPUT_FILE, "a") as f:
+        with open(output_file, "a") as f:
             f.write(f"## Outer Round {outer_round}\n\n")
             f.write("### Reviewer Feedback\n\n")
             f.write(reviewer_response)
@@ -698,7 +747,7 @@ async def run_dev_coach_review(
         print(f"MAX OUTER ROUNDS ({MAX_OUTER_ROUNDS}) REACHED")
         print("=" * 80)
 
-        with open(OUTPUT_FILE, "a") as f:
+        with open(output_file, "a") as f:
             f.write("\n## Terminated\n\n")
             f.write(f"Reached max rounds ({MAX_OUTER_ROUNDS}) without approval.\n\n")
             f.write(f"*Terminated on {datetime.now().isoformat()}*\n")
@@ -708,8 +757,10 @@ async def run_dev_coach_review(
     print("=" * 80)
     print(f"\nOuter rounds: {outer_round}")
     print(f"Approved: {reviewer_accepted}")
-    print(f"Output: {OUTPUT_FILE}")
-    print(f"Log: {LOG_FILE}")
+    print(f"Output: {output_file}")
+    print(f"Log: {log_file}")
+    if reviewer_accepted:
+        print(f"PRD Location: {PRD_OUTPUT_PATH}")
 
     # Cleanup
     await client.disconnect()
@@ -729,8 +780,66 @@ async def run_dev_coach_review(
     print("Done!")
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="PRD Creation collaboration DAG with three Claude agents",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--server",
+        default="prd-creation",
+        help="Server name (default: prd-creation)",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["unix", "tcp"],
+        default="unix",
+        help="Transport type (default: unix)",
+    )
+    parser.add_argument(
+        "--context",
+        dest="context_file",
+        help="Path to additional context file",
+    )
+    parser.add_argument(
+        "--prd-cwd",
+        dest="prd_cwd",
+        default=os.environ.get("PRD_CWD"),
+        help="Working directory for agents (env: PRD_CWD, default: current directory)",
+    )
+    parser.add_argument(
+        "--output-file",
+        dest="output_file",
+        default=os.environ.get("PRD_OUTPUT_FILE"),
+        help="Output file path (env: PRD_OUTPUT_FILE, default: /tmp/prd-creation-output.md)",
+    )
+    parser.add_argument(
+        "--log-file",
+        dest="log_file",
+        default=os.environ.get("PRD_LOG_FILE"),
+        help="Log file path (env: PRD_LOG_FILE, default: /tmp/prd-creation-conversation.log)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    server = sys.argv[1] if len(sys.argv) > 1 else "dev-coach-review"
-    transport = sys.argv[2] if len(sys.argv) > 2 else "unix"
-    context_file = sys.argv[3] if len(sys.argv) > 3 else None
-    asyncio.run(run_dev_coach_review(server, transport, context_file))
+    args = parse_args()
+
+    # Determine paths from CLI args, env vars, or defaults
+    # Priority: CLI arg > env var > hardcoded default (for prd_cwd: current directory)
+    # Note: argparse already handles env var fallback via default=os.environ.get(...)
+    prd_cwd = args.prd_cwd if args.prd_cwd else os.getcwd()
+    output_file = args.output_file if args.output_file else _DEFAULT_OUTPUT_FILE
+    log_file = args.log_file if args.log_file else _DEFAULT_LOG_FILE
+
+    asyncio.run(
+        run_prd_creation(
+            server_name=args.server,
+            transport=args.transport,
+            context_file=args.context_file,
+            prd_cwd=prd_cwd,
+            output_file=output_file,
+            log_file=log_file,
+        )
+    )

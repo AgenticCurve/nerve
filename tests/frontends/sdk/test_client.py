@@ -89,7 +89,7 @@ class TestNerveClientStandalone:
     """
 
     @pytest.mark.asyncio
-    async def test_standalone_create_node(self, tmp_path):
+    async def test_standalone_create_node(self):
         """Test creating node in standalone mode."""
         from unittest.mock import patch
 
@@ -111,7 +111,7 @@ class TestNerveClientStandalone:
             assert node.id == "my-node"
 
     @pytest.mark.asyncio
-    async def test_standalone_list_nodes(self, tmp_path):
+    async def test_standalone_list_nodes(self):
         """Test listing nodes in standalone mode."""
         from unittest.mock import patch
 
@@ -134,7 +134,7 @@ class TestNerveClientStandalone:
             assert "node-1" in nodes
 
     @pytest.mark.asyncio
-    async def test_standalone_get_node(self, tmp_path):
+    async def test_standalone_get_node(self):
         """Test getting node in standalone mode."""
         from unittest.mock import patch
 

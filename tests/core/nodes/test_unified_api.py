@@ -127,7 +127,7 @@ class TestPTYNodeUnifiedAPI:
 
         session = Session(name="test", history_enabled=False)
 
-        with patch("nerve.core.nodes.terminal.PTYBackend") as mock_backend_cls:
+        with patch("nerve.core.nodes.terminal.pty_node.PTYBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.start = AsyncMock()
             mock_backend.buffer = ""
@@ -178,7 +178,7 @@ class TestWezTermNodeUnifiedAPI:
 
         session = Session(name="test", history_enabled=False)
 
-        with patch("nerve.core.nodes.terminal.WezTermBackend") as mock_backend_cls:
+        with patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.start = AsyncMock()
             mock_backend.pane_id = "12345"
@@ -200,7 +200,7 @@ class TestWezTermNodeUnifiedAPI:
 
         session = Session(name="test", history_enabled=False)
 
-        with patch("nerve.core.nodes.terminal.WezTermBackend") as mock_backend_cls:
+        with patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.attach = AsyncMock()
             mock_backend_cls.return_value = mock_backend
@@ -237,7 +237,7 @@ class TestClaudeWezTermNodeUnifiedAPI:
 
         session = Session(name="test", history_enabled=False)
 
-        with patch("nerve.core.nodes.terminal.WezTermBackend") as mock_backend_cls:
+        with patch("nerve.core.nodes.terminal.wezterm_node.WezTermBackend") as mock_backend_cls:
             mock_backend = MagicMock()
             mock_backend.start = AsyncMock()
             mock_backend.pane_id = "12345"
