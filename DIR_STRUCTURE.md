@@ -49,7 +49,7 @@
 │       │   │   │   ├── [L: 151] builder.py
 │       │   │   │   ├── [L:  29] events.py
 │       │   │   │   ├── [L: 712] graph.py
-│       │   │   │   └── [L:  65] step.py
+│       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
@@ -93,7 +93,7 @@
 │       │   │   │   ├── [L: 227] adapters.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 830] core.py
+│       │   │   │   ├── [L: 841] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
@@ -196,4 +196,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-42 directories, 155 files, 33,209 total lines
+42 directories, 155 files, 33,214 total lines
