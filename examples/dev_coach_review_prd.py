@@ -14,12 +14,31 @@ Flow:
 5. If Reviewer accepts -> PRD COMPLETE
 
 Usage:
-    python examples/dev_coach_review_prd.py [server_name] [transport] [context_file]
-    python examples/dev_coach_review_prd.py prd-creation unix
-    python examples/dev_coach_review_prd.py prd-creation unix /path/to/feature-request.md
+    python examples/dev_coach_review_prd.py [options]
+
+Options:
+    --server NAME       Server name (default: prd-creation)
+    --transport TYPE    Transport type: unix or tcp (default: unix)
+    --context FILE      Path to additional context file
+    --prd-cwd DIR       Working directory for agents (default: current directory)
+    --output-file PATH  Output file path (default: /tmp/prd-creation-output.md)
+    --log-file PATH     Log file path (default: /tmp/prd-creation-conversation.log)
+
+Environment Variables:
+    PRD_CWD             Working directory for agents
+    PRD_OUTPUT_FILE     Output file path
+    PRD_LOG_FILE        Log file path
+
+Examples:
+    python examples/dev_coach_review_prd.py
+    python examples/dev_coach_review_prd.py --prd-cwd /path/to/project
+    python examples/dev_coach_review_prd.py --server my-prd --transport tcp
+    PRD_CWD=/my/project python examples/dev_coach_review_prd.py
 """
 
+import argparse
 import asyncio
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -38,10 +57,10 @@ REVIEWER_ACCEPTANCE = "307453453787913070286188389702802713668348379091461814758
 MAX_INNER_ROUNDS = 15  # Writer <-> Coach rounds per outer iteration
 MAX_OUTER_ROUNDS = 5  # Reviewer iterations
 
-# Paths - adjust these to your project
-PRD_CWD = "/Users/pb/agentic-curve/projects/nerve"
-OUTPUT_FILE = "/tmp/prd-creation-output.md"
-LOG_FILE = "/tmp/prd-creation-conversation.log"
+# Paths - configured via CLI args or environment variables
+# Defaults used only if no CLI/env value provided
+_DEFAULT_OUTPUT_FILE = "/tmp/prd-creation-output.md"
+_DEFAULT_LOG_FILE = "/tmp/prd-creation-conversation.log"
 
 # =============================================================================
 # PRD OUTPUT PATH - Where the PRD will be written
@@ -290,9 +309,17 @@ async def run_prd_creation(
     server_name: str = "prd-creation",
     transport: str = "unix",
     context_file: str | None = None,
+    prd_cwd: str | None = None,
+    output_file: str | None = None,
+    log_file: str | None = None,
 ):
     """Run the PRD creation collaboration DAG."""
     global ADDITIONAL_CONTEXT
+
+    # Use provided paths or fall back to defaults
+    prd_cwd = prd_cwd or os.getcwd()
+    output_file = output_file or _DEFAULT_OUTPUT_FILE
+    log_file = log_file or _DEFAULT_LOG_FILE
 
     # Load additional context from file if provided
     if context_file:
@@ -354,7 +381,7 @@ async def run_prd_creation(
                 params={
                     "node_id": agent_id,
                     "command": "claude --dangerously-skip-permissions",
-                    "cwd": PRD_CWD,
+                    "cwd": prd_cwd,
                     "backend": "claude-wezterm",
                     "response_timeout": 1800.0,  # 30 minutes (PRD work is less intensive)
                 },
@@ -369,15 +396,15 @@ async def run_prd_creation(
     await asyncio.sleep(5)
 
     # Setup files
-    Path(LOG_FILE).unlink(missing_ok=True)
-    with open(OUTPUT_FILE, "w") as f:
+    Path(log_file).unlink(missing_ok=True)
+    with open(output_file, "w") as f:
         f.write("# PRD Creation Collaboration\n\n")
         f.write(f"Generated: {datetime.now().isoformat()}\n\n")
         f.write(f"PRD Output: {PRD_OUTPUT_PATH}\n\n")
         f.write("---\n\n")
 
-    print(f"Output: {OUTPUT_FILE}")
-    print(f"Log: {LOG_FILE}")
+    print(f"Output: {output_file}")
+    print(f"Log: {log_file}")
     print(f"PRD will be written to: {PRD_OUTPUT_PATH}")
 
     # Warmup prompts (optional)
@@ -401,7 +428,7 @@ async def run_prd_creation(
             )
             if result.success:
                 log_to_file(
-                    LOG_FILE,
+                    log_file,
                     f"{agent_id.title()} - Warmup",
                     extract_text_response(result.data.get("response", {})),
                 )
@@ -440,9 +467,9 @@ async def run_prd_creation(
 
     writer_response = extract_text_response(result.data.get("response", {}))
     print(writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response)
-    log_to_file(LOG_FILE, "Writer - Initial", writer_response)
+    log_to_file(log_file, "Writer - Initial", writer_response)
 
-    with open(OUTPUT_FILE, "a") as f:
+    with open(output_file, "a") as f:
         f.write("## Initial Draft\n\n")
         f.write(writer_response)
         f.write("\n\n---\n\n")
@@ -494,7 +521,7 @@ async def run_prd_creation(
             coach_response = extract_text_response(result.data.get("response", {}))
             print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Coach - Processing Feedback (Outer {outer_round})",
                 coach_response,
             )
@@ -530,7 +557,7 @@ async def run_prd_creation(
                 writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response
             )
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Writer - Addressing Feedback (Outer {outer_round})",
                 writer_response,
             )
@@ -588,7 +615,7 @@ async def run_prd_creation(
             coach_response = extract_text_response(result.data.get("response", {}))
             print(coach_response[:2000] + "..." if len(coach_response) > 2000 else coach_response)
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Coach - Outer {outer_round} Inner {inner_round}",
                 coach_response,
             )
@@ -632,7 +659,7 @@ async def run_prd_creation(
                 writer_response[:2000] + "..." if len(writer_response) > 2000 else writer_response
             )
             log_to_file(
-                LOG_FILE,
+                log_file,
                 f"Writer - Outer {outer_round} Inner {inner_round}",
                 writer_response,
             )
@@ -685,7 +712,7 @@ async def run_prd_creation(
         print(
             reviewer_response[:2000] + "..." if len(reviewer_response) > 2000 else reviewer_response
         )
-        log_to_file(LOG_FILE, f"Reviewer - Outer {outer_round}", reviewer_response)
+        log_to_file(log_file, f"Reviewer - Outer {outer_round}", reviewer_response)
 
         # Check reviewer acceptance
         if REVIEWER_ACCEPTANCE in reviewer_response:
@@ -694,7 +721,7 @@ async def run_prd_creation(
             print("#" * 80)
             reviewer_accepted = True
 
-            with open(OUTPUT_FILE, "a") as f:
+            with open(output_file, "a") as f:
                 f.write(f"## Accepted (Outer Round {outer_round})\n\n")
                 f.write("### Reviewer's Final Assessment\n\n")
                 f.write(reviewer_response)
@@ -707,7 +734,7 @@ async def run_prd_creation(
         reviewer_feedback = reviewer_response
         print("\nReviewer has concerns - feeding back to Coach")
 
-        with open(OUTPUT_FILE, "a") as f:
+        with open(output_file, "a") as f:
             f.write(f"## Outer Round {outer_round}\n\n")
             f.write("### Reviewer Feedback\n\n")
             f.write(reviewer_response)
@@ -721,7 +748,7 @@ async def run_prd_creation(
         print(f"MAX OUTER ROUNDS ({MAX_OUTER_ROUNDS}) REACHED")
         print("=" * 80)
 
-        with open(OUTPUT_FILE, "a") as f:
+        with open(output_file, "a") as f:
             f.write("\n## Terminated\n\n")
             f.write(f"Reached max rounds ({MAX_OUTER_ROUNDS}) without approval.\n\n")
             f.write(f"*Terminated on {datetime.now().isoformat()}*\n")
@@ -731,8 +758,8 @@ async def run_prd_creation(
     print("=" * 80)
     print(f"\nOuter rounds: {outer_round}")
     print(f"Approved: {reviewer_accepted}")
-    print(f"Output: {OUTPUT_FILE}")
-    print(f"Log: {LOG_FILE}")
+    print(f"Output: {output_file}")
+    print(f"Log: {log_file}")
     if reviewer_accepted:
         print(f"PRD Location: {PRD_OUTPUT_PATH}")
 
@@ -754,8 +781,66 @@ async def run_prd_creation(
     print("Done!")
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        description="PRD Creation collaboration DAG with three Claude agents",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--server",
+        default="prd-creation",
+        help="Server name (default: prd-creation)",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["unix", "tcp"],
+        default="unix",
+        help="Transport type (default: unix)",
+    )
+    parser.add_argument(
+        "--context",
+        dest="context_file",
+        help="Path to additional context file",
+    )
+    parser.add_argument(
+        "--prd-cwd",
+        dest="prd_cwd",
+        default=os.environ.get("PRD_CWD"),
+        help="Working directory for agents (env: PRD_CWD, default: current directory)",
+    )
+    parser.add_argument(
+        "--output-file",
+        dest="output_file",
+        default=os.environ.get("PRD_OUTPUT_FILE"),
+        help="Output file path (env: PRD_OUTPUT_FILE, default: /tmp/prd-creation-output.md)",
+    )
+    parser.add_argument(
+        "--log-file",
+        dest="log_file",
+        default=os.environ.get("PRD_LOG_FILE"),
+        help="Log file path (env: PRD_LOG_FILE, default: /tmp/prd-creation-conversation.log)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    server = sys.argv[1] if len(sys.argv) > 1 else "prd-creation"
-    transport = sys.argv[2] if len(sys.argv) > 2 else "unix"
-    context_file = sys.argv[3] if len(sys.argv) > 3 else None
-    asyncio.run(run_prd_creation(server, transport, context_file))
+    args = parse_args()
+
+    # Determine paths from CLI args, env vars, or defaults
+    # Priority: CLI arg > env var > hardcoded default (for prd_cwd: current directory)
+    # Note: argparse already handles env var fallback via default=os.environ.get(...)
+    prd_cwd = args.prd_cwd if args.prd_cwd else os.getcwd()
+    output_file = args.output_file if args.output_file else _DEFAULT_OUTPUT_FILE
+    log_file = args.log_file if args.log_file else _DEFAULT_LOG_FILE
+
+    asyncio.run(
+        run_prd_creation(
+            server_name=args.server,
+            transport=args.transport,
+            context_file=args.context_file,
+            prd_cwd=prd_cwd,
+            output_file=output_file,
+            log_file=log_file,
+        )
+    )

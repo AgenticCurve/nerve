@@ -17,7 +17,7 @@
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
 │   ├── [L: 736] dev_coach_review.py
-│   ├── [L: 761] dev_coach_review_prd.py
+│   ├── [L: 846] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -52,7 +52,7 @@
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 443] claude_wezterm_node.py
+│       │   │   │   ├── [L: 446] claude_wezterm_node.py
 │       │   │   │   ├── [L: 592] pty_node.py
 │       │   │   │   └── [L: 672] wezterm_node.py
 │       │   │   └── [L: 215] trace.py
@@ -194,4 +194,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-43 directories, 152 files, 33,368 total lines
+43 directories, 152 files, 33,456 total lines

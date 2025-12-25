@@ -142,6 +142,7 @@ class ClaudeWezTermNode:
             except (HistoryError, ValueError) as e:
                 logger.warning(f"Failed to create history writer for {id}: {e}")
 
+        inner: WezTermNode | None = None
         try:
             # Create inner node WITHOUT history writer - wrapper owns history
             # Use _create_internal which doesn't register with session
@@ -187,7 +188,9 @@ class ClaudeWezTermNode:
             return wrapper
 
         except Exception:
-            # Cleanup on failure
+            # Cleanup on failure - close both inner node and history writer
+            if inner is not None:
+                await inner.stop()
             if history_writer is not None:
                 history_writer.close()
             raise
