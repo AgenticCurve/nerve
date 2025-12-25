@@ -33,6 +33,7 @@ class ServerHandler:
 
     State:
     - _shutdown_requested: bool (exposed via property)
+    - _cleanup_task: Background cleanup task (prevents GC)
     - Coordinates cleanup across all handlers
     """
 
@@ -43,6 +44,7 @@ class ServerHandler:
 
     # Owned state
     _shutdown_requested: bool = field(default=False)
+    _cleanup_task: asyncio.Task[None] | None = field(default=None, repr=False)
 
     @property
     def shutdown_requested(self) -> bool:
@@ -63,8 +65,12 @@ class ServerHandler:
         # Emit stop event
         await self.event_sink.emit(Event(type=EventType.SERVER_STOPPED))
 
-        # Schedule cleanup in background (don't await)
-        asyncio.create_task(self._cleanup_on_stop())
+        # Schedule cleanup in background (store task to prevent GC)
+        # Cancel existing cleanup if already running
+        if self._cleanup_task and not self._cleanup_task.done():
+            self._cleanup_task.cancel()
+
+        self._cleanup_task = asyncio.create_task(self._cleanup_on_stop())
 
         return {"stopped": True}
 

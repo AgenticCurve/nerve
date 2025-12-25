@@ -127,6 +127,10 @@ class SessionRegistry:
         Returns:
             The removed session, or None if not found.
         """
+        # Clear default session reference if removing the default
+        if name == self._default_session_name:
+            self._default_session_name = None
+
         return self._sessions.pop(name, None)
 
     def list_session_names(self) -> list[str]:

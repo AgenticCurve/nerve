@@ -138,16 +138,16 @@
 │       │   │   └── [L: 136] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
-│       │   │   ├── [L: 322] graph_handler.py
-│       │   │   ├── [L: 286] node_interaction_handler.py
-│       │   │   ├── [L: 329] node_lifecycle_handler.py
+│       │   │   ├── [L: 346] graph_handler.py
+│       │   │   ├── [L: 287] node_interaction_handler.py
+│       │   │   ├── [L: 356] node_lifecycle_handler.py
 │       │   │   ├── [L: 249] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
-│       │   │   ├── [L: 108] server_handler.py
+│       │   │   ├── [L: 114] server_handler.py
 │       │   │   └── [L: 169] session_handler.py
 │       │   ├── [L: 154] protocols.py
 │       │   ├── [L: 466] proxy_manager.py
-│       │   ├── [L: 154] session_registry.py
+│       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
 │       └── transport/
 │           ├── [L:  52] __init__.py
@@ -221,4 +221,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-46 directories, 176 files, 38,362 total lines
+46 directories, 176 files, 38,424 total lines

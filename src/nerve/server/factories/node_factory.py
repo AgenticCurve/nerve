@@ -8,7 +8,7 @@ the Open/Closed Principle:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Node
@@ -33,8 +33,8 @@ class NodeFactory:
         ... )
     """
 
-    # Valid backends
-    VALID_BACKENDS = ["pty", "wezterm", "claude-wezterm"]
+    # Valid backends (immutable)
+    VALID_BACKENDS: ClassVar[tuple[str, ...]] = ("pty", "wezterm", "claude-wezterm")
 
     async def create(
         self,

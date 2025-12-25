@@ -106,13 +106,26 @@ class GraphHandler:
 
         session = self.session_registry.get_session(params.get("session_id"))
         graph_id = params.get("graph_id", "graph_0")
-        steps_data = params["steps"]
+
+        # Validate steps parameter
+        steps_data = params.get("steps")
+        if steps_data is None or not isinstance(steps_data, list):
+            raise ValueError(
+                "Missing or invalid 'steps' parameter; expected a list of step definitions"
+            )
+
+        # Validate each step is a dict with required "id" key
+        for i, step_data in enumerate(steps_data):
+            if not isinstance(step_data, dict):
+                raise ValueError(f"Step at index {i} is not a dict; expected step definition dict")
+            if "id" not in step_data:
+                raise ValueError(f"Step at index {i} missing required 'id' key")
 
         # Build Graph from step definitions
         graph = Graph(id=graph_id, session=session)
 
         for step_data in steps_data:
-            step_id = step_data["id"]
+            step_id = step_data["id"]  # Safe now - validated above
             node_id = step_data.get("node_id")
             text = step_data.get("text", "")
             depends_on = step_data.get("depends_on", [])
@@ -266,6 +279,8 @@ class GraphHandler:
 
         Eliminates duplication between execute_graph and run_graph.
 
+        Registers the current task so cancel_graph can find and cancel it.
+
         Args:
             graph: Graph to execute.
             context: Execution context.
@@ -274,49 +289,58 @@ class GraphHandler:
         Returns:
             {"graph_id": str, "results": dict}
         """
-        await self.event_sink.emit(
-            Event(
-                type=EventType.GRAPH_STARTED,
-                data={"graph_id": graph_id},
+        # Register current task for cancellation support
+        current_task = asyncio.current_task()
+        if current_task:
+            self._running_graphs[graph_id] = current_task
+
+        try:
+            await self.event_sink.emit(
+                Event(
+                    type=EventType.GRAPH_STARTED,
+                    data={"graph_id": graph_id},
+                )
             )
-        )
 
-        # Execute graph with streaming
-        results = {}
-        async for event in graph.stream(context):  # type: ignore[attr-defined]
-            if event.event == "step_started":
-                await self.event_sink.emit(
-                    Event(
-                        type=EventType.STEP_STARTED,
-                        data={"step_id": event.step_id},
+            # Execute graph with streaming
+            results = {}
+            async for event in graph.execute_stream(context):
+                if event.event_type == "step_start":
+                    await self.event_sink.emit(
+                        Event(
+                            type=EventType.STEP_STARTED,
+                            data={"step_id": event.step_id},
+                        )
                     )
-                )
-            elif event.event == "step_completed":
-                results[event.step_id] = event.output
-                await self.event_sink.emit(
-                    Event(
-                        type=EventType.STEP_COMPLETED,
-                        data={"step_id": event.step_id, "output": str(event.output)[:500]},
+                elif event.event_type == "step_complete":
+                    results[event.step_id] = event.data
+                    await self.event_sink.emit(
+                        Event(
+                            type=EventType.STEP_COMPLETED,
+                            data={"step_id": event.step_id, "output": str(event.data)[:500]},
+                        )
                     )
-                )
-            elif event.event == "step_failed":
-                await self.event_sink.emit(
-                    Event(
-                        type=EventType.STEP_FAILED,
-                        data={"step_id": event.step_id, "error": str(event.error)},
+                elif event.event_type == "step_error":
+                    await self.event_sink.emit(
+                        Event(
+                            type=EventType.STEP_FAILED,
+                            data={"step_id": event.step_id, "error": str(event.data)},
+                        )
                     )
-                )
 
-        await self.event_sink.emit(
-            Event(
-                type=EventType.GRAPH_COMPLETED,
-                data={"graph_id": graph_id, "step_count": len(results)},
+            await self.event_sink.emit(
+                Event(
+                    type=EventType.GRAPH_COMPLETED,
+                    data={"graph_id": graph_id, "step_count": len(results)},
+                )
             )
-        )
 
-        return {
-            "graph_id": graph_id,
-            "results": {
-                step_id: {"output": str(output)[:500]} for step_id, output in results.items()
-            },
-        }
+            return {
+                "graph_id": graph_id,
+                "results": {
+                    step_id: {"output": str(output)[:500]} for step_id, output in results.items()
+                },
+            }
+        finally:
+            # Always clean up task registration
+            self._running_graphs.pop(graph_id, None)

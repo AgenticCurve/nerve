@@ -73,7 +73,7 @@ class NodeInteractionHandler:
         """
         session = self.session_registry.get_session(params.get("session_id"))
         node_id = self.validation.require_param(params, "node_id")
-        text = params["text"]
+        text = self.validation.require_param(params, "text")
         parser_str = params.get("parser")
         stream = params.get("stream", False)
         timeout = params.get("timeout")
@@ -119,8 +119,9 @@ class NodeInteractionHandler:
             parser = get_parser(actual_parser)
             response = parser.parse(node.buffer)  # type: ignore[attr-defined]
         else:
-            # Wait for complete response using ExecutionContext
-            context.parser = parser_type
+            # Wait for complete response using ExecutionContext (immutable pattern)
+            if parser_type is not None:
+                context = context.with_parser(parser_type)
             response = await node.execute(context)
 
         # Emit OUTPUT_PARSED event
@@ -176,7 +177,7 @@ class NodeInteractionHandler:
         """
         session = self.session_registry.get_session(params.get("session_id"))
         node_id = self.validation.require_param(params, "node_id")
-        data = params["data"]
+        data = self.validation.require_param(params, "data")
 
         node = self.validation.get_node(session, node_id, require_terminal=True)
         await node.write(data)  # type: ignore[attr-defined]

@@ -7,7 +7,8 @@ Distinction: Manages WHETHER nodes exist, not HOW to interact with them
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +23,8 @@ if TYPE_CHECKING:
     from nerve.server.session_registry import SessionRegistry
     from nerve.server.validation import ValidationHelpers
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class NodeLifecycleHandler:
@@ -30,7 +33,7 @@ class NodeLifecycleHandler:
     Domain: Node existence (CRUD operations)
     Distinction: Manages WHETHER nodes exist, not HOW to interact with them
 
-    State: None (uses session registry for access)
+    State: Monitoring tasks (prevents GC, enables cancellation)
     """
 
     event_sink: EventSink
@@ -39,6 +42,9 @@ class NodeLifecycleHandler:
     validation: ValidationHelpers
     session_registry: SessionRegistry
     server_name: str
+
+    # Monitoring tasks by node_id (prevents GC, enables cancellation)
+    _monitoring_tasks: dict[str, asyncio.Task[None]] = field(default_factory=dict, repr=False)
 
     async def create_node(self, params: dict[str, Any]) -> dict[str, Any]:
         """Create a new node.
@@ -118,8 +124,23 @@ class NodeLifecycleHandler:
             )
         )
 
-        # Start monitoring
-        asyncio.create_task(self._monitor_node(node))
+        # Start monitoring (store task to prevent GC and enable cancellation)
+        task = asyncio.create_task(self._monitor_node(node))
+        self._monitoring_tasks[node.id] = task
+
+        # Add done callback to handle exceptions and cleanup
+        def on_monitor_done(t: asyncio.Task[None]) -> None:
+            # Remove from tracking
+            self._monitoring_tasks.pop(node.id, None)
+            # Log any unhandled exceptions
+            try:
+                t.result()  # Raises if task failed
+            except asyncio.CancelledError:
+                pass  # Expected when node is deleted
+            except Exception as e:
+                logger.error(f"Monitoring task for node {node.id} failed: {e}", exc_info=True)
+
+        task.add_done_callback(on_monitor_done)
 
         return {"node_id": node.id, "proxy_url": proxy_url}
 
@@ -193,7 +214,7 @@ class NodeLifecycleHandler:
     async def delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
         """Delete a node from session.
 
-        Also stops any associated proxy for the node.
+        Also stops any associated proxy and monitoring task for the node.
 
         Args:
             params: Must contain "node_id".
@@ -206,6 +227,12 @@ class NodeLifecycleHandler:
 
         # Validate node exists
         _node = self.validation.get_node(session, node_id)
+
+        # Cancel monitoring task if it exists
+        task = self._monitoring_tasks.get(str(node_id))
+        if task and not task.done():
+            task.cancel()
+            # Note: cleanup happens in done_callback
 
         # Stop proxy if one exists for this node
         await self.proxy_manager.stop_proxy(str(node_id))

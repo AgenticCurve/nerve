@@ -74,7 +74,7 @@ REVIEWER_WARMUP = ""  # Leave empty to skip warmup
 # TASK
 # =============================================================================
 
-INITIAL_TASK = """Plesae implement the PRD described in:
+INITIAL_TASK = """Please implement the PRD described in:
 
 docs/prd/engine-architectural-refactoring.md
 
