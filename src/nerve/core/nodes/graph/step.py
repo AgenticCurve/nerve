@@ -45,3 +45,15 @@ class Step:
     depends_on: list[str] = field(default_factory=list)
     error_policy: ErrorPolicy | None = None
     parser: ParserType | None = None
+
+    def __post_init__(self) -> None:
+        """Validate step configuration."""
+        # Validate node vs node_ref: exactly one must be provided
+        if self.node is not None and self.node_ref is not None:
+            raise ValueError("Step cannot have both 'node' and 'node_ref'; provide only one")
+        if self.node is None and self.node_ref is None:
+            raise ValueError("Step must have either 'node' or 'node_ref'; neither was provided")
+
+        # Validate input vs input_fn: at most one can be provided
+        if self.input is not None and self.input_fn is not None:
+            raise ValueError("Step cannot have both 'input' and 'input_fn'; provide only one")
