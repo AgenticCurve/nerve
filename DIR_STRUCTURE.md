@@ -1,4 +1,7 @@
 ./
+├── docs/
+│   └── prd/
+│       └── [L: 850] openai-provider-support.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -13,7 +16,7 @@
 │   ├── [L: 587] dev_coach.py
 │   ├── [L: 574] dev_coach_architecture.py
 │   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 736] dev_coach_review.py
+│   ├── [L: 760] dev_coach_review.py
 │   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
@@ -54,7 +57,7 @@
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 446] claude_wezterm_node.py
+│       │   │   │   ├── [L: 472] claude_wezterm_node.py
 │       │   │   │   ├── [L: 598] pty_node.py
 │       │   │   │   └── [L: 684] wezterm_node.py
 │       │   │   └── [L: 215] trace.py
@@ -100,7 +103,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 549] __init__.py
 │       │   │   │   ├── [L: 447] graph.py
-│       │   │   │   ├── [L: 694] node.py
+│       │   │   │   ├── [L: 790] node.py
 │       │   │   │   └── [L: 292] session.py
 │       │   │   ├── [L: 270] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -109,15 +112,16 @@
 │       │   │   └── [L: 213] server.py
 │       │   └── sdk/
 │       │       ├── [L:  27] __init__.py
-│       │       └── [L: 349] client.py
+│       │       └── [L: 372] client.py
 │       ├── gateway/
-│       │   ├── [L:  43] __init__.py
+│       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 357] anthropic_proxy.py
 │       │   ├── clients/
 │       │   │   ├── [L:  23] __init__.py
 │       │   │   └── [L: 450] llm_client.py
 │       │   ├── [L:  17] errors.py
 │       │   ├── [L: 553] openai_proxy.py
+│       │   ├── [L:  28] passthrough_proxy.py
 │       │   ├── [L:  96] tracing.py
 │       │   └── transforms/
 │       │       ├── [L:  42] __init__.py
@@ -127,9 +131,10 @@
 │       │       ├── [L: 115] types.py
 │       │       └── [L: 197] validation.py
 │       ├── server/
-│       │   ├── [L:  51] __init__.py
-│       │   ├── [L:1341] engine.py
-│       │   └── [L: 154] protocols.py
+│       │   ├── [L:  64] __init__.py
+│       │   ├── [L:1414] engine.py
+│       │   ├── [L: 154] protocols.py
+│       │   └── [L: 468] proxy_manager.py
 │       └── transport/
 │           ├── [L:  52] __init__.py
 │           ├── [L: 372] http.py
@@ -159,6 +164,7 @@
     │   │   ├── [L: 206] test_bash.py
     │   │   ├── [L: 231] test_budget.py
     │   │   ├── [L: 126] test_cancellation.py
+    │   │   ├── [L: 173] test_claude_wezterm_proxy.py
     │   │   ├── [L: 258] test_context.py
     │   │   ├── [L: 524] test_graph.py
     │   │   ├── [L: 121] test_policies.py
@@ -184,6 +190,7 @@
     │   │   └── [L: 340] test_llm_client.py
     │   ├── [L: 297] test_anthropic_proxy.py
     │   ├── [L: 318] test_openai_proxy.py
+    │   ├── [L: 360] test_passthrough_proxy.py
     │   └── transforms/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 357] test_anthropic.py
@@ -192,8 +199,10 @@
     ├── server/
     │   ├── [L:   0] __init__.py
     │   ├── [L: 513] test_engine.py
-    │   └── [L: 283] test_engine_sessions.py
+    │   ├── [L: 269] test_engine_proxy.py
+    │   ├── [L: 283] test_engine_sessions.py
+    │   └── [L: 284] test_proxy_manager.py
     └── transport/
         └── [L:   1] __init__.py
 
-42 directories, 155 files, 33,214 total lines
+44 directories, 162 files, 35,912 total lines

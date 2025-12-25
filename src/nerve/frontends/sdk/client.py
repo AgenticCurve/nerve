@@ -225,6 +225,8 @@ class NerveClient:
         cwd: str | None = None,
         response_timeout: float = 1800.0,
         ready_timeout: float = 60.0,
+        backend: str = "pty",
+        provider: dict[str, Any] | None = None,
     ) -> RemoteNode:
         """Create a new node.
 
@@ -234,6 +236,9 @@ class NerveClient:
             cwd: Working directory.
             response_timeout: Max wait for terminal response in seconds (default: 1800.0).
             ready_timeout: Max wait for terminal ready state in seconds (default: 60.0).
+            backend: Node backend type ("pty", "wezterm", "claude-wezterm").
+            provider: Provider configuration for proxy (claude-wezterm only).
+                Dict with keys: api_format, base_url, api_key, model (optional).
 
         Returns:
             Node proxy.
@@ -241,6 +246,19 @@ class NerveClient:
         Raises:
             ValueError: If name is invalid.
             RuntimeError: If node already exists.
+
+        Example with OpenAI provider:
+            >>> node = await client.create_node(
+            ...     name="claude-openai",
+            ...     command="claude --dangerously-skip-permissions",
+            ...     backend="claude-wezterm",
+            ...     provider={
+            ...         "api_format": "openai",
+            ...         "base_url": "https://api.openai.com/v1",
+            ...         "api_key": "sk-...",
+            ...         "model": "gpt-4.1",
+            ...     },
+            ... )
         """
         from nerve.core.validation import validate_name
 
@@ -270,16 +288,21 @@ class NerveClient:
         # Use transport
         from nerve.server.protocols import Command, CommandType
 
+        params: dict[str, Any] = {
+            "node_id": name,
+            "command": command,
+            "cwd": cwd,
+            "response_timeout": response_timeout,
+            "ready_timeout": ready_timeout,
+            "backend": backend,
+        }
+        if provider is not None:
+            params["provider"] = provider
+
         result = await self._send_command(
             Command(
                 type=CommandType.CREATE_NODE,
-                params={
-                    "node_id": name,
-                    "command": command,
-                    "cwd": cwd,
-                    "response_timeout": response_timeout,
-                    "ready_timeout": ready_timeout,
-                },
+                params=params,
             )
         )
 

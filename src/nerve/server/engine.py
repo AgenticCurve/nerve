@@ -30,6 +30,7 @@ from nerve.server.protocols import (
     EventSink,
     EventType,
 )
+from nerve.server.proxy_manager import ProviderConfig, ProxyManager
 
 
 @dataclass
@@ -62,6 +63,7 @@ class NerveEngine:
     )  # session_id -> namespace
     _running_graphs: dict[str, asyncio.Task[Any]] = field(default_factory=dict)
     _shutdown_requested: bool = field(default=False, repr=False)
+    _proxy_manager: ProxyManager = field(default_factory=ProxyManager, repr=False)
 
     def __post_init__(self) -> None:
         """Initialize default session."""
@@ -204,6 +206,8 @@ class NerveEngine:
             history: Enable history logging (default: True)
             response_timeout: Max wait for terminal response in seconds (default: 1800.0)
             ready_timeout: Max wait for terminal ready state in seconds (default: 60.0)
+            provider: Provider configuration for proxy (optional, claude-wezterm only)
+                      Dict with keys: api_format, base_url, api_key, model (optional), debug_dir (optional)
         """
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
@@ -223,33 +227,67 @@ class NerveEngine:
         history = params.get("history", True)  # Enable history by default
         response_timeout = params.get("response_timeout", 1800.0)
         ready_timeout = params.get("ready_timeout", 60.0)
+        provider_dict = params.get("provider")  # Provider config dict (optional)
+
+        # Handle provider configuration and start proxy if needed
+        proxy_url: str | None = None
+        if provider_dict is not None:
+            if backend != "claude-wezterm":
+                raise ValueError("provider config is only supported for claude-wezterm backend")
+
+            # Validate required keys are present
+            required_keys = ["api_format", "base_url", "api_key"]
+            missing = [k for k in required_keys if k not in provider_dict]
+            if missing:
+                raise ValueError(
+                    f"Provider config missing required keys: {', '.join(missing)}. "
+                    f"Required: {', '.join(required_keys)}"
+                )
+
+            # Convert dict to ProviderConfig
+            provider_config = ProviderConfig(
+                api_format=provider_dict["api_format"],
+                base_url=provider_dict["base_url"],
+                api_key=provider_dict["api_key"],
+                model=provider_dict.get("model"),
+                debug_dir=provider_dict.get("debug_dir"),
+            )
+
+            # Determine debug directory for request/response logs
+            # Default: .nerve/logs/proxy/<server-name>/<session-name>/<node-name>/request-response/
+            debug_dir = provider_config.debug_dir
+            if debug_dir is None:
+                from pathlib import Path
+
+                base_log_path = (
+                    Path.cwd()
+                    / ".nerve"
+                    / "logs"
+                    / "proxy"
+                    / self._server_name
+                    / session.name
+                    / str(node_id)
+                )
+                debug_dir = str(base_log_path / "request-response")
+                log_dir = str(base_log_path / "stdout-stderr")
+            else:
+                # User provided custom debug_dir, don't set log_dir
+                log_dir = None
+
+            # Start proxy before creating node
+            instance = await self._proxy_manager.start_proxy(
+                node_id=str(node_id),
+                config=provider_config,
+                debug_dir=debug_dir,
+                log_dir=log_dir,
+            )
+            proxy_url = f"http://127.0.0.1:{instance.port}"
 
         # Dispatch to appropriate node class based on backend
         node: PTYNode | WezTermNode | ClaudeWezTermNode
-        if backend == "pty":
-            node = await PTYNode.create(
-                id=str(node_id),
-                session=session,
-                command=command,
-                cwd=cwd,
-                history=history,
-                response_timeout=response_timeout,
-                ready_timeout=ready_timeout,
-            )
-        elif backend == "wezterm":
-            if pane_id:
-                # Attach to existing pane
-                node = await WezTermNode.attach(
-                    id=str(node_id),
-                    session=session,
-                    pane_id=pane_id,
-                    history=history,
-                    response_timeout=response_timeout,
-                    ready_timeout=ready_timeout,
-                )
-            else:
-                # Create new pane
-                node = await WezTermNode.create(
+        try:
+            if backend == "pty":
+                node = await PTYNode.create(
                     id=str(node_id),
                     session=session,
                     command=command,
@@ -258,20 +296,48 @@ class NerveEngine:
                     response_timeout=response_timeout,
                     ready_timeout=ready_timeout,
                 )
-        elif backend == "claude-wezterm":
-            if not command:
-                raise ValueError("command is required for claude-wezterm backend")
-            node = await ClaudeWezTermNode.create(
-                id=str(node_id),
-                session=session,
-                command=command,
-                cwd=cwd,
-                history=history,
-                response_timeout=response_timeout,
-                ready_timeout=ready_timeout,
-            )
-        else:
-            raise ValueError(f"Unknown backend: {backend}")
+            elif backend == "wezterm":
+                if pane_id:
+                    # Attach to existing pane
+                    node = await WezTermNode.attach(
+                        id=str(node_id),
+                        session=session,
+                        pane_id=pane_id,
+                        history=history,
+                        response_timeout=response_timeout,
+                        ready_timeout=ready_timeout,
+                    )
+                else:
+                    # Create new pane
+                    node = await WezTermNode.create(
+                        id=str(node_id),
+                        session=session,
+                        command=command,
+                        cwd=cwd,
+                        history=history,
+                        response_timeout=response_timeout,
+                        ready_timeout=ready_timeout,
+                    )
+            elif backend == "claude-wezterm":
+                if not command:
+                    raise ValueError("command is required for claude-wezterm backend")
+                node = await ClaudeWezTermNode.create(
+                    id=str(node_id),
+                    session=session,
+                    command=command,
+                    cwd=cwd,
+                    history=history,
+                    response_timeout=response_timeout,
+                    ready_timeout=ready_timeout,
+                    proxy_url=proxy_url,
+                )
+            else:
+                raise ValueError(f"Unknown backend: {backend}")
+        except Exception:
+            # If node creation fails, clean up the proxy
+            if proxy_url is not None:
+                await self._proxy_manager.stop_proxy(str(node_id))
+            raise
 
         await self._emit(
             EventType.NODE_CREATED,
@@ -280,6 +346,7 @@ class NerveEngine:
                 "cwd": cwd,
                 "backend": backend,
                 "pane_id": getattr(node, "pane_id", None),
+                "proxy_url": proxy_url,
             },
             node_id=node.id,
         )
@@ -287,10 +354,13 @@ class NerveEngine:
         # Start monitoring the node
         asyncio.create_task(self._monitor_node(node))
 
-        return {"node_id": node.id}
+        return {"node_id": node.id, "proxy_url": proxy_url}
 
     async def _delete_node(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Delete a node."""
+        """Delete a node.
+
+        Also stops any associated proxy for the node.
+        """
         session = self._get_session(params)
         node_id = params.get("node_id")
         if not node_id:
@@ -299,6 +369,9 @@ class NerveEngine:
         deleted = await session.delete_node(str(node_id))
         if not deleted:
             raise ValueError(f"Node not found: {node_id}")
+
+        # Stop proxy if one exists for this node
+        await self._proxy_manager.stop_proxy(str(node_id))
 
         await self._emit(EventType.NODE_DELETED, node_id=node_id)
 
@@ -1306,6 +1379,12 @@ class NerveEngine:
                 await session.stop()
             except Exception:
                 pass  # Best effort cleanup
+
+        # Stop all proxies
+        try:
+            await self._proxy_manager.stop_all()
+        except Exception:
+            pass  # Best effort cleanup
 
     async def _ping(self, params: dict[str, Any]) -> dict[str, Any]:
         """Ping the server to check if it's alive."""
