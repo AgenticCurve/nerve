@@ -1,4 +1,6 @@
 ./
+├── docs/
+│   └── [L: 525] refactoring-cli-node-module.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -88,24 +90,24 @@
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 243] extract.py
 │       │   │   ├── [L: 182] main.py
-│       │   │   ├── [L: 192] output.py
+│       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 237] commands.py
+│       │   │   │   ├── [L: 218] commands.py
 │       │   │   │   ├── [L: 683] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
-│       │   │   │   ├── [L: 554] __init__.py
-│       │   │   │   ├── [L: 216] graph.py
-│       │   │   │   ├── [L: 678] node.py
-│       │   │   │   └── [L: 216] session.py
-│       │   │   ├── [L: 305] utils.py
+│       │   │   │   ├── [L: 549] __init__.py
+│       │   │   │   ├── [L: 214] graph.py
+│       │   │   │   ├── [L: 651] node.py
+│       │   │   │   └── [L: 204] session.py
+│       │   │   ├── [L: 361] utils.py
 │       │   │   └── [L: 209] wezterm.py
 │       │   ├── mcp/
 │       │   │   ├── [L:  30] __init__.py
@@ -145,7 +147,7 @@
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   └── [L: 169] session_handler.py
-│       │   ├── [L: 154] protocols.py
+│       │   ├── [L: 162] protocols.py
 │       │   ├── [L: 466] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -221,4 +223,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 178 files, 36,513 total lines
+45 directories, 179 files, 37,038 total lines

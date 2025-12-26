@@ -11,7 +11,7 @@ from typing import Any
 
 import rich_click as click
 
-from nerve.frontends.cli.output import print_table
+from nerve.frontends.cli.output import error_exit, print_table
 from nerve.frontends.cli.utils import (
     find_all_servers,
     force_kill_server,
@@ -177,16 +177,13 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
     try:
         validate_name(name, "server")
     except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+        error_exit(str(e))
 
     # Validate transport options
     if use_tcp and use_http:
-        click.echo("Error: Cannot use both --tcp and --http", err=True)
-        sys.exit(1)
+        error_exit("Cannot use both --tcp and --http")
     if (use_tcp or use_http) and not host:
-        click.echo("Error: --tcp and --http require --host", err=True)
-        sys.exit(1)
+        error_exit("--tcp and --http require --host")
 
     socket_path = f"/tmp/nerve-{name}.sock"
     pid_file = f"/tmp/nerve-{name}.pid"
@@ -200,8 +197,7 @@ def start(name: str, host: str | None, port: int, use_tcp: bool, use_http: bool)
                 pid = int(f.read().strip())
             # Check if process is still running
             os.kill(pid, 0)
-            click.echo(f"Error: Server '{name}' is already running (pid {pid})", err=True)
-            sys.exit(1)
+            error_exit(f"Server '{name}' is already running (pid {pid})")
         except (ProcessLookupError, ValueError):
             # Process not running, clean up stale files
             pass
@@ -507,8 +503,7 @@ def status(name: str, show_all: bool) -> None:
                     click.echo(f"  Nodes: {status_data.get('nodes', 0)}")
                     click.echo(f"  Graphs: {status_data.get('graphs', 0)}")
             else:
-                click.echo(f"Server '{name}' not running")
-                sys.exit(1)
+                error_exit(f"Server '{name}' not running")
 
     asyncio.run(run())
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from nerve.frontends.cli.output import format_history_entry
+
 if TYPE_CHECKING:
     from nerve.core.nodes import Graph
     from nerve.core.session import Session
@@ -189,28 +191,7 @@ async def handle_read_remote(
 
 def format_history_entry_repl(entry: dict[str, Any]) -> str:
     """Format a single history entry for REPL display (40 char truncation)."""
-    seq = entry.get("seq", "?")
-    op_type = entry.get("op", "unknown")
-    ts = entry.get("ts", entry.get("ts_start", ""))
-    ts_display = ts.split("T")[1][:8] if "T" in ts else ts[:8]
-
-    if op_type == "send":
-        input_text = entry.get("input", "")[:40]
-        response = entry.get("response", {})
-        sections = response.get("sections", [])
-        return f"[{seq:3}] {ts_display} SEND    {input_text!r} -> {len(sections)} sections"
-    elif op_type == "run":
-        cmd = entry.get("input", "")[:40]
-        return f"[{seq:3}] {ts_display} RUN     {cmd!r}"
-    elif op_type == "write":
-        data = entry.get("input", "")[:30].replace("\n", "\\n")
-        return f"[{seq:3}] {ts_display} WRITE   {data!r}"
-    elif op_type == "read":
-        lines = entry.get("lines", 0)
-        buffer_len = len(entry.get("buffer", ""))
-        return f"[{seq:3}] {ts_display} READ    {lines} lines, {buffer_len} chars"
-    else:
-        return f"[{seq:3}] {ts_display} {op_type.upper()}"
+    return format_history_entry(entry, truncate=40)
 
 
 def print_history_repl(

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
-import sys
-
 import rich_click as click
 
 from nerve.frontends.cli.output import error_exit, output_json_or_table, print_table
 from nerve.frontends.cli.server import server
-from nerve.frontends.cli.utils import server_connection
+from nerve.frontends.cli.utils import async_server_command, build_params, server_connection
+from nerve.server.protocols import NODE_TYPE_TO_BACKEND
+
+# Node type choices for CLI (must match NODE_TYPE_TO_BACKEND keys)
+NODE_TYPE_CHOICES = ["PTYNode", "WezTermNode", "ClaudeWezTermNode"]
 
 
 @server.group()
@@ -37,7 +38,8 @@ def node() -> None:
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def node_list(server_name: str, session_id: str | None, json_output: bool) -> None:
+@async_server_command
+async def node_list(server_name: str, session_id: str | None, json_output: bool) -> None:
     """List all nodes in a session.
 
     Shows nodes in the specified session (or default session).
@@ -54,54 +56,47 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            params = {}
-            if session_id:
-                params["session_id"] = session_id
+    async with server_connection(server_name) as client:
+        params = build_params(session_id=session_id)
 
-            result = await client.send_command(
-                Command(
-                    type=CommandType.GET_SESSION,
-                    params=params,
-                )
+        result = await client.send_command(
+            Command(
+                type=CommandType.GET_SESSION,
+                params=params,
             )
+        )
 
-            if result.success and result.data:
-                nodes_info = result.data.get("nodes_info", [])
-                session_display_name = result.data.get("name", "default")  # Capture for closure
+        if result.success and result.data:
+            nodes_info = result.data.get("nodes_info", [])
+            session_display_name = result.data.get("name", "default")  # Capture for closure
 
-                def show_table() -> None:
-                    if nodes_info:
-                        rows = []
-                        for info in nodes_info:
-                            name = info.get("id", "?")
-                            backend = info.get("backend", info.get("type", "?"))
-                            state = info.get("state", "?")
-                            last_input = info.get("last_input", "")
-                            if last_input:
-                                last_input = last_input[:30]
-                            rows.append([name, backend, state, last_input])
-                        print_table(
-                            ["NAME", "BACKEND", "STATE", "LAST INPUT"],
-                            rows,
-                            widths=[20, 18, 10, 30],
-                        )
-                    else:
-                        click.echo(f"No nodes in session '{session_display_name}'")
+            def show_table() -> None:
+                if nodes_info:
+                    rows = []
+                    for info in nodes_info:
+                        name = info.get("id", "?")
+                        backend = info.get("backend", info.get("type", "?"))
+                        state = info.get("state", "?")
+                        last_input = info.get("last_input", "")
+                        if last_input:
+                            last_input = last_input[:30]
+                        rows.append([name, backend, state, last_input])
+                    print_table(
+                        ["NAME", "BACKEND", "STATE", "LAST INPUT"],
+                        rows,
+                        widths=[20, 18, 10, 30],
+                    )
+                else:
+                    click.echo(f"No nodes in session '{session_display_name}'")
 
-                output_json_or_table(nodes_info, json_output, show_table)
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+            output_json_or_table(nodes_info, json_output, show_table)
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("create")
 @click.argument("name")
-@click.option(
-    "--server", "-s", "server_name", required=True, help="Server name to create the node on"
-)
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
 @click.option(
     "--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')"
@@ -111,7 +106,7 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
     "--type",
     "-t",
     "node_type",
-    type=click.Choice(["PTYNode", "WezTermNode", "ClaudeWezTermNode"]),
+    type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
     help="Node type (PTYNode, WezTermNode, or ClaudeWezTermNode)",
 )
@@ -149,7 +144,8 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
     default=None,
     help="Directory for proxy debug logs",
 )
-def node_create(
+@async_server_command
+async def node_create(
     name: str,
     server_name: str,
     session_id: str | None,
@@ -233,64 +229,57 @@ def node_create(
         error_exit("Provider options require --type ClaudeWezTermNode")
 
     # Map node type to wire protocol backend value
-    type_to_backend = {
-        "PTYNode": "pty",
-        "WezTermNode": "wezterm",
-        "ClaudeWezTermNode": "claude-wezterm",
-    }
-    backend = type_to_backend.get(node_type, "pty")
+    backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            params: dict[str, object] = {
-                "node_id": name,
-                "cwd": cwd,
-                "backend": backend,
-                "history": history,
+    async with server_connection(server_name) as client:
+        params: dict[str, object] = {
+            "node_id": name,
+            "cwd": cwd,
+            "backend": backend,
+            "history": history,
+        }
+        if session_id:
+            params["session_id"] = session_id
+        if command:
+            params["command"] = command
+        if pane_id:
+            params["pane_id"] = pane_id
+
+        # Add provider config if specified
+        if api_format:
+            provider_config: dict[str, str | None] = {
+                "api_format": api_format,
+                "base_url": provider_base_url,
+                "api_key": provider_api_key,
+                "model": provider_model,
             }
-            if session_id:
-                params["session_id"] = session_id
-            if command:
-                params["command"] = command
-            if pane_id:
-                params["pane_id"] = pane_id
+            if provider_debug_dir:
+                provider_config["debug_dir"] = provider_debug_dir
+            params["provider"] = provider_config
 
-            # Add provider config if specified
-            if api_format:
-                provider_config: dict[str, str | None] = {
-                    "api_format": api_format,
-                    "base_url": provider_base_url,
-                    "api_key": provider_api_key,
-                    "model": provider_model,
-                }
-                if provider_debug_dir:
-                    provider_config["debug_dir"] = provider_debug_dir
-                params["provider"] = provider_config
-
-            result = await client.send_command(
-                Command(
-                    type=CommandType.CREATE_NODE,
-                    params=params,
-                )
+        result = await client.send_command(
+            Command(
+                type=CommandType.CREATE_NODE,
+                params=params,
             )
+        )
 
-            if result.success:
-                proxy_url = result.data.get("proxy_url") if result.data else None
-                if proxy_url:
-                    click.echo(f"Created node: {name} (proxy: {proxy_url})")
-                else:
-                    click.echo(f"Created node: {name}")
+        if result.success:
+            proxy_url = result.data.get("proxy_url") if result.data else None
+            if proxy_url:
+                click.echo(f"Created node: {name} (proxy: {proxy_url})")
             else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+                click.echo(f"Created node: {name}")
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("delete")
 @click.argument("node_name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def node_delete(node_name: str, server_name: str, session_id: str | None) -> None:
+@async_server_command
+async def node_delete(node_name: str, server_name: str, session_id: str | None) -> None:
     """Delete a node.
 
     Stops the node, closes its terminal/pane, and removes it from the server.
@@ -309,32 +298,28 @@ def node_delete(node_name: str, server_name: str, session_id: str | None) -> Non
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            params = {"node_id": node_name}
-            if session_id:
-                params["session_id"] = session_id
+    async with server_connection(server_name) as client:
+        params = build_params(node_id=node_name, session_id=session_id)
 
-            result = await client.send_command(
-                Command(
-                    type=CommandType.DELETE_NODE,
-                    params=params,
-                )
+        result = await client.send_command(
+            Command(
+                type=CommandType.DELETE_NODE,
+                params=params,
             )
+        )
 
-            if result.success:
-                click.echo(f"Deleted node: {node_name}")
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+        if result.success:
+            click.echo(f"Deleted node: {node_name}")
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("run")
 @click.argument("node_name")
 @click.argument("command")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_run(node_name: str, command: str, server_name: str) -> None:
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@async_server_command
+async def node_run(node_name: str, command: str, server_name: str) -> None:
     """Start a program in a node (fire and forget).
 
     Use this to launch programs that take over the terminal,
@@ -357,31 +342,29 @@ def node_run(node_name: str, command: str, server_name: str) -> None:
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run_cmd() -> None:
-        async with server_connection(server_name) as client:
-            result = await client.send_command(
-                Command(
-                    type=CommandType.RUN_COMMAND,
-                    params={
-                        "node_id": node_name,
-                        "command": command,
-                    },
-                )
+    async with server_connection(server_name) as client:
+        result = await client.send_command(
+            Command(
+                type=CommandType.RUN_COMMAND,
+                params={
+                    "node_id": node_name,
+                    "command": command,
+                },
             )
+        )
 
-            if result.success:
-                click.echo(f"Started: {command}")
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run_cmd())
+        if result.success:
+            click.echo(f"Started: {command}")
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("read")
 @click.argument("node_name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option("--lines", "-n", default=None, type=int, help="Only show last N lines")
-def node_read(node_name: str, server_name: str, lines: int | None) -> None:
+@async_server_command
+async def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     """Read the output buffer of a node.
 
     Shows all output from the node since it was created.
@@ -398,31 +381,28 @@ def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            params: dict[str, str | int] = {"node_id": node_name}
-            if lines:
-                params["lines"] = lines
+    async with server_connection(server_name) as client:
+        params: dict[str, str | int] = {"node_id": node_name}
+        if lines:
+            params["lines"] = lines
 
-            result = await client.send_command(
-                Command(
-                    type=CommandType.GET_BUFFER,
-                    params=params,
-                )
+        result = await client.send_command(
+            Command(
+                type=CommandType.GET_BUFFER,
+                params=params,
             )
+        )
 
-            if result.success and result.data:
-                click.echo(result.data.get("buffer", ""))
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+        if result.success and result.data:
+            click.echo(result.data.get("buffer", ""))
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("send")
 @click.argument("node_name")
 @click.argument("text")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
 @click.option(
     "--parser",
     "-p",
@@ -435,7 +415,8 @@ def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     default=None,
     help="Submit sequence (e.g., '\\n', '\\r', '\\x1b\\r'). Default: auto based on parser.",
 )
-def node_send(
+@async_server_command
+async def node_send(
     node_name: str, text: str, server_name: str, parser: str | None, submit: str | None
 ) -> None:
     """Send input to a node and get JSON response.
@@ -456,42 +437,40 @@ def node_send(
 
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            params = {
-                "node_id": node_name,
-                "text": text,
-            }
-            # Only include parser if explicitly set (let node use its default)
-            if parser is not None:
-                params["parser"] = parser
-            # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
-            if submit:
-                params["submit"] = submit.encode().decode("unicode_escape")
+    async with server_connection(server_name) as client:
+        params = {
+            "node_id": node_name,
+            "text": text,
+        }
+        # Only include parser if explicitly set (let node use its default)
+        if parser is not None:
+            params["parser"] = parser
+        # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
+        if submit:
+            params["submit"] = submit.encode().decode("unicode_escape")
 
-            result = await client.send_command(
-                Command(
-                    type=CommandType.EXECUTE_INPUT,
-                    params=params,
-                )
+        result = await client.send_command(
+            Command(
+                type=CommandType.EXECUTE_INPUT,
+                params=params,
             )
+        )
 
-            if not result.success:
-                # Output error as JSON
-                click.echo(json.dumps({"error": result.error}, indent=2))
-            elif result.data:
-                # Output response as JSON
-                response = result.data.get("response", {})
-                click.echo(json.dumps(response, indent=2))
-
-    asyncio.run(run())
+        if not result.success:
+            # Output error as JSON
+            click.echo(json.dumps({"error": result.error}, indent=2))
+        elif result.data:
+            # Output response as JSON
+            response = result.data.get("response", {})
+            click.echo(json.dumps(response, indent=2))
 
 
 @node.command("write")
 @click.argument("node_name")
 @click.argument("data")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_write(node_name: str, data: str, server_name: str) -> None:
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@async_server_command
+async def node_write(node_name: str, data: str, server_name: str) -> None:
     """Write raw data to a node (no waiting).
 
     Low-level write for testing and debugging. Does not wait for response.
@@ -516,30 +495,28 @@ def node_write(node_name: str, data: str, server_name: str) -> None:
     # Decode escape sequences
     decoded_data = data.encode().decode("unicode_escape")
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            result = await client.send_command(
-                Command(
-                    type=CommandType.WRITE_DATA,
-                    params={
-                        "node_id": node_name,
-                        "data": decoded_data,
-                    },
-                )
+    async with server_connection(server_name) as client:
+        result = await client.send_command(
+            Command(
+                type=CommandType.WRITE_DATA,
+                params={
+                    "node_id": node_name,
+                    "data": decoded_data,
+                },
             )
+        )
 
-            if result.success:
-                click.echo(f"Wrote {len(decoded_data)} bytes")
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+        if result.success:
+            click.echo(f"Wrote {len(decoded_data)} bytes")
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("interrupt")
 @click.argument("node_name")
-@click.option("--server", "-s", "server_name", required=True, help="Server name the node is on")
-def node_interrupt(node_name: str, server_name: str) -> None:
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@async_server_command
+async def node_interrupt(node_name: str, server_name: str) -> None:
     """Send interrupt (Ctrl+C) to a node.
 
     Cancels the current operation in the node.
@@ -554,21 +531,18 @@ def node_interrupt(node_name: str, server_name: str) -> None:
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        async with server_connection(server_name) as client:
-            result = await client.send_command(
-                Command(
-                    type=CommandType.SEND_INTERRUPT,
-                    params={"node_id": node_name},
-                )
+    async with server_connection(server_name) as client:
+        result = await client.send_command(
+            Command(
+                type=CommandType.SEND_INTERRUPT,
+                params={"node_id": node_name},
             )
+        )
 
-            if result.success:
-                click.echo("Interrupt sent")
-            else:
-                error_exit(result.error or "Unknown error")
-
-    asyncio.run(run())
+        if result.success:
+            click.echo("Interrupt sent")
+        else:
+            error_exit(result.error or "Unknown error")
 
 
 @node.command("history")
@@ -642,8 +616,7 @@ def node_history(
         if seq is not None:
             entry = reader.get_by_seq(seq)
             if entry is None:
-                click.echo(f"No entry with sequence number {seq}", err=True)
-                sys.exit(1)
+                error_exit(f"No entry with sequence number {seq}")
             entries = [entry]
         elif inputs_only:
             entries = reader.get_inputs_only()
@@ -671,8 +644,6 @@ def node_history(
             print_history_entries(entries)
 
     except FileNotFoundError:
-        click.echo(
-            f"No history found for node '{node_name}' in session '{session_name}' on server '{server_name}'",
-            err=True,
+        error_exit(
+            f"No history found for node '{node_name}' in session '{session_name}' on server '{server_name}'"
         )
-        sys.exit(1)
