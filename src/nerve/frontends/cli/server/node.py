@@ -281,7 +281,7 @@ def node_create(
                 else:
                     click.echo(f"Created node: {name}")
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -325,7 +325,7 @@ def node_delete(node_name: str, server_name: str, session_id: str | None) -> Non
             if result.success:
                 click.echo(f"Deleted node: {node_name}")
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -372,7 +372,7 @@ def node_run(node_name: str, command: str, server_name: str) -> None:
             if result.success:
                 click.echo(f"Started: {command}")
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run_cmd())
 

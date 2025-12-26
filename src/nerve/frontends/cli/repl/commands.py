@@ -224,7 +224,7 @@ def print_history_repl(
     from collections import Counter
 
     if summary:
-        ops_count = Counter(e["op"] for e in entries)
+        ops_count = Counter(e.get("op", "unknown") for e in entries)
         print(f"Node: {node_name}")
         print(f"Server: {server_name}")
         print(f"Session: {session_name}")
