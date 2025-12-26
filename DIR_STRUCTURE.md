@@ -1,7 +1,31 @@
 ./
 ├── examples/
 │   ├── agents/
-│   │   └── [L:  72] debate.py
+│   │   ├── [L:  11] __init__.py
+│   │   ├── debate/
+│   │   │   ├── [L:   1] __init__.py
+│   │   │   ├── [L:  76] main.py
+│   │   │   └── [L:  23] prompts.py
+│   │   ├── dev_coach_architecture/
+│   │   │   ├── [L:   1] __init__.py
+│   │   │   ├── [L: 456] main.py
+│   │   │   └── [L: 135] prompts.py
+│   │   ├── dev_coach_base/
+│   │   │   ├── [L:   1] __init__.py
+│   │   │   ├── [L: 454] main.py
+│   │   │   └── [L: 150] prompts.py
+│   │   ├── dev_coach_consultants/
+│   │   │   ├── [L:   1] __init__.py
+│   │   │   ├── [L: 445] main.py
+│   │   │   └── [L: 238] prompts.py
+│   │   ├── dev_coach_review/
+│   │   │   ├── [L:   1] __init__.py
+│   │   │   ├── [L: 537] main.py
+│   │   │   └── [L: 223] prompts.py
+│   │   └── dev_coach_review_prd/
+│   │       ├── [L:   1] __init__.py
+│   │       ├── [L: 632] main.py
+│   │       └── [L: 234] prompts.py
 │   ├── [L: 141] bash_node_example.py
 │   ├── core_only/
 │   │   ├── [L: 109] graph_execution.py
@@ -10,11 +34,6 @@
 │   │   └── [L:  52] streaming.py
 │   ├── [L: 312] debate.py
 │   ├── [L: 237] demo_proxy.py
-│   ├── [L: 587] dev_coach.py
-│   ├── [L: 574] dev_coach_architecture.py
-│   ├── [L: 657] dev_coach_consultants.py
-│   ├── [L: 736] dev_coach_review.py
-│   ├── [L: 844] dev_coach_review_prd.py
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
@@ -24,10 +43,23 @@
 │   │   └── [L:  40] server.py
 │   └── [L:  32] sample_graph.py
 ├── [L:  24] Makefile
-├── [L:  87] pyproject.toml
+├── [L:  88] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
 │   ├── [L:  52] bump.py
+│   ├── proxy/
+│   │   ├── [L: 979] browse_conversation.py
+│   │   ├── [L:1167] browse_file_operations.py
+│   │   ├── [L: 510] dump_request.py
+│   │   ├── shared/
+│   │   │   ├── [L:  44] __init__.py
+│   │   │   ├── [L:  23] cli.py
+│   │   │   ├── [L:  16] colors.py
+│   │   │   ├── [L:  70] formatting.py
+│   │   │   ├── [L:  62] models.py
+│   │   │   ├── [L: 149] parsing.py
+│   │   │   └── [L:  98] themes.py
+│   │   └── [L:1186] summarize_session.py
 │   ├── [L:  85] run_anthropic_passthrough.py
 │   └── [L:  58] run_openai_proxy.py
 ├── src/
@@ -221,4 +253,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 178 files, 36,514 total lines
+52 directories, 202 files, 40,969 total lines
