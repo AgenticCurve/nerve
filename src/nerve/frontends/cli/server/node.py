@@ -414,7 +414,7 @@ def node_read(node_name: str, server_name: str, lines: int | None) -> None:
             if result.success and result.data:
                 click.echo(result.data.get("buffer", ""))
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -531,7 +531,7 @@ def node_write(node_name: str, data: str, server_name: str) -> None:
             if result.success:
                 click.echo(f"Wrote {len(decoded_data)} bytes")
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -566,7 +566,7 @@ def node_interrupt(node_name: str, server_name: str) -> None:
             if result.success:
                 click.echo("Interrupt sent")
             else:
-                click.echo(f"Error: {result.error}", err=True)
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
