@@ -100,9 +100,9 @@
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 549] __init__.py
-│       │   │   │   ├── [L: 447] graph.py
+│       │   │   │   ├── [L: 218] graph.py
 │       │   │   │   ├── [L: 790] node.py
-│       │   │   │   └── [L: 292] session.py
+│       │   │   │   └── [L: 242] session.py
 │       │   │   ├── [L: 270] utils.py
 │       │   │   └── [L: 209] wezterm.py
 │       │   ├── mcp/
@@ -219,4 +219,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 176 files, 36,680 total lines
+44 directories, 176 files, 36,401 total lines
