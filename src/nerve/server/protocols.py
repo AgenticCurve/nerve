@@ -89,6 +89,14 @@ class CommandType(Enum):
     PING = auto()
 
 
+# Node type to backend name mapping (protocol-level constant)
+NODE_TYPE_TO_BACKEND: dict[str, str] = {
+    "PTYNode": "pty",
+    "WezTermNode": "wezterm",
+    "ClaudeWezTermNode": "claude-wezterm",
+}
+
+
 @dataclass(frozen=True)
 class Event:
     """Event emitted by the server.

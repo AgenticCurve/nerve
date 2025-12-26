@@ -84,11 +84,12 @@ def error_print(message: str) -> None:
     click.echo(f"Error: {message}", err=True)
 
 
-def format_history_entry(entry: dict[str, Any]) -> str:
+def format_history_entry(entry: dict[str, Any], truncate: int = 50) -> str:
     """Format a single history entry for display.
 
     Args:
         entry: History entry dict with op, seq, ts, etc.
+        truncate: Maximum length for input text (default: 50)
 
     Returns:
         Formatted string for display
@@ -104,16 +105,16 @@ def format_history_entry(entry: dict[str, Any]) -> str:
         ts_display = ""
 
     if op_type == "send":
-        input_text = entry.get("input", "")[:50]
+        input_text = entry.get("input", "")[:truncate]
         response = entry.get("response", {})
         sections = response.get("sections", [])
         section_count = len(sections)
         return f"[{seq:3}] {ts_display} SEND    {input_text!r} -> {section_count} sections"
     elif op_type == "send_stream":
-        input_text = entry.get("input", "")[:50]
+        input_text = entry.get("input", "")[:truncate]
         return f"[{seq:3}] {ts_display} STREAM  {input_text!r}"
     elif op_type == "run":
-        cmd = entry.get("input", "")[:50]
+        cmd = entry.get("input", "")[:truncate]
         return f"[{seq:3}] {ts_display} RUN     {cmd!r}"
     elif op_type == "write":
         data_str = entry.get("input", "")[:30].replace("\n", "\\n")

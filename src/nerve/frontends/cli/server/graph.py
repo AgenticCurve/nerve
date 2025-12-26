@@ -7,6 +7,7 @@ from typing import Any
 
 import rich_click as click
 
+from nerve.frontends.cli.output import error_exit
 from nerve.frontends.cli.server import server
 
 # ============================================================================
@@ -85,8 +86,7 @@ async def run_graph_file(
     try:
         graph_def = load_graph_from_file(filepath)
     except Exception as e:
-        click.echo(f"Error loading Graph: {e}", err=True)
-        return
+        error_exit(f"Error loading Graph: {e}")
 
     steps = graph_def.get("steps", [])
     click.echo(f"Found {len(steps)} steps")
@@ -105,9 +105,7 @@ async def run_graph_file(
     try:
         await client.connect()
     except Exception as e:
-        click.echo(f"Failed to connect: {e}", err=True)
-        click.echo("Make sure the server is running: nerve server start")
-        return
+        error_exit(f"Failed to connect: {e}\nMake sure the server is running: nerve server start")
 
     node_map = nodes or {}
 
@@ -131,9 +129,8 @@ async def run_graph_file(
                 node_map[node_name] = result.data["node_id"]
                 click.echo(f"  -> {result.data['node_id']}")
             else:
-                click.echo(f"  Error: {result.error}", err=True)
                 await client.disconnect()
-                return
+                error_exit(f"Failed to create node '{node_name}': {result.error}")
 
     # Build server steps
     steps_for_server = []
@@ -170,7 +167,8 @@ async def run_graph_file(
                 click.echo(f"{output[:500]}{'...' if len(output) > 500 else ''}")
         click.echo("=" * 50)
     else:
-        click.echo(f"Error: {result.error}", err=True)
+        await client.disconnect()
+        error_exit(result.error or "Unknown error")
 
     await client.disconnect()
 

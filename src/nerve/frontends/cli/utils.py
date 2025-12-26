@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import signal
@@ -10,6 +11,7 @@ import sys
 import time
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from functools import wraps
 from glob import glob
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +25,62 @@ if TYPE_CHECKING:
 # Exception tuples for consistent error handling
 CONNECTION_ERRORS = (ConnectionRefusedError, FileNotFoundError, OSError)
 REMOTE_ERRORS = (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError)
+
+
+# =============================================================================
+# Decorators for CLI commands
+# =============================================================================
+
+
+def async_server_command(f: Callable[..., Any]) -> Callable[..., None]:
+    """Decorator for async CLI commands that handles asyncio.run().
+
+    This allows Click commands to be defined as async functions while
+    Click expects sync functions. The decorator wraps the async function
+    and runs it in an asyncio event loop.
+
+    Usage:
+        @node.command("list")
+        @click.option("--server", "-s", "server_name", default="local")
+        @async_server_command
+        async def node_list(server_name: str) -> None:
+            async with server_connection(server_name) as client:
+                result = await client.send_command(...)
+    """
+
+    @wraps(f)
+    def wrapper(*args: Any, **kwargs: Any) -> None:
+        asyncio.run(f(*args, **kwargs))
+
+    return wrapper
+
+
+def build_params(**base_params: Any) -> dict[str, Any]:
+    """Build command params dict, excluding None values.
+
+    Helper for building API params where None values should be omitted.
+
+    Args:
+        **base_params: Key-value pairs for params. None values are excluded.
+
+    Returns:
+        Dict with non-None values.
+
+    Example:
+        # Before:
+        params = {}
+        if session_id:
+            params["session_id"] = session_id
+        if node_id:
+            params["node_id"] = node_id
+
+        # After:
+        params = build_params(
+            session_id=session_id,
+            node_id=node_name,
+        )
+    """
+    return {k: v for k, v in base_params.items() if v is not None}
 
 
 def get_server_client(
