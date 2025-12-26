@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from nerve.frontends.cli.output import print_table_repl
+
 if TYPE_CHECKING:
     from nerve.core.nodes import Graph
     from nerve.frontends.cli.repl.adapters import SessionAdapter
@@ -60,10 +62,8 @@ async def print_nodes(adapter: SessionAdapter) -> None:
         return
 
     print("\nActive Nodes:")
-    print("-" * 40)
-    for name, info in nodes:
-        print(f"  {name}: {info}")
-    print("-" * 40)
+    rows = [[name, info] for name, info in nodes]
+    print_table_repl(["NAME", "INFO"], rows, widths=[15, 25])
 
 
 def print_graph(graph: Graph | None) -> None:

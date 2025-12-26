@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from typing import Any
 
 import rich_click as click
 
 from nerve.frontends.cli.server import server
-from nerve.frontends.cli.utils import create_client
 
 # ============================================================================
 # Graph File Loading Helpers
@@ -82,33 +80,33 @@ async def run_graph_file(
     from nerve.server.protocols import Command, CommandType
     from nerve.transport import UnixSocketClient
 
-    print(f"Loading: {filepath}")
+    click.echo(f"Loading: {filepath}")
 
     try:
         graph_def = load_graph_from_file(filepath)
     except Exception as e:
-        print(f"Error loading Graph: {e}")
+        click.echo(f"Error loading Graph: {e}", err=True)
         return
 
     steps = graph_def.get("steps", [])
-    print(f"Found {len(steps)} steps")
+    click.echo(f"Found {len(steps)} steps")
 
     if dry_run:
-        print("\n[DRY RUN] Execution order:")
+        click.echo("\n[DRY RUN] Execution order:")
         for i, step in enumerate(steps, 1):
             deps = step.get("depends_on", [])
             dep_str = f" (after: {', '.join(deps)})" if deps else ""
-            print(f"  [{i}] {step['id']}{dep_str}")
+            click.echo(f"  [{i}] {step['id']}{dep_str}")
         return
 
     # Connect to server
-    print(f"\nConnecting to {socket_path}...")
+    click.echo(f"\nConnecting to {socket_path}...")
     client = UnixSocketClient(socket_path)
     try:
         await client.connect()
     except Exception as e:
-        print(f"Failed to connect: {e}")
-        print("Make sure the server is running: nerve server start")
+        click.echo(f"Failed to connect: {e}", err=True)
+        click.echo("Make sure the server is running: nerve server start")
         return
 
     node_map = nodes or {}
@@ -122,7 +120,7 @@ async def run_graph_file(
     # Create missing nodes
     for node_name in required_nodes:
         if node_name not in node_map:
-            print(f"Creating node: {node_name}")
+            click.echo(f"Creating node: {node_name}")
             result = await client.send_command(
                 Command(
                     type=CommandType.CREATE_NODE,
@@ -131,9 +129,9 @@ async def run_graph_file(
             )
             if result.success and result.data:
                 node_map[node_name] = result.data["node_id"]
-                print(f"  -> {result.data['node_id']}")
+                click.echo(f"  -> {result.data['node_id']}")
             else:
-                print(f"  Error: {result.error}")
+                click.echo(f"  Error: {result.error}", err=True)
                 await client.disconnect()
                 return
 
@@ -153,7 +151,7 @@ async def run_graph_file(
         )
 
     # Execute
-    print("\nExecuting Graph...")
+    click.echo("\nExecuting Graph...")
     result = await client.send_command(
         Command(
             type=CommandType.EXECUTE_GRAPH,
@@ -162,17 +160,17 @@ async def run_graph_file(
     )
 
     if result.success and result.data:
-        print("\nResults:")
-        print("=" * 50)
+        click.echo("\nResults:")
+        click.echo("=" * 50)
         for step_id, res in result.data.get("results", {}).items():
             status = res.get("status", "?")
             output = res.get("output", "")
-            print(f"\n[{step_id}] {status}")
+            click.echo(f"\n[{step_id}] {status}")
             if output:
-                print(f"{output[:500]}{'...' if len(output) > 500 else ''}")
-        print("=" * 50)
+                click.echo(f"{output[:500]}{'...' if len(output) > 500 else ''}")
+        click.echo("=" * 50)
     else:
-        print(f"Error: {result.error}")
+        click.echo(f"Error: {result.error}", err=True)
 
     await client.disconnect()
 
@@ -184,245 +182,16 @@ async def run_graph_file(
 
 @server.group()
 def graph() -> None:
-    """Manage and execute graphs on the server.
+    """Execute graphs on the server.
 
     Graphs are multi-step workflows that orchestrate node execution.
-    They can be registered in a session and executed later.
+    Define graphs in Python files and execute them with 'graph run'.
 
-    **Commands:**
-
-        nerve server graph list      List registered graphs
-
-        nerve server graph create    Create an empty graph
-
-        nerve server graph delete    Delete a graph
-
-        nerve server graph info      Get graph details
+    **Command:**
 
         nerve server graph run       Run a graph file
     """
     pass
-
-
-@graph.command("list")
-@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
-@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-@click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def graph_list(server_name: str, session_id: str | None, json_output: bool) -> None:
-    """List registered graphs in a session.
-
-    **Examples:**
-
-        nerve server graph list
-
-        nerve server graph list --server myproject
-
-        nerve server graph list --server myproject --session my-workspace
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        params = {}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.LIST_GRAPHS,
-                params=params,
-            )
-        )
-
-        if result.success and result.data:
-            graphs = result.data.get("graphs", [])
-
-            if json_output:
-                import json
-
-                click.echo(json.dumps(result.data, indent=2))
-            elif graphs:
-                click.echo(f"{'ID':<20} {'STEPS'}")
-                click.echo("-" * 30)
-                for g in graphs:
-                    click.echo(f"{g['id']:<20} {g.get('step_count', 0)}")
-            else:
-                click.echo("No graphs registered")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
-
-
-@graph.command("create")
-@click.argument("graph_id")
-@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
-@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def graph_create(graph_id: str, server_name: str, session_id: str | None) -> None:
-    """Create an empty graph.
-
-    Creates a graph that can have steps added later.
-
-    **Arguments:**
-
-        GRAPH_ID      Unique identifier for the graph
-
-    **Examples:**
-
-        nerve server graph create my-workflow
-
-        nerve server graph create my-workflow --server myproject
-
-        nerve server graph create pipeline --server myproject --session my-workspace
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        params = {"graph_id": graph_id}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.CREATE_GRAPH,
-                params=params,
-            )
-        )
-
-        if result.success:
-            click.echo(f"Created graph: {graph_id}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
-
-
-@graph.command("delete")
-@click.argument("graph_id")
-@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
-@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-def graph_delete(graph_id: str, server_name: str, session_id: str | None) -> None:
-    """Delete a graph.
-
-    **Arguments:**
-
-        GRAPH_ID      The graph to delete
-
-    **Examples:**
-
-        nerve server graph delete my-workflow
-
-        nerve server graph delete my-workflow --server myproject
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        params = {"graph_id": graph_id}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.DELETE_GRAPH,
-                params=params,
-            )
-        )
-
-        if result.success:
-            click.echo(f"Deleted graph: {graph_id}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
-
-
-@graph.command("info")
-@click.argument("graph_id")
-@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
-@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
-@click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
-def graph_info(graph_id: str, server_name: str, session_id: str | None, json_output: bool) -> None:
-    """Get graph info.
-
-    **Arguments:**
-
-        GRAPH_ID      The graph to get info for
-
-    **Examples:**
-
-        nerve server graph info my-workflow
-
-        nerve server graph info my-workflow --server myproject
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        params = {"graph_id": graph_id}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.GET_GRAPH,
-                params=params,
-            )
-        )
-
-        if result.success and result.data:
-            if json_output:
-                import json
-
-                click.echo(json.dumps(result.data, indent=2))
-            else:
-                data = result.data
-                click.echo(f"Graph: {data.get('graph_id')}")
-                steps = data.get("steps", [])
-                if steps:
-                    click.echo("Steps:")
-                    for step in steps:
-                        deps = ", ".join(step.get("depends_on", [])) or "none"
-                        click.echo(f"  {step['id']} <- {deps}")
-                else:
-                    click.echo("Steps: None")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
 
 
 @graph.command("run")

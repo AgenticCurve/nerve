@@ -6,13 +6,23 @@ import os
 import re
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from glob import glob
 from typing import TYPE_CHECKING, Any
 
+import rich_click as click
+
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from nerve.transport import HTTPClient, TCPSocketClient, UnixSocketClient
+
+# Exception tuples for consistent error handling
+CONNECTION_ERRORS = (ConnectionRefusedError, FileNotFoundError, OSError)
+REMOTE_ERRORS = (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError)
 
 
 def get_server_client(
@@ -69,6 +79,31 @@ def create_client(server_name: str) -> HTTPClient | TCPSocketClient | UnixSocket
     else:
         assert isinstance(conn_info, str)
         return UnixSocketClient(conn_info)
+
+
+@asynccontextmanager
+async def server_connection(
+    server_name: str,
+) -> AsyncIterator[HTTPClient | TCPSocketClient | UnixSocketClient]:
+    """Context manager for server connection with error handling.
+
+    Connects to a server and yields the client. Handles connection errors
+    by printing an error message and exiting. Disconnects on exit.
+
+    Usage:
+        async with server_connection("myserver") as client:
+            result = await client.send_command(...)
+    """
+    try:
+        client = create_client(server_name)
+        await client.connect()
+    except CONNECTION_ERRORS:
+        click.echo(f"Error: Server '{server_name}' not running", err=True)
+        sys.exit(1)
+    try:
+        yield client
+    finally:
+        await client.disconnect()
 
 
 def get_server_transport(server_name: str) -> tuple[str, str | None]:

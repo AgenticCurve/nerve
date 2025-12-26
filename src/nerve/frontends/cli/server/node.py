@@ -7,8 +7,9 @@ import sys
 
 import rich_click as click
 
+from nerve.frontends.cli.output import error_exit, output_json_or_table, print_table
 from nerve.frontends.cli.server import server
-from nerve.frontends.cli.utils import create_client
+from nerve.frontends.cli.utils import server_connection
 
 
 @server.group()
@@ -54,50 +55,44 @@ def node_list(server_name: str, session_id: str | None, json_output: bool) -> No
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
+        async with server_connection(server_name) as client:
+            params = {}
+            if session_id:
+                params["session_id"] = session_id
 
-        params = {}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.GET_SESSION,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.GET_SESSION,
+                    params=params,
+                )
             )
-        )
 
-        if result.success and result.data:
-            nodes_info = result.data.get("nodes_info", [])
+            if result.success and result.data:
+                nodes_info = result.data.get("nodes_info", [])
+                session_display_name = result.data.get("name", "default")  # Capture for closure
 
-            if json_output:
-                import json
+                def show_table() -> None:
+                    if nodes_info:
+                        rows = []
+                        for info in nodes_info:
+                            name = info.get("id", "?")
+                            backend = info.get("backend", info.get("type", "?"))
+                            state = info.get("state", "?")
+                            last_input = info.get("last_input", "")
+                            if last_input:
+                                last_input = last_input[:30]
+                            rows.append([name, backend, state, last_input])
+                        print_table(
+                            ["NAME", "BACKEND", "STATE", "LAST INPUT"],
+                            rows,
+                            widths=[20, 18, 10, 30],
+                        )
+                    else:
+                        click.echo(f"No nodes in session '{session_display_name}'")
 
-                click.echo(json.dumps(nodes_info, indent=2))
-            elif nodes_info:
-                click.echo(f"{'NAME':<20} {'BACKEND':<18} {'STATE':<10} {'LAST INPUT'}")
-                click.echo("-" * 70)
-                for info in nodes_info:
-                    name = info.get("id", "?")
-                    backend = info.get("backend", info.get("type", "?"))
-                    state = info.get("state", "?")
-                    last_input = info.get("last_input", "")
-                    if last_input:
-                        last_input = last_input[:30]
-                    click.echo(f"{name:<20} {backend:<18} {state:<10} {last_input}")
+                output_json_or_table(nodes_info, json_output, show_table)
             else:
-                session_name = result.data.get("name", "default")
-                click.echo(f"No nodes in session '{session_name}'")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-            sys.exit(1)
-
-        await client.disconnect()
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -221,26 +216,21 @@ def node_create(
     try:
         validate_name(name, "node")
     except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+        error_exit(str(e))
 
     # Validate provider options
     provider_opts = [api_format, provider_base_url, provider_api_key]
     if any(provider_opts) and not all(provider_opts):
-        click.echo(
-            "Error: --api-format, --provider-base-url, and --provider-api-key "
-            "must all be specified together",
-            err=True,
+        error_exit(
+            "--api-format, --provider-base-url, and --provider-api-key "
+            "must all be specified together"
         )
-        sys.exit(1)
 
     if api_format == "openai" and not provider_model:
-        click.echo("Error: --provider-model is required for openai format", err=True)
-        sys.exit(1)
+        error_exit("--provider-model is required for openai format")
 
     if api_format and node_type != "ClaudeWezTermNode":
-        click.echo("Error: Provider options require --type ClaudeWezTermNode", err=True)
-        sys.exit(1)
+        error_exit("Provider options require --type ClaudeWezTermNode")
 
     # Map node type to wire protocol backend value
     type_to_backend = {
@@ -251,55 +241,47 @@ def node_create(
     backend = type_to_backend.get(node_type, "pty")
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        params: dict[str, object] = {
-            "node_id": name,
-            "cwd": cwd,
-            "backend": backend,
-            "history": history,
-        }
-        if session_id:
-            params["session_id"] = session_id
-        if command:
-            params["command"] = command
-        if pane_id:
-            params["pane_id"] = pane_id
-
-        # Add provider config if specified
-        if api_format:
-            provider_config: dict[str, str | None] = {
-                "api_format": api_format,
-                "base_url": provider_base_url,
-                "api_key": provider_api_key,
-                "model": provider_model,
+        async with server_connection(server_name) as client:
+            params: dict[str, object] = {
+                "node_id": name,
+                "cwd": cwd,
+                "backend": backend,
+                "history": history,
             }
-            if provider_debug_dir:
-                provider_config["debug_dir"] = provider_debug_dir
-            params["provider"] = provider_config
+            if session_id:
+                params["session_id"] = session_id
+            if command:
+                params["command"] = command
+            if pane_id:
+                params["pane_id"] = pane_id
 
-        result = await client.send_command(
-            Command(
-                type=CommandType.CREATE_NODE,
-                params=params,
+            # Add provider config if specified
+            if api_format:
+                provider_config: dict[str, str | None] = {
+                    "api_format": api_format,
+                    "base_url": provider_base_url,
+                    "api_key": provider_api_key,
+                    "model": provider_model,
+                }
+                if provider_debug_dir:
+                    provider_config["debug_dir"] = provider_debug_dir
+                params["provider"] = provider_config
+
+            result = await client.send_command(
+                Command(
+                    type=CommandType.CREATE_NODE,
+                    params=params,
+                )
             )
-        )
 
-        if result.success:
-            proxy_url = result.data.get("proxy_url") if result.data else None
-            if proxy_url:
-                click.echo(f"Created node: {name} (proxy: {proxy_url})")
+            if result.success:
+                proxy_url = result.data.get("proxy_url") if result.data else None
+                if proxy_url:
+                    click.echo(f"Created node: {name} (proxy: {proxy_url})")
+                else:
+                    click.echo(f"Created node: {name}")
             else:
-                click.echo(f"Created node: {name}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -328,30 +310,22 @@ def node_delete(node_name: str, server_name: str, session_id: str | None) -> Non
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
+        async with server_connection(server_name) as client:
+            params = {"node_id": node_name}
+            if session_id:
+                params["session_id"] = session_id
 
-        params = {"node_id": node_name}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.DELETE_NODE,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.DELETE_NODE,
+                    params=params,
+                )
             )
-        )
 
-        if result.success:
-            click.echo(f"Deleted node: {node_name}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success:
+                click.echo(f"Deleted node: {node_name}")
+            else:
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -383,32 +357,24 @@ def node_run(node_name: str, command: str, server_name: str) -> None:
     """
     from nerve.server.protocols import Command, CommandType
 
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.RUN_COMMAND,
-                params={
-                    "node_id": node_name,
-                    "command": command,
-                },
+    async def run_cmd() -> None:
+        async with server_connection(server_name) as client:
+            result = await client.send_command(
+                Command(
+                    type=CommandType.RUN_COMMAND,
+                    params={
+                        "node_id": node_name,
+                        "command": command,
+                    },
+                )
             )
-        )
 
-        if result.success:
-            click.echo(f"Started: {command}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
+            if result.success:
+                click.echo(f"Started: {command}")
+            else:
+                error_exit(result.error or "Unknown error")
 
-        await client.disconnect()
-
-    asyncio.run(run())
+    asyncio.run(run_cmd())
 
 
 @node.command("read")
@@ -433,30 +399,22 @@ def node_read(node_name: str, server_name: str, lines: int | None) -> None:
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
+        async with server_connection(server_name) as client:
+            params: dict[str, str | int] = {"node_id": node_name}
+            if lines:
+                params["lines"] = lines
 
-        params: dict[str, str | int] = {"node_id": node_name}
-        if lines:
-            params["lines"] = lines
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.GET_BUFFER,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.GET_BUFFER,
+                    params=params,
+                )
             )
-        )
 
-        if result.success and result.data:
-            click.echo(result.data.get("buffer", ""))
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success and result.data:
+                click.echo(result.data.get("buffer", ""))
+            else:
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -499,36 +457,32 @@ def node_send(
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        client = create_client(server_name)
-        await client.connect()
+        async with server_connection(server_name) as client:
+            params = {
+                "node_id": node_name,
+                "text": text,
+            }
+            # Only include parser if explicitly set (let node use its default)
+            if parser is not None:
+                params["parser"] = parser
+            # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
+            if submit:
+                params["submit"] = submit.encode().decode("unicode_escape")
 
-        params = {
-            "node_id": node_name,
-            "text": text,
-        }
-        # Only include parser if explicitly set (let node use its default)
-        if parser is not None:
-            params["parser"] = parser
-        # Decode escape sequences in submit string (e.g., "\\x1b" -> actual escape)
-        if submit:
-            params["submit"] = submit.encode().decode("unicode_escape")
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.EXECUTE_INPUT,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.EXECUTE_INPUT,
+                    params=params,
+                )
             )
-        )
 
-        if not result.success:
-            # Output error as JSON
-            click.echo(json.dumps({"error": result.error}, indent=2))
-        elif result.data:
-            # Output response as JSON
-            response = result.data.get("response", {})
-            click.echo(json.dumps(response, indent=2))
-
-        await client.disconnect()
+            if not result.success:
+                # Output error as JSON
+                click.echo(json.dumps({"error": result.error}, indent=2))
+            elif result.data:
+                # Output response as JSON
+                response = result.data.get("response", {})
+                click.echo(json.dumps(response, indent=2))
 
     asyncio.run(run())
 
@@ -563,29 +517,21 @@ def node_write(node_name: str, data: str, server_name: str) -> None:
     decoded_data = data.encode().decode("unicode_escape")
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.WRITE_DATA,
-                params={
-                    "node_id": node_name,
-                    "data": decoded_data,
-                },
+        async with server_connection(server_name) as client:
+            result = await client.send_command(
+                Command(
+                    type=CommandType.WRITE_DATA,
+                    params={
+                        "node_id": node_name,
+                        "data": decoded_data,
+                    },
+                )
             )
-        )
 
-        if result.success:
-            click.echo(f"Wrote {len(decoded_data)} bytes")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success:
+                click.echo(f"Wrote {len(decoded_data)} bytes")
+            else:
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -609,26 +555,18 @@ def node_interrupt(node_name: str, server_name: str) -> None:
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.SEND_INTERRUPT,
-                params={"node_id": node_name},
+        async with server_connection(server_name) as client:
+            result = await client.send_command(
+                Command(
+                    type=CommandType.SEND_INTERRUPT,
+                    params={"node_id": node_name},
+                )
             )
-        )
 
-        if result.success:
-            click.echo("Interrupt sent")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success:
+                click.echo("Interrupt sent")
+            else:
+                error_exit(result.error or "Unknown error")
 
     asyncio.run(run())
 
@@ -687,6 +625,7 @@ def node_history(
     from pathlib import Path
 
     from nerve.core.nodes.history import HistoryReader
+    from nerve.frontends.cli.output import print_history_entries, print_history_summary
 
     try:
         # Default base directory
@@ -723,64 +662,13 @@ def node_history(
 
         # Summary mode
         if summary:
-            ops_count: dict[str, int] = {}
-            for e in entries:
-                op_type = e.get("op", "unknown")
-                ops_count[op_type] = ops_count.get(op_type, 0) + 1
-            click.echo(f"Node: {node_name}")
-            click.echo(f"Server: {server_name}")
-            click.echo(f"Session: {session_name}")
-            click.echo(f"Total entries: {len(entries)}")
-            click.echo("\nOperations:")
-            for op_name, count in sorted(ops_count.items()):
-                click.echo(f"  {op_name}: {count}")
+            print_history_summary(entries, node_name, server_name, session_name)
             return
 
         if json_output:
             click.echo(json.dumps(entries, indent=2, default=str))
         else:
-            # Pretty print history
-            for entry in entries:
-                seq_num = entry.get("seq", "?")
-                op_type = entry.get("op", "unknown")
-                ts = entry.get("ts", entry.get("ts_start", ""))
-
-                # Format timestamp for display (just time portion)
-                if ts:
-                    ts_display = ts.split("T")[1][:8] if "T" in ts else ts[:8]
-                else:
-                    ts_display = ""
-
-                if op_type == "send":
-                    input_text = entry.get("input", "")[:50]
-                    response = entry.get("response", {})
-                    sections = response.get("sections", [])
-                    section_count = len(sections)
-                    click.echo(
-                        f"[{seq_num:3}] {ts_display} SEND    {input_text!r} -> {section_count} sections"
-                    )
-                elif op_type == "send_stream":
-                    input_text = entry.get("input", "")[:50]
-                    click.echo(f"[{seq_num:3}] {ts_display} STREAM  {input_text!r}")
-                elif op_type == "run":
-                    cmd = entry.get("input", "")[:50]
-                    click.echo(f"[{seq_num:3}] {ts_display} RUN     {cmd!r}")
-                elif op_type == "write":
-                    data_str = entry.get("input", "")[:30].replace("\n", "\\n")
-                    click.echo(f"[{seq_num:3}] {ts_display} WRITE   {data_str!r}")
-                elif op_type == "read":
-                    lines_count = entry.get("lines", 0)
-                    buffer_len = len(entry.get("buffer", ""))
-                    click.echo(
-                        f"[{seq_num:3}] {ts_display} READ    {lines_count} lines, {buffer_len} chars"
-                    )
-                elif op_type == "interrupt":
-                    click.echo(f"[{seq_num:3}] {ts_display} INTERRUPT")
-                elif op_type == "delete":
-                    reason = entry.get("reason", "")
-                    click.echo(f"[{seq_num:3}] {ts_display} DELETE  {reason or ''}")
-                else:
-                    click.echo(f"[{seq_num:3}] {ts_display} {op_type.upper()}")
+            print_history_entries(entries)
 
     except FileNotFoundError:
         click.echo(

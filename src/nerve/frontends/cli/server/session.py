@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 
 import rich_click as click
 
+from nerve.frontends.cli.output import output_json_or_table, print_table
 from nerve.frontends.cli.server import server
-from nerve.frontends.cli.utils import create_client
+from nerve.frontends.cli.utils import server_connection
 
 
 @server.group()
@@ -47,43 +47,42 @@ def session_list(server_name: str, json_output: bool) -> None:
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.LIST_SESSIONS,
-                params={},
+        async with server_connection(server_name) as client:
+            result = await client.send_command(
+                Command(
+                    type=CommandType.LIST_SESSIONS,
+                    params={},
+                )
             )
-        )
 
-        if result.success and result.data:
-            sessions = result.data.get("sessions", [])
+            if result.success and result.data:
+                sessions = result.data.get("sessions", [])
 
-            if json_output:
-                import json
+                def show_table() -> None:
+                    if sessions:
+                        rows = []
+                        for s in sessions:
+                            default_marker = "*" if s.get("is_default") else ""
+                            rows.append(
+                                [
+                                    s["name"][:20],
+                                    str(s.get("node_count", 0)),
+                                    str(s.get("graph_count", 0)),
+                                    default_marker,
+                                ]
+                            )
+                        print_table(
+                            ["NAME", "NODES", "GRAPHS", "DEFAULT"],
+                            rows,
+                            widths=[20, 8, 8, 7],
+                            separator_width=60,
+                        )
+                    else:
+                        click.echo("No sessions found")
 
-                click.echo(json.dumps(result.data, indent=2))
-            elif sessions:
-                click.echo(f"{'NAME':<20} {'NODES':<8} {'GRAPHS':<8} {'DEFAULT'}")
-                click.echo("-" * 60)
-                for s in sessions:
-                    default_marker = "*" if s.get("is_default") else ""
-                    click.echo(
-                        f"{s['name'][:20]:<20} "
-                        f"{s.get('node_count', 0):<8} {s.get('graph_count', 0):<8} "
-                        f"{default_marker}"
-                    )
+                output_json_or_table(result.data, json_output, show_table)
             else:
-                click.echo("No sessions found")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+                click.echo(f"Error: {result.error}", err=True)
 
     asyncio.run(run())
 
@@ -107,33 +106,25 @@ def session_create(name: str, server_name: str, description: str, tags: tuple[st
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
+        async with server_connection(server_name) as client:
+            params: dict[str, str | list[str]] = {"name": name}
+            if description:
+                params["description"] = description
+            if tags:
+                params["tags"] = list(tags)
 
-        params: dict[str, str | list[str]] = {"name": name}
-        if description:
-            params["description"] = description
-        if tags:
-            params["tags"] = list(tags)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.CREATE_SESSION,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.CREATE_SESSION,
+                    params=params,
+                )
             )
-        )
 
-        if result.success and result.data:
-            session_name = result.data.get("name")
-            click.echo(f"Created session: {session_name}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success and result.data:
+                session_name = result.data.get("name")
+                click.echo(f"Created session: {session_name}")
+            else:
+                click.echo(f"Error: {result.error}", err=True)
 
     asyncio.run(run())
 
@@ -158,26 +149,18 @@ def session_delete(session_id: str, server_name: str) -> None:
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.DELETE_SESSION,
-                params={"session_id": session_id},
+        async with server_connection(server_name) as client:
+            result = await client.send_command(
+                Command(
+                    type=CommandType.DELETE_SESSION,
+                    params={"session_id": session_id},
+                )
             )
-        )
 
-        if result.success:
-            click.echo(f"Deleted session: {session_id}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+            if result.success:
+                click.echo(f"Deleted session: {session_id}")
+            else:
+                click.echo(f"Error: {result.error}", err=True)
 
     asyncio.run(run())
 
@@ -200,93 +183,34 @@ def session_info(session_id: str | None, server_name: str, json_output: bool) ->
     from nerve.server.protocols import Command, CommandType
 
     async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
+        async with server_connection(server_name) as client:
+            params = {}
+            if session_id:
+                params["session_id"] = session_id
 
-        params = {}
-        if session_id:
-            params["session_id"] = session_id
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.GET_SESSION,
-                params=params,
+            result = await client.send_command(
+                Command(
+                    type=CommandType.GET_SESSION,
+                    params=params,
+                )
             )
-        )
 
-        if result.success and result.data:
-            if json_output:
-                import json
+            if result.success and result.data:
+                data = result.data  # Capture for closure
 
-                click.echo(json.dumps(result.data, indent=2))
+                def show_info() -> None:
+                    click.echo(f"Session: {data.get('name', data.get('session_id'))}")
+                    click.echo(f"  ID: {data.get('session_id')}")
+                    if data.get("description"):
+                        click.echo(f"  Description: {data.get('description')}")
+                    if data.get("tags"):
+                        click.echo(f"  Tags: {', '.join(data.get('tags', []))}")
+                    click.echo(f"  Default: {'Yes' if data.get('is_default') else 'No'}")
+                    click.echo(f"  Nodes: {len(data.get('nodes_info', []))}")
+                    click.echo(f"  Graphs: {len(data.get('graphs', []))}")
+
+                output_json_or_table(data, json_output, show_info)
             else:
-                data = result.data
-                click.echo(f"Session: {data.get('name', data.get('session_id'))}")
-                click.echo(f"  ID: {data.get('session_id')}")
-                if data.get("description"):
-                    click.echo(f"  Description: {data.get('description')}")
-                if data.get("tags"):
-                    click.echo(f"  Tags: {', '.join(data.get('tags', []))}")
-                click.echo(f"  Default: {'Yes' if data.get('is_default') else 'No'}")
-                click.echo(f"  Nodes: {len(data.get('nodes_info', []))}")
-                click.echo(f"  Graphs: {len(data.get('graphs', []))}")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
-
-    asyncio.run(run())
-
-
-@session.command("switch")
-@click.argument("session_id")
-@click.option("--server", "-s", "server_name", required=True, help="Server name")
-def session_switch(session_id: str, server_name: str) -> None:
-    """Switch active session (for REPL use).
-
-    Verifies the session exists and displays its info.
-    Use this session ID with --session on node/graph commands.
-
-    **Arguments:**
-
-        SESSION_ID    The session to switch to
-
-    **Examples:**
-
-        nerve server session switch my-workspace --server myproject
-    """
-    from nerve.server.protocols import Command, CommandType
-
-    async def run() -> None:
-        try:
-            client = create_client(server_name)
-            await client.connect()
-        except (ConnectionRefusedError, FileNotFoundError, OSError):
-            click.echo(f"Error: Server '{server_name}' not running", err=True)
-            sys.exit(1)
-
-        result = await client.send_command(
-            Command(
-                type=CommandType.GET_SESSION,
-                params={"session_id": session_id},
-            )
-        )
-
-        if result.success and result.data:
-            data = result.data
-            click.echo(f"Switched to session: {data.get('name', session_id)}")
-            click.echo(f"  ID: {data.get('session_id')}")
-            click.echo(f"  Nodes: {len(data.get('nodes', []))}")
-            click.echo(f"  Graphs: {len(data.get('graphs', []))}")
-            click.echo("")
-            click.echo("Use --session flag on node/graph commands to operate in this session.")
-        else:
-            click.echo(f"Error: {result.error}", err=True)
-
-        await client.disconnect()
+                click.echo(f"Error: {result.error}", err=True)
 
     asyncio.run(run())
