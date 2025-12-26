@@ -1,6 +1,4 @@
 ./
-├── docs/
-│   └── [L: 525] refactoring-cli-node-module.md
 ├── examples/
 │   ├── agents/
 │   │   └── [L:  72] debate.py
@@ -103,11 +101,11 @@
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
-│       │   │   │   ├── [L: 549] __init__.py
+│       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 651] node.py
-│       │   │   │   └── [L: 204] session.py
-│       │   │   ├── [L: 361] utils.py
+│       │   │   │   ├── [L: 649] node.py
+│       │   │   │   └── [L: 206] session.py
+│       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
 │       │   ├── mcp/
 │       │   │   ├── [L:  30] __init__.py
@@ -223,4 +221,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-45 directories, 179 files, 37,038 total lines
+44 directories, 178 files, 36,514 total lines

@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 import signal as sig
-import sys
 from typing import Any
 
 import rich_click as click
