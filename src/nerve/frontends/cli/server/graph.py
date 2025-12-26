@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 from typing import Any
 
 import rich_click as click
 
 from nerve.frontends.cli.server import server
-from nerve.frontends.cli.utils import create_client
 
 # ============================================================================
 # Graph File Loading Helpers
@@ -82,33 +80,33 @@ async def run_graph_file(
     from nerve.server.protocols import Command, CommandType
     from nerve.transport import UnixSocketClient
 
-    print(f"Loading: {filepath}")
+    click.echo(f"Loading: {filepath}")
 
     try:
         graph_def = load_graph_from_file(filepath)
     except Exception as e:
-        print(f"Error loading Graph: {e}")
+        click.echo(f"Error loading Graph: {e}", err=True)
         return
 
     steps = graph_def.get("steps", [])
-    print(f"Found {len(steps)} steps")
+    click.echo(f"Found {len(steps)} steps")
 
     if dry_run:
-        print("\n[DRY RUN] Execution order:")
+        click.echo("\n[DRY RUN] Execution order:")
         for i, step in enumerate(steps, 1):
             deps = step.get("depends_on", [])
             dep_str = f" (after: {', '.join(deps)})" if deps else ""
-            print(f"  [{i}] {step['id']}{dep_str}")
+            click.echo(f"  [{i}] {step['id']}{dep_str}")
         return
 
     # Connect to server
-    print(f"\nConnecting to {socket_path}...")
+    click.echo(f"\nConnecting to {socket_path}...")
     client = UnixSocketClient(socket_path)
     try:
         await client.connect()
     except Exception as e:
-        print(f"Failed to connect: {e}")
-        print("Make sure the server is running: nerve server start")
+        click.echo(f"Failed to connect: {e}", err=True)
+        click.echo("Make sure the server is running: nerve server start")
         return
 
     node_map = nodes or {}
@@ -122,7 +120,7 @@ async def run_graph_file(
     # Create missing nodes
     for node_name in required_nodes:
         if node_name not in node_map:
-            print(f"Creating node: {node_name}")
+            click.echo(f"Creating node: {node_name}")
             result = await client.send_command(
                 Command(
                     type=CommandType.CREATE_NODE,
@@ -131,9 +129,9 @@ async def run_graph_file(
             )
             if result.success and result.data:
                 node_map[node_name] = result.data["node_id"]
-                print(f"  -> {result.data['node_id']}")
+                click.echo(f"  -> {result.data['node_id']}")
             else:
-                print(f"  Error: {result.error}")
+                click.echo(f"  Error: {result.error}", err=True)
                 await client.disconnect()
                 return
 
@@ -153,7 +151,7 @@ async def run_graph_file(
         )
 
     # Execute
-    print("\nExecuting Graph...")
+    click.echo("\nExecuting Graph...")
     result = await client.send_command(
         Command(
             type=CommandType.EXECUTE_GRAPH,
@@ -162,17 +160,17 @@ async def run_graph_file(
     )
 
     if result.success and result.data:
-        print("\nResults:")
-        print("=" * 50)
+        click.echo("\nResults:")
+        click.echo("=" * 50)
         for step_id, res in result.data.get("results", {}).items():
             status = res.get("status", "?")
             output = res.get("output", "")
-            print(f"\n[{step_id}] {status}")
+            click.echo(f"\n[{step_id}] {status}")
             if output:
-                print(f"{output[:500]}{'...' if len(output) > 500 else ''}")
-        print("=" * 50)
+                click.echo(f"{output[:500]}{'...' if len(output) > 500 else ''}")
+        click.echo("=" * 50)
     else:
-        print(f"Error: {result.error}")
+        click.echo(f"Error: {result.error}", err=True)
 
     await client.disconnect()
 

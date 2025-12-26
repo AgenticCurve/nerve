@@ -12,8 +12,20 @@ from nerve.frontends.cli.repl.adapters import (
     RemoteSessionAdapter,
     SessionAdapter,
 )
-from nerve.frontends.cli.repl.display import print_graph, print_help, print_nodes
+from nerve.frontends.cli.repl.commands import (
+    handle_dry_local,
+    handle_dry_remote,
+    handle_read_local,
+    handle_read_remote,
+    handle_show_local,
+    handle_show_remote,
+    handle_validate_local,
+    handle_validate_remote,
+    print_history_repl,
+)
+from nerve.frontends.cli.repl.display import print_help, print_nodes
 from nerve.frontends.cli.repl.state import REPLState
+from nerve.frontends.cli.utils import REMOTE_ERRORS
 
 # Guard against registering atexit handler multiple times
 _atexit_registered = False
@@ -299,48 +311,16 @@ async def run_interactive(
                     node_name = parts[1]
 
                     if not python_exec_enabled:
-                        # SERVER MODE - Send to server
-                        from nerve.server.protocols import Command, CommandType
-
+                        # SERVER MODE
                         assert remote_client is not None
                         try:
-                            params: dict[str, Any] = {"command": "read", "args": [node_name]}
-                            if remote_session_id:
-                                params["session_id"] = remote_session_id
-
-                            result = await remote_client.send_command(
-                                Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
-                            )
-
-                            if result.success and result.data:
-                                if result.data.get("output"):
-                                    print(result.data["output"], end="")
-                                if result.data.get("error"):
-                                    print(f"Error: {result.data['error']}")
-                            else:
-                                print(f"Command failed: {result.error}")
-                        except (
-                            ConnectionError,
-                            ConnectionResetError,
-                            BrokenPipeError,
-                            RuntimeError,
-                        ):
+                            await handle_read_remote(remote_client, remote_session_id, node_name)
+                        except REMOTE_ERRORS:
                             server_disconnected = True
                             break
                     else:
-                        # LOCAL MODE - Execute locally
-                        node = session.get_node(node_name) if session else None
-                        if not node:
-                            print(f"Node not found: {node_name}")
-                            continue
-                        if hasattr(node, "read"):
-                            try:
-                                buffer_content = await run_async_operation(node.read())
-                                print(buffer_content)
-                            except Exception as e:
-                                print(f"Error: {e}")
-                        else:
-                            print("Node does not support read")
+                        # LOCAL MODE
+                        await handle_read_local(session, node_name)
                     continue
 
                 elif cmd == "stop":
@@ -414,9 +394,6 @@ async def run_interactive(
                             i += 1
 
                     # Import here to avoid circular deps
-                    import json
-                    from collections import Counter
-
                     from nerve.core.nodes.history import HistoryReader
 
                     try:
@@ -452,43 +429,7 @@ async def run_interactive(
                             continue
 
                         # Display
-                        if summary:
-                            ops_count = Counter(e["op"] for e in entries)
-                            print(f"Node: {node_name}")
-                            print(f"Server: {server}")
-                            print(f"Session: {sess}")
-                            print(f"Total entries: {len(entries)}")
-                            print("\nOperations:")
-                            for op_type, count in sorted(ops_count.items()):
-                                print(f"  {op_type}: {count}")
-                        else:
-                            for entry in entries:
-                                seq = entry.get("seq", "?")
-                                op_type = entry.get("op", "unknown")
-                                ts = entry.get("ts", entry.get("ts_start", ""))
-                                ts_display = ts.split("T")[1][:8] if "T" in ts else ts[:8]
-
-                                if op_type == "send":
-                                    input_text = entry.get("input", "")[:40]
-                                    response = entry.get("response", {})
-                                    sections = response.get("sections", [])
-                                    print(
-                                        f"[{seq:3}] {ts_display} SEND    {input_text!r} -> {len(sections)} sections"
-                                    )
-                                elif op_type == "run":
-                                    cmd = entry.get("input", "")[:40]
-                                    print(f"[{seq:3}] {ts_display} RUN     {cmd!r}")
-                                elif op_type == "write":
-                                    data = entry.get("input", "")[:30].replace("\n", "\\n")
-                                    print(f"[{seq:3}] {ts_display} WRITE   {data!r}")
-                                elif op_type == "read":
-                                    lines = entry.get("lines", 0)
-                                    buffer_len = len(entry.get("buffer", ""))
-                                    print(
-                                        f"[{seq:3}] {ts_display} READ    {lines} lines, {buffer_len} chars"
-                                    )
-                                else:
-                                    print(f"[{seq:3}] {ts_display} {op_type.upper()}")
+                        print_history_repl(entries, summary, node_name, server, sess)
 
                     except FileNotFoundError:
                         print(f"No history found for node '{node_name}'")
@@ -518,168 +459,58 @@ async def run_interactive(
                 elif cmd == "show":
                     # show [graph-name] - show specific graph or default 'graph' variable
                     if not python_exec_enabled:
-                        # SERVER MODE - Send to server
-                        from nerve.server.protocols import Command, CommandType
-
+                        # SERVER MODE
                         assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: show <graph-name>")
                             continue
-
                         try:
-                            params = {"command": "show", "args": [parts[1]]}
-                            if remote_session_id:
-                                params["session_id"] = remote_session_id
-
-                            result = await remote_client.send_command(
-                                Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
-                            )
-
-                            if result.success and result.data:
-                                if result.data.get("output"):
-                                    print(result.data["output"], end="")
-                                if result.data.get("error"):
-                                    print(f"Error: {result.data['error']}")
-                            else:
-                                print(f"Command failed: {result.error}")
-                        except (
-                            ConnectionError,
-                            ConnectionResetError,
-                            BrokenPipeError,
-                            RuntimeError,
-                        ):
+                            await handle_show_remote(remote_client, remote_session_id, parts[1])
+                        except REMOTE_ERRORS:
                             server_disconnected = True
                             break
                     else:
-                        # LOCAL MODE - Execute locally
-                        graph = None
-                        if len(parts) > 1:
-                            graph_name = parts[1]
-                            graph = await adapter.get_graph(graph_name)
-                            if not graph:
-                                print(f"Graph not found: {graph_name}")
-                                continue
-                        else:
-                            graph = state.namespace.get("graph") or current_graph
-                        print_graph(graph)
+                        # LOCAL MODE
+                        graph_name = parts[1] if len(parts) > 1 else None
+                        await handle_show_local(adapter, state, current_graph, graph_name)
                     continue
 
                 elif cmd == "validate":
                     # validate [graph-name] - validate specific graph or default
                     if not python_exec_enabled:
-                        # SERVER MODE - Send to server
-                        from nerve.server.protocols import Command, CommandType
-
+                        # SERVER MODE
                         assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: validate <graph-name>")
                             continue
-
                         try:
-                            params = {"command": "validate", "args": [parts[1]]}
-                            if remote_session_id:
-                                params["session_id"] = remote_session_id
-
-                            result = await remote_client.send_command(
-                                Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
-                            )
-
-                            if result.success and result.data:
-                                if result.data.get("output"):
-                                    print(result.data["output"], end="")
-                                if result.data.get("error"):
-                                    print(f"Error: {result.data['error']}")
-                            else:
-                                print(f"Command failed: {result.error}")
-                        except (
-                            ConnectionError,
-                            ConnectionResetError,
-                            BrokenPipeError,
-                            RuntimeError,
-                        ):
+                            await handle_validate_remote(remote_client, remote_session_id, parts[1])
+                        except REMOTE_ERRORS:
                             server_disconnected = True
                             break
                     else:
-                        # LOCAL MODE - Execute locally
-                        graph = None
-                        if len(parts) > 1:
-                            graph_name = parts[1]
-                            graph = await adapter.get_graph(graph_name)
-                            if not graph:
-                                print(f"Graph not found: {graph_name}")
-                                continue
-                        else:
-                            graph = state.namespace.get("graph") or current_graph
-
-                        if graph:
-                            errors = graph.validate()
-                            if errors:
-                                print("Validation FAILED:")
-                                for err in errors:
-                                    print(f"  - {err}")
-                            else:
-                                print("Validation PASSED")
-                        else:
-                            print("No Graph defined")
+                        # LOCAL MODE
+                        graph_name = parts[1] if len(parts) > 1 else None
+                        await handle_validate_local(adapter, state, current_graph, graph_name)
                     continue
 
                 elif cmd == "dry":
                     # dry [graph-name] - dry run specific graph or default
                     if not python_exec_enabled:
-                        # SERVER MODE - Send to server
-                        from nerve.server.protocols import Command, CommandType
-
+                        # SERVER MODE
                         assert remote_client is not None
                         if len(parts) < 2:
                             print("Usage: dry <graph-name>")
                             continue
-
                         try:
-                            params = {"command": "dry", "args": [parts[1]]}
-                            if remote_session_id:
-                                params["session_id"] = remote_session_id
-
-                            result = await remote_client.send_command(
-                                Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
-                            )
-
-                            if result.success and result.data:
-                                if result.data.get("output"):
-                                    print(result.data["output"], end="")
-                                if result.data.get("error"):
-                                    print(f"Error: {result.data['error']}")
-                            else:
-                                print(f"Command failed: {result.error}")
-                        except (
-                            ConnectionError,
-                            ConnectionResetError,
-                            BrokenPipeError,
-                            RuntimeError,
-                        ):
+                            await handle_dry_remote(remote_client, remote_session_id, parts[1])
+                        except REMOTE_ERRORS:
                             server_disconnected = True
                             break
                     else:
-                        # LOCAL MODE - Execute locally
-                        graph = None
-                        if len(parts) > 1:
-                            graph_name = parts[1]
-                            graph = await adapter.get_graph(graph_name)
-                            if not graph:
-                                print(f"Graph not found: {graph_name}")
-                                continue
-                        else:
-                            graph = state.namespace.get("graph") or current_graph
-
-                        if graph:
-                            try:
-                                order = graph.execution_order()
-                                print("\nExecution order:")
-                                for i, step_id in enumerate(order, 1):
-                                    print(f"  [{i}] {step_id}")
-                            except ValueError as e:
-                                print(f"Error: {e}")
-                        else:
-                            print("No Graph defined")
+                        # LOCAL MODE
+                        graph_name = parts[1] if len(parts) > 1 else None
+                        await handle_dry_local(adapter, state, current_graph, graph_name)
                     continue
 
                 elif cmd == "run":

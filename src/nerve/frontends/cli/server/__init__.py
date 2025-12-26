@@ -11,6 +11,7 @@ from typing import Any
 
 import rich_click as click
 
+from nerve.frontends.cli.output import print_table
 from nerve.frontends.cli.utils import (
     find_all_servers,
     force_kill_server,
@@ -489,13 +490,15 @@ def status(name: str, show_all: bool) -> None:
                 click.echo(f"(Found {len(server_names)} server file(s), but none responding)")
                 return
 
-            click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'NODES':<10} {'GRAPHS'}")
-            click.echo("-" * 70)
-            for s in running:
-                click.echo(
-                    f"{s['name']:<20} {s['transport']:<30} "
-                    f"{s.get('nodes', '?'):<10} {s.get('graphs', '?')}"
-                )
+            rows = [
+                [s["name"], s["transport"], str(s.get("nodes", "?")), str(s.get("graphs", "?"))]
+                for s in running
+            ]
+            print_table(
+                ["NAME", "TRANSPORT", "NODES", "GRAPHS"],
+                rows,
+                widths=[20, 30, 10, 10],
+            )
         else:
             status_data = await _get_server_status(name)
             if status_data:
@@ -538,12 +541,14 @@ def server_list() -> None:
             click.echo("No nerve servers running")
             return
 
-        click.echo(f"{'NAME':<20} {'TRANSPORT':<30} {'NODES':<10} {'GRAPHS'}")
-        click.echo("-" * 70)
-        for s in running:
-            click.echo(
-                f"{s['name']:<20} {s['transport']:<30} "
-                f"{s.get('nodes', '?'):<10} {s.get('graphs', '?')}"
-            )
+        rows = [
+            [s["name"], s["transport"], str(s.get("nodes", "?")), str(s.get("graphs", "?"))]
+            for s in running
+        ]
+        print_table(
+            ["NAME", "TRANSPORT", "NODES", "GRAPHS"],
+            rows,
+            widths=[20, 30, 10, 10],
+        )
 
     asyncio.run(run())

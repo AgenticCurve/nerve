@@ -8,7 +8,6 @@ from nerve.frontends.cli.server.session import (
     session_delete,
     session_info,
     session_list,
-    session_switch,
 )
 
 
@@ -40,11 +39,6 @@ class TestSessionCLI:
         assert session_info is not None
         assert callable(session_info)
 
-    def test_session_switch_command_exists(self):
-        """Session switch command is defined."""
-        assert session_switch is not None
-        assert callable(session_switch)
-
     def test_session_list_has_server_option(self):
         """Session list has --server option."""
         params = session_list.params
@@ -63,8 +57,8 @@ class TestSessionCLI:
         param_names = [p.name for p in params]
         assert "server_name" in param_names
 
-    def test_session_switch_has_server_option(self):
-        """Session switch has --server option."""
-        params = session_switch.params
+    def test_session_info_has_server_option(self):
+        """Session info has --server option."""
+        params = session_info.params
         param_names = [p.name for p in params]
         assert "server_name" in param_names

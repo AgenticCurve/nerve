@@ -88,22 +88,24 @@
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 243] extract.py
 │       │   │   ├── [L: 182] main.py
+│       │   │   ├── [L: 192] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 227] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 852] core.py
+│       │   │   │   ├── [L: 237] commands.py
+│       │   │   │   ├── [L: 683] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
-│       │   │   │   ├── [L: 549] __init__.py
-│       │   │   │   ├── [L: 218] graph.py
-│       │   │   │   ├── [L: 790] node.py
-│       │   │   │   └── [L: 242] session.py
-│       │   │   ├── [L: 270] utils.py
+│       │   │   │   ├── [L: 554] __init__.py
+│       │   │   │   ├── [L: 216] graph.py
+│       │   │   │   ├── [L: 678] node.py
+│       │   │   │   └── [L: 216] session.py
+│       │   │   ├── [L: 305] utils.py
 │       │   │   └── [L: 209] wezterm.py
 │       │   ├── mcp/
 │       │   │   ├── [L:  30] __init__.py
@@ -158,9 +160,9 @@
     ├── [L:   1] __init__.py
     ├── cli/
     │   ├── [L:   0] __init__.py
-    │   ├── [L:  76] test_graph_commands.py
+    │   ├── [L:  34] test_graph_commands.py
     │   ├── [L:  76] test_node_commands.py
-    │   └── [L:  70] test_session_commands.py
+    │   └── [L:  64] test_session_commands.py
     ├── [L: 109] conftest.py
     ├── core/
     │   ├── [L:   1] __init__.py
@@ -219,4 +221,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-44 directories, 176 files, 36,401 total lines
+44 directories, 178 files, 36,513 total lines
