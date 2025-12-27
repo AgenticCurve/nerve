@@ -144,6 +144,12 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=None,
     help="Directory for proxy debug logs",
 )
+@click.option(
+    "--transparent",
+    is_flag=True,
+    default=False,
+    help="Transparent logging mode: forward original auth headers (no API key needed)",
+)
 @async_server_command
 async def node_create(
     name: str,
@@ -159,6 +165,7 @@ async def node_create(
     provider_api_key: str | None,
     provider_model: str | None,
     provider_debug_dir: str | None,
+    transparent: bool,
 ) -> None:
     """Create a new node.
 
@@ -205,6 +212,14 @@ async def node_create(
             --provider-api-key sk-... \\
             --provider-model gpt-4.1 \\
             --provider-debug-dir /tmp/proxy-logs
+
+    **Transparent logging (no API key needed, uses OAuth auth):**
+
+        nerve server node create claude-log --server myproject \\
+            --type ClaudeWezTermNode \\
+            --command "claude --dangerously-skip-permissions" \\
+            --transparent \\
+            --provider-debug-dir /tmp/proxy-logs
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -215,18 +230,32 @@ async def node_create(
         error_exit(str(e))
 
     # Validate provider options
-    provider_opts = [api_format, provider_base_url, provider_api_key]
-    if any(provider_opts) and not all(provider_opts):
-        error_exit(
-            "--api-format, --provider-base-url, and --provider-api-key "
-            "must all be specified together"
-        )
+    if transparent:
+        # Transparent mode: only requires --transparent (and optionally --provider-debug-dir)
+        if api_format or provider_base_url or provider_api_key:
+            error_exit(
+                "--transparent cannot be combined with --api-format, "
+                "--provider-base-url, or --provider-api-key"
+            )
+        if node_type != "ClaudeWezTermNode":
+            error_exit("--transparent requires --type ClaudeWezTermNode")
+        # Set defaults for transparent mode
+        api_format = "anthropic"
+        provider_base_url = "https://api.anthropic.com"
+    else:
+        # Normal provider mode: all three options required together
+        provider_opts = [api_format, provider_base_url, provider_api_key]
+        if any(provider_opts) and not all(provider_opts):
+            error_exit(
+                "--api-format, --provider-base-url, and --provider-api-key "
+                "must all be specified together"
+            )
 
-    if api_format == "openai" and not provider_model:
-        error_exit("--provider-model is required for openai format")
+        if api_format == "openai" and not provider_model:
+            error_exit("--provider-model is required for openai format")
 
-    if api_format and node_type != "ClaudeWezTermNode":
-        error_exit("Provider options require --type ClaudeWezTermNode")
+        if api_format and node_type != "ClaudeWezTermNode":
+            error_exit("Provider options require --type ClaudeWezTermNode")
 
     # Map node type to wire protocol backend value
     backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")
@@ -247,11 +276,12 @@ async def node_create(
 
         # Add provider config if specified
         if api_format:
-            provider_config: dict[str, str | None] = {
+            provider_config: dict[str, str | bool | None] = {
                 "api_format": api_format,
                 "base_url": provider_base_url,
                 "api_key": provider_api_key,
                 "model": provider_model,
+                "transparent": transparent,
             }
             if provider_debug_dir:
                 provider_config["debug_dir"] = provider_debug_dir

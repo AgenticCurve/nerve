@@ -69,6 +69,14 @@ class ProviderConfig:
         ...     api_key="glm-...",
         ...     model="glm-4.5",  # optional, can override model
         ... )
+        >>>
+        >>> # Transparent mode (forward original auth, just log)
+        >>> config = ProviderConfig(
+        ...     api_format="anthropic",
+        ...     base_url="https://api.anthropic.com",
+        ...     api_key="",  # not used in transparent mode
+        ...     transparent=True,
+        ... )
     """
 
     api_format: Literal["anthropic", "openai"]
@@ -76,6 +84,7 @@ class ProviderConfig:
     api_key: str
     model: str | None = None
     debug_dir: str | None = None
+    transparent: bool = False  # Forward original headers instead of using api_key
 
     def __post_init__(self) -> None:
         """Validate configuration."""
@@ -402,6 +411,7 @@ class ProxyManager:
             upstream_base_url=config.base_url,
             upstream_api_key=config.api_key,
             upstream_model=config.model,
+            transparent=config.transparent,
             debug_dir=debug_dir,
         )
 

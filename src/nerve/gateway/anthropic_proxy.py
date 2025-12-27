@@ -8,6 +8,9 @@ This server:
 2. Logs the request for debugging
 3. Forwards directly to upstream (no transformation needed)
 4. Logs and streams the response back
+
+Transparent mode uses httpx for upstream requests to match Claude Code's TLS fingerprint.
+Non-transparent mode uses aiohttp for upstream requests.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import httpx
     from aiohttp import web
 
 from nerve.gateway.errors import ERROR_TYPE_MAP
@@ -38,6 +42,10 @@ class AnthropicProxyConfig:
     upstream_base_url: str = "https://api.anthropic.com"
     upstream_api_key: str = ""
     upstream_model: str | None = None  # Optional: override model in requests
+
+    # Transparent mode: forward original headers from client instead of using configured API key
+    # This allows logging without needing explicit API credentials
+    transparent: bool = False
 
     # Client configuration
     connect_timeout: float = 10.0
@@ -67,7 +75,8 @@ class AnthropicProxyServer:
     config: AnthropicProxyConfig
     _app: Any = None  # aiohttp.web.Application
     _runner: Any = None  # aiohttp.web.AppRunner
-    _session: Any = None  # aiohttp.ClientSession
+    _session: Any = None  # aiohttp.ClientSession (non-transparent mode)
+    _httpx_client: httpx.AsyncClient | None = None  # httpx client (transparent mode)
     _shutdown_event: asyncio.Event = field(default_factory=asyncio.Event)
     _tracer: RequestTracer = field(init=False)
 
@@ -95,19 +104,39 @@ class AnthropicProxyServer:
                 "aiohttp is required for the proxy. Install with: pip install nerve[proxy]"
             ) from err
 
-        # Create HTTP session for upstream requests
-        timeout = aiohttp.ClientTimeout(
-            connect=self.config.connect_timeout,
-            total=self.config.read_timeout,
-        )
-        self._session = aiohttp.ClientSession(
-            timeout=timeout,
-            headers={
-                "x-api-key": self.config.upstream_api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-        )
+        if self.config.transparent:
+            # Transparent mode: use httpx to match Claude Code's TLS fingerprint
+            try:
+                import httpx
+            except ImportError as err:
+                raise ImportError(
+                    "httpx is required for transparent mode. Install with: pip install httpx"
+                ) from err
+
+            # Create httpx client with matching timeouts
+            self._httpx_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=self.config.connect_timeout,
+                    read=self.config.read_timeout,
+                    write=self.config.read_timeout,
+                    pool=self.config.read_timeout,
+                ),
+                http2=True,  # Match Claude Code's HTTP/2 usage
+            )
+        else:
+            # Normal mode: use aiohttp with configured API key
+            timeout = aiohttp.ClientTimeout(
+                connect=self.config.connect_timeout,
+                total=self.config.read_timeout,
+            )
+            self._session = aiohttp.ClientSession(
+                timeout=timeout,
+                headers={
+                    "x-api-key": self.config.upstream_api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+            )
 
         # Create web application
         self._app = web.Application(client_max_size=self.config.max_body_size)
@@ -122,12 +151,16 @@ class AnthropicProxyServer:
         site = web.TCPSite(self._runner, self.config.host, self.config.port)
         await site.start()
 
+        mode_str = "transparent" if self.config.transparent else "configured"
         logger.info(
-            "Anthropic proxy listening on http://%s:%d",
+            "Anthropic proxy listening on http://%s:%d (%s mode)",
             self.config.host,
             self.config.port,
+            mode_str,
         )
         logger.info("Forwarding to: %s", self.config.upstream_base_url)
+        if self.config.transparent:
+            logger.info("Transparent mode: forwarding original client headers")
         if self.config.debug_dir:
             logger.info("Debug files will be saved to: %s", self.config.debug_dir)
 
@@ -141,6 +174,9 @@ class AnthropicProxyServer:
         if self._session:
             await self._session.close()
             self._session = None
+        if self._httpx_client:
+            await self._httpx_client.aclose()
+            self._httpx_client = None
         if self._runner:
             await self._runner.cleanup()
             self._runner = None
@@ -167,6 +203,40 @@ class AnthropicProxyServer:
             status=status,
         )
 
+    def _extract_forward_headers(self, request: web.Request) -> dict[str, str]:
+        """Extract headers to forward from client request (for transparent mode).
+
+        Uses a blacklist approach: forwards ALL headers except hop-by-hop headers
+        that shouldn't be forwarded through proxies. This ensures the upstream
+        sees the exact same request signature as a direct connection.
+        """
+        # Headers to NEVER forward (hop-by-hop, proxy-specific, or must be recalculated)
+        # See RFC 2616 Section 13.5.1 and RFC 7230 Section 6.1
+        skip_headers = {
+            # Hop-by-hop headers (connection-specific, not end-to-end)
+            "host",  # Must be set to upstream host
+            "connection",
+            "keep-alive",
+            "transfer-encoding",
+            "te",
+            "trailer",
+            "upgrade",
+            # Proxy-specific
+            "proxy-authorization",
+            "proxy-authenticate",
+            "proxy-connection",
+            # Will be recalculated by aiohttp
+            "content-length",
+        }
+
+        headers = {}
+        for key, value in request.headers.items():
+            key_lower = key.lower()
+            if key_lower not in skip_headers:
+                headers[key] = value
+
+        return headers
+
     async def _handle_messages(self, request: web.Request) -> web.StreamResponse:
         """Handle POST /v1/messages - main proxy endpoint."""
 
@@ -191,6 +261,9 @@ class AnthropicProxyServer:
 
         # Generate human-readable trace ID with context from request
         trace_id = self._generate_trace_id(body)
+
+        # Extract headers for transparent mode (empty dict if not transparent)
+        forward_headers = self._extract_forward_headers(request) if self.config.transparent else {}
 
         # Log anthropic-version for debugging
         anthropic_version = request.headers.get("anthropic-version", "unknown")
@@ -219,15 +292,16 @@ class AnthropicProxyServer:
 
         # Forward to upstream
         if is_streaming:
-            return await self._handle_streaming(request, body, trace_id)
+            return await self._handle_streaming(request, body, trace_id, forward_headers)
         else:
-            return await self._handle_non_streaming(body, trace_id)
+            return await self._handle_non_streaming(body, trace_id, forward_headers)
 
     async def _handle_streaming(
         self,
         request: web.Request,
         body: dict[str, Any],
         trace_id: str,
+        forward_headers: dict[str, str] | None = None,
     ) -> web.StreamResponse:
         """Handle streaming response - passthrough SSE events."""
         from aiohttp import web
@@ -238,7 +312,6 @@ class AnthropicProxyServer:
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Trace-Id": trace_id,
             },
         )
         await response.prepare(request)
@@ -246,9 +319,108 @@ class AnthropicProxyServer:
         # Collect events for debug logging
         debug_events: list[str] = []
 
+        url = f"{self.config.upstream_base_url}/v1/messages"
+
+        if self.config.transparent and self._httpx_client:
+            # Transparent mode: use httpx for matching TLS fingerprint
+            await self._handle_streaming_httpx(
+                response, body, url, trace_id, forward_headers or {}, debug_events
+            )
+        else:
+            # Normal mode: use aiohttp
+            await self._handle_streaming_aiohttp(
+                response, body, url, trace_id, forward_headers, debug_events
+            )
+
+        # Save debug events
+        self._save_debug(trace_id, "2_response_events.json", debug_events)
+
         try:
-            url = f"{self.config.upstream_base_url}/v1/messages"
-            async with self._session.post(url, json=body) as upstream_response:
+            await response.write_eof()
+        except Exception:
+            pass
+
+        return response
+
+    async def _handle_streaming_httpx(
+        self,
+        response: web.StreamResponse,
+        body: dict[str, Any],
+        url: str,
+        trace_id: str,
+        forward_headers: dict[str, str],
+        debug_events: list[str],
+    ) -> None:
+        """Handle streaming using httpx client (transparent mode)."""
+        assert self._httpx_client is not None
+
+        try:
+            async with self._httpx_client.stream(
+                "POST",
+                url,
+                json=body,
+                headers=forward_headers,
+            ) as upstream_response:
+                if upstream_response.status_code != 200:
+                    error_body = await upstream_response.aread()
+                    error_text = error_body.decode("utf-8")
+                    logger.error(
+                        "[%s] Upstream error %d: %s",
+                        trace_id,
+                        upstream_response.status_code,
+                        error_text[:500],
+                    )
+                    self._save_debug(
+                        trace_id,
+                        "2_error.json",
+                        {
+                            "status": upstream_response.status_code,
+                            "body": error_text,
+                        },
+                    )
+                    error_event = f"event: error\ndata: {error_text}\n\n"
+                    await response.write(error_event.encode("utf-8"))
+                    return
+
+                # Stream response directly - no transformation needed
+                line_count = 0
+                async for line in upstream_response.aiter_lines():
+                    if line.strip():
+                        line_count += 1
+                        debug_events.append(line.strip())
+                        logger.debug("[%s] SSE line %d: %s", trace_id, line_count, line[:200])
+
+                    try:
+                        # Add newline back since aiter_lines strips it
+                        await response.write((line + "\n").encode("utf-8"))
+                    except ConnectionResetError:
+                        logger.debug("[%s] Client disconnected during streaming", trace_id)
+                        break
+
+                logger.info("[%s] Stream complete, forwarded %d SSE lines", trace_id, line_count)
+
+        except Exception as e:
+            error_msg = str(e)
+            if "closing transport" in error_msg.lower():
+                logger.debug("[%s] Client closed connection early", trace_id)
+            else:
+                logger.exception("[%s] Error during streaming (httpx)", trace_id)
+
+    async def _handle_streaming_aiohttp(
+        self,
+        response: web.StreamResponse,
+        body: dict[str, Any],
+        url: str,
+        trace_id: str,
+        forward_headers: dict[str, str] | None,
+        debug_events: list[str],
+    ) -> None:
+        """Handle streaming using aiohttp client (normal mode)."""
+        try:
+            post_kwargs: dict[str, Any] = {"json": body}
+            if forward_headers:
+                post_kwargs["headers"] = forward_headers
+            async with self._session.post(url, **post_kwargs) as upstream_response:
                 if upstream_response.status != 200:
                     error_body = await upstream_response.text()
                     logger.error(
@@ -265,11 +437,9 @@ class AnthropicProxyServer:
                             "body": error_body,
                         },
                     )
-                    # Return error in SSE format
                     error_event = f"event: error\ndata: {error_body}\n\n"
                     await response.write(error_event.encode("utf-8"))
-                    await response.write_eof()
-                    return response
+                    return
 
                 # Stream response directly - no transformation needed
                 line_count = 0
@@ -293,29 +463,101 @@ class AnthropicProxyServer:
             if "closing transport" in error_msg.lower():
                 logger.debug("[%s] Client closed connection early", trace_id)
             else:
-                logger.exception("[%s] Error during streaming", trace_id)
-
-        # Save debug events
-        self._save_debug(trace_id, "2_response_events.json", debug_events)
-
-        try:
-            await response.write_eof()
-        except Exception:
-            pass
-
-        return response
+                logger.exception("[%s] Error during streaming (aiohttp)", trace_id)
 
     async def _handle_non_streaming(
         self,
         body: dict[str, Any],
         trace_id: str,
+        forward_headers: dict[str, str] | None = None,
     ) -> web.Response:
         """Handle non-streaming response."""
         from aiohttp import web
 
+        url = f"{self.config.upstream_base_url}/v1/messages"
+
+        if self.config.transparent and self._httpx_client:
+            # Transparent mode: use httpx for matching TLS fingerprint
+            return await self._handle_non_streaming_httpx(
+                body, url, trace_id, forward_headers or {}
+            )
+        else:
+            # Normal mode: use aiohttp
+            return await self._handle_non_streaming_aiohttp(body, url, trace_id, forward_headers)
+
+    async def _handle_non_streaming_httpx(
+        self,
+        body: dict[str, Any],
+        url: str,
+        trace_id: str,
+        forward_headers: dict[str, str],
+    ) -> web.Response:
+        """Handle non-streaming using httpx client (transparent mode)."""
+        from aiohttp import web
+
+        assert self._httpx_client is not None
+
         try:
-            url = f"{self.config.upstream_base_url}/v1/messages"
-            async with self._session.post(url, json=body) as upstream_response:
+            upstream_response = await self._httpx_client.post(
+                url,
+                json=body,
+                headers=forward_headers,
+            )
+            response_body = upstream_response.text
+
+            self._save_debug(
+                trace_id,
+                "2_response.json",
+                {
+                    "status": upstream_response.status_code,
+                    "body": json.loads(response_body) if response_body else None,
+                },
+            )
+
+            if upstream_response.status_code != 200:
+                logger.error(
+                    "[%s] Upstream error %d: %s",
+                    trace_id,
+                    upstream_response.status_code,
+                    response_body[:500],
+                )
+                error_type = ERROR_TYPE_MAP.get(upstream_response.status_code, "api_error")
+                return self._error_response(
+                    error_type,
+                    response_body,
+                    upstream_response.status_code,
+                )
+
+            logger.info("[%s] Non-streaming response received (httpx)", trace_id)
+            return web.Response(
+                text=response_body,
+                content_type="application/json",
+                headers={"X-Trace-Id": trace_id},
+            )
+
+        except Exception as e:
+            logger.exception("[%s] Error during non-streaming request (httpx)", trace_id)
+            return self._error_response(
+                "api_error",
+                f"Upstream request failed: {e}",
+                502,
+            )
+
+    async def _handle_non_streaming_aiohttp(
+        self,
+        body: dict[str, Any],
+        url: str,
+        trace_id: str,
+        forward_headers: dict[str, str] | None,
+    ) -> web.Response:
+        """Handle non-streaming using aiohttp client (normal mode)."""
+        from aiohttp import web
+
+        try:
+            post_kwargs: dict[str, Any] = {"json": body}
+            if forward_headers:
+                post_kwargs["headers"] = forward_headers
+            async with self._session.post(url, **post_kwargs) as upstream_response:
                 response_body = await upstream_response.text()
 
                 self._save_debug(
@@ -341,7 +583,7 @@ class AnthropicProxyServer:
                         upstream_response.status,
                     )
 
-                logger.info("[%s] Non-streaming response received", trace_id)
+                logger.info("[%s] Non-streaming response received (aiohttp)", trace_id)
                 return web.Response(
                     text=response_body,
                     content_type="application/json",
@@ -349,7 +591,7 @@ class AnthropicProxyServer:
                 )
 
         except Exception as e:
-            logger.exception("[%s] Error during non-streaming request", trace_id)
+            logger.exception("[%s] Error during non-streaming request (aiohttp)", trace_id)
             return self._error_response(
                 "api_error",
                 f"Upstream request failed: {e}",
