@@ -20,7 +20,9 @@ classifiers = [
 dependencies = [
     "aiohttp>=3.9.0",
     "httpx[http2]>=0.28.0",
+    "openai>=1.0.0",
     "prompt-toolkit>=3.0.52",
+    "python-dotenv>=1.0.0",
     "rich-click>=1.7.0",
 ]
 
@@ -70,10 +72,12 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
+exclude = ["features/"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+exclude = ["features/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]

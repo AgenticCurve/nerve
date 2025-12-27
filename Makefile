@@ -1,4 +1,4 @@
-.PHONY: typecheck lint format test check clean help
+.PHONY: typecheck lint format test check clean help features features-glm features-openrouter
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -22,3 +22,15 @@ clean: ## Clean up cache files
 	rm -rf .pytest_cache .mypy_cache .ruff_cache
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
+
+# Feature tests (3rd party integration tests - require API keys in .env.local)
+
+features: features-glm features-openrouter ## Run all feature tests
+
+features-glm: ## Run GLM feature tests (requires GLM_API_KEY)
+	uv run python features/glm/glm_node.py
+	uv run python features/glm/glm_chat_node.py
+
+features-openrouter: ## Run OpenRouter feature tests (requires OPENROUTER_API_KEY)
+	uv run python features/openrouter/openrouter_node.py
+	uv run python features/openrouter/openrouter_chat_node.py

@@ -217,6 +217,10 @@ def detect_request_type(log_dir: Path, preview: str) -> tuple[RequestType, str, 
     except (json.JSONDecodeError, OSError):
         return "UNKNOWN", "", "", "", False
 
+    # Normalize structure: some formats have {headers, body} wrapper
+    if "body" in data and isinstance(data.get("body"), dict):
+        data = data["body"]
+
     model = data.get("model", "")
     messages = data.get("messages", [])
 

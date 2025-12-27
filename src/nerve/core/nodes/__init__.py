@@ -89,6 +89,9 @@ from nerve.core.nodes.history import (
     HistoryWriter,
 )
 
+# LLM nodes
+from nerve.core.nodes.llm import OpenRouterNode
+
 # Agent capabilities: Error handling
 from nerve.core.nodes.policies import ErrorPolicy
 
@@ -110,6 +113,8 @@ __all__ = [
     "PersistentNode",
     "FunctionNode",
     "BashNode",
+    # LLM
+    "OpenRouterNode",
     # Context
     "ExecutionContext",
     # Graph
