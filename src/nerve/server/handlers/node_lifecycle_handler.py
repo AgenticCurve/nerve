@@ -191,6 +191,7 @@ class NodeLifecycleHandler:
             model=provider_dict.get("model"),
             debug_dir=provider_dict.get("debug_dir"),
             transparent=is_transparent,
+            log_headers=provider_dict.get("log_headers", False),
         )
 
         # Determine debug directory for request/response logs

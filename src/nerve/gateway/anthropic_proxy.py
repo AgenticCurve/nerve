@@ -47,6 +47,9 @@ class AnthropicProxyConfig:
     # This allows logging without needing explicit API credentials
     transparent: bool = False
 
+    # Log headers: include request/response headers in debug logs (for research)
+    log_headers: bool = False
+
     # Client configuration
     connect_timeout: float = 10.0
     read_timeout: float = 300.0
@@ -270,8 +273,15 @@ class AnthropicProxyServer:
         logger.debug("[%s] anthropic-version: %s", trace_id, anthropic_version)
         logger.info("[%s] Incoming request from Claude Code", trace_id)
 
-        # Save raw incoming request
-        self._save_debug(trace_id, "1_request.json", body)
+        # Save raw incoming request (optionally with headers)
+        if self.config.log_headers:
+            request_data = {
+                "headers": dict(request.headers),
+                "body": body,
+            }
+            self._save_debug(trace_id, "1_request.json", request_data)
+        else:
+            self._save_debug(trace_id, "1_request.json", body)
 
         # Optionally override model
         if self.config.upstream_model:
@@ -316,24 +326,44 @@ class AnthropicProxyServer:
         )
         await response.prepare(request)
 
-        # Collect events for debug logging
+        # Collect events and optionally headers for debug logging
         debug_events: list[str] = []
+        response_headers: dict[str, str] = {}  # Populated by handlers if log_headers
 
         url = f"{self.config.upstream_base_url}/v1/messages"
 
         if self.config.transparent and self._httpx_client:
             # Transparent mode: use httpx for matching TLS fingerprint
             await self._handle_streaming_httpx(
-                response, body, url, trace_id, forward_headers or {}, debug_events
+                response,
+                body,
+                url,
+                trace_id,
+                forward_headers or {},
+                debug_events,
+                response_headers if self.config.log_headers else None,
             )
         else:
             # Normal mode: use aiohttp
             await self._handle_streaming_aiohttp(
-                response, body, url, trace_id, forward_headers, debug_events
+                response,
+                body,
+                url,
+                trace_id,
+                forward_headers,
+                debug_events,
+                response_headers if self.config.log_headers else None,
             )
 
-        # Save debug events
-        self._save_debug(trace_id, "2_response_events.json", debug_events)
+        # Save debug events (optionally with headers)
+        if self.config.log_headers:
+            response_data = {
+                "headers": response_headers,
+                "events": debug_events,
+            }
+            self._save_debug(trace_id, "2_response_events.json", response_data)
+        else:
+            self._save_debug(trace_id, "2_response_events.json", debug_events)
 
         try:
             await response.write_eof()
@@ -350,6 +380,7 @@ class AnthropicProxyServer:
         trace_id: str,
         forward_headers: dict[str, str],
         debug_events: list[str],
+        response_headers: dict[str, str] | None = None,
     ) -> None:
         """Handle streaming using httpx client (transparent mode)."""
         assert self._httpx_client is not None
@@ -361,6 +392,10 @@ class AnthropicProxyServer:
                 json=body,
                 headers=forward_headers,
             ) as upstream_response:
+                # Capture response headers if requested
+                if response_headers is not None:
+                    response_headers.update(dict(upstream_response.headers))
+
                 if upstream_response.status_code != 200:
                     error_body = await upstream_response.aread()
                     error_text = error_body.decode("utf-8")
@@ -414,6 +449,7 @@ class AnthropicProxyServer:
         trace_id: str,
         forward_headers: dict[str, str] | None,
         debug_events: list[str],
+        response_headers: dict[str, str] | None = None,
     ) -> None:
         """Handle streaming using aiohttp client (normal mode)."""
         try:
@@ -421,6 +457,10 @@ class AnthropicProxyServer:
             if forward_headers:
                 post_kwargs["headers"] = forward_headers
             async with self._session.post(url, **post_kwargs) as upstream_response:
+                # Capture response headers if requested
+                if response_headers is not None:
+                    response_headers.update(dict(upstream_response.headers))
+
                 if upstream_response.status != 200:
                     error_body = await upstream_response.text()
                     logger.error(
@@ -505,14 +545,14 @@ class AnthropicProxyServer:
             )
             response_body = upstream_response.text
 
-            self._save_debug(
-                trace_id,
-                "2_response.json",
-                {
-                    "status": upstream_response.status_code,
-                    "body": json.loads(response_body) if response_body else None,
-                },
-            )
+            # Save response (optionally with headers)
+            response_data: dict[str, Any] = {
+                "status": upstream_response.status_code,
+                "body": json.loads(response_body) if response_body else None,
+            }
+            if self.config.log_headers:
+                response_data["headers"] = dict(upstream_response.headers)
+            self._save_debug(trace_id, "2_response.json", response_data)
 
             if upstream_response.status_code != 200:
                 logger.error(
@@ -560,14 +600,14 @@ class AnthropicProxyServer:
             async with self._session.post(url, **post_kwargs) as upstream_response:
                 response_body = await upstream_response.text()
 
-                self._save_debug(
-                    trace_id,
-                    "2_response.json",
-                    {
-                        "status": upstream_response.status,
-                        "body": json.loads(response_body) if response_body else None,
-                    },
-                )
+                # Save response (optionally with headers)
+                response_data: dict[str, Any] = {
+                    "status": upstream_response.status,
+                    "body": json.loads(response_body) if response_body else None,
+                }
+                if self.config.log_headers:
+                    response_data["headers"] = dict(upstream_response.headers)
+                self._save_debug(trace_id, "2_response.json", response_data)
 
                 if upstream_response.status != 200:
                     logger.error(

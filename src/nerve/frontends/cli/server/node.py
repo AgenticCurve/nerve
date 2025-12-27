@@ -101,7 +101,6 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
 @click.option(
     "--command", "-c", default=None, help="Command to run (e.g., 'claude' or 'my-cli --flag')"
 )
-@click.option("--cwd", default=None, help="Working directory for the node")
 @click.option(
     "--type",
     "-t",
@@ -150,13 +149,18 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=False,
     help="Transparent logging mode: forward original auth headers (no API key needed)",
 )
+@click.option(
+    "--log-headers",
+    is_flag=True,
+    default=False,
+    help="Include request/response headers in debug logs (for research)",
+)
 @async_server_command
 async def node_create(
     name: str,
     server_name: str,
     session_id: str | None,
     command: str | None,
-    cwd: str | None,
     node_type: str,
     pane_id: str | None,
     history: bool,
@@ -166,6 +170,7 @@ async def node_create(
     provider_model: str | None,
     provider_debug_dir: str | None,
     transparent: bool,
+    log_headers: bool,
 ) -> None:
     """Create a new node.
 
@@ -263,7 +268,6 @@ async def node_create(
     async with server_connection(server_name) as client:
         params: dict[str, object] = {
             "node_id": name,
-            "cwd": cwd,
             "backend": backend,
             "history": history,
         }
@@ -282,6 +286,7 @@ async def node_create(
                 "api_key": provider_api_key,
                 "model": provider_model,
                 "transparent": transparent,
+                "log_headers": log_headers,
             }
             if provider_debug_dir:
                 provider_config["debug_dir"] = provider_debug_dir

@@ -229,19 +229,215 @@ def parse_conversation(data: dict) -> Conversation:
             ):
                 current_turn.blocks.append(ContentBlock("text", content.strip()))
 
+    # Add any pending tool calls (from the last assistant message with no results yet)
+    if current_turn and pending:
+        for tool_id, tc_info in pending.items():
+            tool_call = ToolCall(
+                name=tc_info["name"],
+                args=tc_info["input"],
+                result="(pending - no result yet)",
+                index=len(current_turn.tool_calls) + 1,
+                tool_use_id=tool_id,
+            )
+            current_turn.blocks.append(ContentBlock("tool", tool_call))
+
     if current_turn:
         current_turn.end_msg_idx = len(messages) - 1
         turns.append(current_turn)
     return Conversation(turns, len(messages), data.get("model", "?"), messages)
 
 
+def parse_response_events(events_file: Path) -> dict | None:
+    """Parse streaming response events into an assistant message.
+
+    Args:
+        events_file: Path to 2_response_events.json
+
+    Returns:
+        Assistant message dict with role and content, or None if parsing fails.
+    """
+    if not events_file.exists():
+        return None
+
+    with open(events_file, encoding="utf-8") as fp:
+        lines = json.load(fp)
+
+    # Parse event/data pairs
+    content_blocks: list[dict] = []
+    current_block: dict | None = None
+
+    for line in lines:
+        if not isinstance(line, str):
+            continue
+
+        if line.startswith("data: "):
+            try:
+                data = json.loads(line[6:])
+            except json.JSONDecodeError:
+                continue
+
+            event_type = data.get("type", "")
+
+            if event_type == "content_block_start":
+                block_info = data.get("content_block", {})
+                block_type = block_info.get("type", "")
+                if block_type == "thinking":
+                    current_block = {"type": "thinking", "thinking": ""}
+                elif block_type == "text":
+                    current_block = {"type": "text", "text": ""}
+                elif block_type == "tool_use":
+                    current_block = {
+                        "type": "tool_use",
+                        "id": block_info.get("id", ""),
+                        "name": block_info.get("name", ""),
+                        "input": {},
+                    }
+
+            elif event_type == "content_block_delta" and current_block:
+                delta = data.get("delta", {})
+                delta_type = delta.get("type", "")
+                if delta_type == "thinking_delta":
+                    current_block["thinking"] += delta.get("thinking", "")
+                elif delta_type == "text_delta":
+                    current_block["text"] += delta.get("text", "")
+                elif delta_type == "input_json_delta":
+                    # Tool input comes as partial JSON string
+                    if "partial_json" not in current_block:
+                        current_block["partial_json"] = ""
+                    current_block["partial_json"] += delta.get("partial_json", "")
+
+            elif event_type == "content_block_stop" and current_block:
+                # Finalize tool input if present
+                if current_block.get("type") == "tool_use" and "partial_json" in current_block:
+                    try:
+                        current_block["input"] = json.loads(current_block["partial_json"])
+                    except json.JSONDecodeError:
+                        current_block["input"] = {"_raw": current_block["partial_json"]}
+                    del current_block["partial_json"]
+                content_blocks.append(current_block)
+                current_block = None
+
+    if not content_blocks:
+        return None
+
+    return {"role": "assistant", "content": content_blocks}
+
+
+def parse_openai_response_chunks(chunks_file: Path) -> dict | None:
+    """Parse OpenAI-format streaming response chunks into an assistant message.
+
+    Args:
+        chunks_file: Path to 3_openai_response_chunks.json
+
+    Returns:
+        Assistant message dict with role and content, or None if parsing fails.
+    """
+    if not chunks_file.exists():
+        return None
+
+    with open(chunks_file, encoding="utf-8") as fp:
+        chunks = json.load(fp)
+
+    if not isinstance(chunks, list):
+        return None
+
+    # Accumulate text and tool calls
+    text_content = ""
+    tool_calls: dict[str, dict] = {}  # tool_call_id -> {name, arguments}
+
+    for chunk in chunks:
+        if not isinstance(chunk, dict):
+            continue
+
+        chunk_type = chunk.get("type", "")
+
+        if chunk_type == "text":
+            text_content += chunk.get("content", "")
+
+        elif chunk_type == "tool_call_start":
+            tool_id = chunk.get("tool_call_id", "")
+            if tool_id:
+                tool_calls[tool_id] = {
+                    "name": chunk.get("tool_name", ""),
+                    "arguments": "",
+                }
+
+        elif chunk_type == "tool_call_delta":
+            tool_id = chunk.get("tool_call_id", "")
+            if tool_id and tool_id in tool_calls:
+                tool_calls[tool_id]["arguments"] += chunk.get("tool_arguments_delta", "")
+
+    # Build content blocks in Anthropic format
+    content_blocks: list[dict] = []
+
+    if text_content:
+        content_blocks.append({"type": "text", "text": text_content})
+
+    for tool_id, tool_info in tool_calls.items():
+        try:
+            input_data = json.loads(tool_info["arguments"]) if tool_info["arguments"] else {}
+        except json.JSONDecodeError:
+            input_data = {"_raw": tool_info["arguments"]}
+
+        content_blocks.append(
+            {
+                "type": "tool_use",
+                "id": tool_id,
+                "name": tool_info["name"],
+                "input": input_data,
+            }
+        )
+
+    if not content_blocks:
+        return None
+
+    return {"role": "assistant", "content": content_blocks}
+
+
 def load_conversation(log_dir: Path) -> Conversation:
+    # Load request file
+    data = None
     for name in ["1_request.json", "1_anthropic_request.json"]:
         f = log_dir / name
         if f.exists():
             with open(f, encoding="utf-8") as fp:
-                return parse_conversation(json.load(fp))
-    raise FileNotFoundError(f"No request file found in {log_dir}")
+                data = json.load(fp)
+            break
+
+    if data is None:
+        raise FileNotFoundError(f"No request file found in {log_dir}")
+
+    # Load and append response if available (check multiple formats)
+    response_files = [
+        ("2_response_events.json", "anthropic_events"),
+        ("3_openai_response_chunks.json", "openai_chunks"),
+        ("2_response.json", "anthropic_full"),
+    ]
+
+    for name, fmt in response_files:
+        response_file = log_dir / name
+        if not response_file.exists():
+            continue
+
+        response_msg = None
+        if fmt == "anthropic_events":
+            response_msg = parse_response_events(response_file)
+        elif fmt == "openai_chunks":
+            response_msg = parse_openai_response_chunks(response_file)
+        elif fmt == "anthropic_full":
+            with open(response_file, encoding="utf-8") as fp:
+                response_data = json.load(fp)
+            if response_data.get("content"):
+                response_msg = {
+                    "role": "assistant",
+                    "content": response_data["content"],
+                }
+
+        if response_msg:
+            data.setdefault("messages", []).append(response_msg)
+            break
+
+    return parse_conversation(data)
 
 
 class ConversationExplorer:

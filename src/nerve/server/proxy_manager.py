@@ -85,6 +85,7 @@ class ProviderConfig:
     model: str | None = None
     debug_dir: str | None = None
     transparent: bool = False  # Forward original headers instead of using api_key
+    log_headers: bool = False  # Include headers in debug logs
 
     def __post_init__(self) -> None:
         """Validate configuration."""
@@ -412,6 +413,7 @@ class ProxyManager:
             upstream_api_key=config.api_key,
             upstream_model=config.model,
             transparent=config.transparent,
+            log_headers=config.log_headers,
             debug_dir=debug_dir,
         )
 
