@@ -9,7 +9,6 @@ Two-level hierarchy:
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 import threading
@@ -22,7 +21,6 @@ from typing import Literal
 import rich_click as click
 from prompt_toolkit import Application
 from prompt_toolkit.data_structures import Point
-from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import HSplit, Layout, Window
@@ -30,7 +28,6 @@ from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from shared import (
     C,
-    DRACULA,
     configure_rich_click,
     get_style,
     is_tool_result_only,

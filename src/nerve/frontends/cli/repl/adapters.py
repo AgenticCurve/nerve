@@ -9,7 +9,11 @@ if TYPE_CHECKING:
 
 
 class SessionAdapter(Protocol):
-    """Protocol for session operations in both local and remote modes."""
+    """Protocol for session operations in both local and remote modes.
+
+    This protocol fully abstracts local vs remote mode differences.
+    Command handlers should use these methods without checking mode.
+    """
 
     @property
     def name(self) -> str:
@@ -29,6 +33,11 @@ class SessionAdapter(Protocol):
     @property
     def graph_count(self) -> int:
         """Number of graphs in session."""
+        ...
+
+    @property
+    def supports_local_execution(self) -> bool:
+        """True if this adapter supports local-only operations (stop, run, reset)."""
         ...
 
     async def list_nodes(self) -> list[tuple[str, str]]:
@@ -55,6 +64,83 @@ class SessionAdapter(Protocol):
         """Stop session and cleanup."""
         ...
 
+    # =========================================================================
+    # Unified command methods - abstract local/remote differences
+    # =========================================================================
+
+    async def read_node_buffer(self, node_id: str) -> str:
+        """Read a node's output buffer.
+
+        Raises:
+            ValueError: If node not found or doesn't support read.
+        """
+        ...
+
+    async def stop_node(self, node_id: str) -> None:
+        """Stop a running node.
+
+        Raises:
+            ValueError: If node not found or doesn't support stop.
+            NotImplementedError: If not supported in remote mode.
+        """
+        ...
+
+    async def show_graph(
+        self, graph_id: str | None = None, fallback_graph: Graph | None = None
+    ) -> str:
+        """Get formatted graph structure for display.
+
+        Args:
+            graph_id: Explicit graph ID to show.
+            fallback_graph: Fallback graph if graph_id not provided (local mode only).
+
+        Returns:
+            Formatted string ready for display.
+
+        Raises:
+            ValueError: If no graph found/specified.
+        """
+        ...
+
+    async def validate_graph(
+        self, graph_id: str | None = None, fallback_graph: Graph | None = None
+    ) -> str:
+        """Validate a graph and return formatted result.
+
+        Args:
+            graph_id: Explicit graph ID to validate.
+            fallback_graph: Fallback graph if graph_id not provided (local mode only).
+
+        Returns:
+            Formatted validation result string.
+
+        Raises:
+            ValueError: If no graph found/specified.
+        """
+        ...
+
+    async def dry_run_graph(
+        self, graph_id: str | None = None, fallback_graph: Graph | None = None
+    ) -> str:
+        """Get formatted execution order for a graph.
+
+        Args:
+            graph_id: Explicit graph ID for dry run.
+            fallback_graph: Fallback graph if graph_id not provided (local mode only).
+
+        Returns:
+            Formatted execution order string.
+
+        Raises:
+            ValueError: If no graph found/specified.
+        """
+        ...
+
+    @property
+    def server_name(self) -> str:
+        """Server name for history file lookups."""
+        ...
+
 
 class LocalSessionAdapter:
     """Adapter for local in-memory session."""
@@ -77,6 +163,10 @@ class LocalSessionAdapter:
     @property
     def graph_count(self) -> int:
         return len(self.session.graphs)
+
+    @property
+    def supports_local_execution(self) -> bool:
+        return True
 
     async def list_nodes(self) -> list[tuple[str, str]]:
         """Return list of (name, info_string) tuples."""
@@ -115,6 +205,90 @@ class LocalSessionAdapter:
 
     async def stop(self) -> None:
         await self.session.stop()
+
+    # =========================================================================
+    # Unified command methods
+    # =========================================================================
+
+    async def read_node_buffer(self, node_id: str) -> str:
+        """Read a node's output buffer."""
+        node = self.session.get_node(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
+        if not hasattr(node, "read"):
+            raise ValueError(f"Node '{node_id}' does not support read")
+        result = await node.read()
+        return str(result) if result is not None else ""
+
+    async def stop_node(self, node_id: str) -> None:
+        """Stop a running node."""
+        node = self.session.get_node(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
+        if not hasattr(node, "stop"):
+            raise ValueError(f"Node '{node_id}' does not support stop")
+        await node.stop()
+
+    def _resolve_graph(self, graph_id: str | None, fallback_graph: Any | None) -> Any:
+        """Resolve graph from ID or fallback."""
+        if graph_id:
+            graph = self.session.get_graph(graph_id)
+            if not graph:
+                raise ValueError(f"Graph not found: {graph_id}")
+            return graph
+        if fallback_graph:
+            return fallback_graph
+        raise ValueError("No graph specified")
+
+    async def show_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Get formatted graph structure for display."""
+        graph = self._resolve_graph(graph_id, fallback_graph)
+
+        if not graph.list_steps():
+            return "No steps defined"
+
+        lines = ["\nGraph Structure:", "-" * 40]
+        for step_id in graph.list_steps():
+            step = graph.get_step(step_id)
+            deps = step.depends_on if step else []
+            lines.append(f"  {step_id}")
+            if deps:
+                lines.append(f"    depends on: {', '.join(deps)}")
+        lines.append("-" * 40)
+        return "\n".join(lines)
+
+    async def validate_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Validate a graph and return formatted result."""
+        graph = self._resolve_graph(graph_id, fallback_graph)
+
+        errors = graph.validate()
+        if errors:
+            lines = ["Validation FAILED:"]
+            for err in errors:
+                lines.append(f"  - {err}")
+            return "\n".join(lines)
+        return "Validation PASSED"
+
+    async def dry_run_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Get formatted execution order for a graph."""
+        graph = self._resolve_graph(graph_id, fallback_graph)
+
+        order = graph.execution_order()
+        lines = ["\nExecution order:"]
+        for i, step_id in enumerate(order, 1):
+            lines.append(f"  [{i}] {step_id}")
+        return "\n".join(lines)
+
+    @property
+    def server_name(self) -> str:
+        """Server name for history file lookups."""
+        return str(self.session.server_name) if self.session.server_name else "repl"
 
 
 class RemoteSessionAdapter:
@@ -225,3 +399,102 @@ class RemoteSessionAdapter:
     async def stop(self) -> None:
         """Disconnect from server."""
         await self.client.disconnect()
+
+    @property
+    def supports_local_execution(self) -> bool:
+        return False
+
+    # =========================================================================
+    # Unified command methods
+    # =========================================================================
+
+    async def _send_repl_command(
+        self, command: str, args: list[str]
+    ) -> tuple[str | None, str | None]:
+        """Send a REPL command to the server and return (output, error)."""
+        from nerve.server.protocols import Command, CommandType
+
+        params: dict[str, Any] = {"command": command, "args": args}
+        if self.session_id:
+            params["session_id"] = self.session_id
+
+        result = await self.client.send_command(
+            Command(type=CommandType.EXECUTE_REPL_COMMAND, params=params)
+        )
+
+        if result.success and result.data:
+            return result.data.get("output"), result.data.get("error")
+        return None, result.error
+
+    async def read_node_buffer(self, node_id: str) -> str:
+        """Read a node's output buffer via server."""
+        output, error = await self._send_repl_command("read", [node_id])
+        if error:
+            raise ValueError(error)
+        return output or ""
+
+    async def stop_node(self, node_id: str) -> None:
+        """Stop a node - not supported in remote mode."""
+        raise NotImplementedError("stop_node not available in server mode")
+
+    async def show_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Get formatted graph structure from server."""
+        if not graph_id:
+            raise ValueError("Graph name required in server mode")
+        output, error = await self._send_repl_command("show", [graph_id])
+        if error:
+            raise ValueError(error)
+        return output or ""
+
+    async def validate_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Validate a graph on the server."""
+        if not graph_id:
+            raise ValueError("Graph name required in server mode")
+        output, error = await self._send_repl_command("validate", [graph_id])
+        if error:
+            raise ValueError(error)
+        return output or ""
+
+    async def dry_run_graph(
+        self, graph_id: str | None = None, fallback_graph: Any | None = None
+    ) -> str:
+        """Get execution order from server."""
+        if not graph_id:
+            raise ValueError("Graph name required in server mode")
+        output, error = await self._send_repl_command("dry", [graph_id])
+        if error:
+            raise ValueError(error)
+        return output or ""
+
+    async def execute_python(self, code: str, namespace: dict[str, Any]) -> tuple[str, str | None]:
+        """Execute Python code on the server.
+
+        In remote mode, code is sent to the server for execution.
+        The namespace parameter is ignored (server maintains its own state).
+
+        Args:
+            code: Python code to execute.
+            namespace: Ignored in remote mode.
+
+        Returns:
+            Tuple of (output_string, error_string_or_none).
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        params: dict[str, Any] = {"code": code}
+        if self.session_id:
+            params["session_id"] = self.session_id
+
+        result = await self.client.send_command(
+            Command(type=CommandType.EXECUTE_PYTHON, params=params)
+        )
+
+        if result.success and result.data:
+            output = result.data.get("output", "")
+            error = result.data.get("error")
+            return output, error
+        return "", result.error
