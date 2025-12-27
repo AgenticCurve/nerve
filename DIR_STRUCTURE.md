@@ -95,7 +95,7 @@
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
 │       │   │   │   ├── [L: 575] base.py
-│       │   │   │   ├── [L: 392] chat.py
+│       │   │   │   ├── [L: 416] chat.py
 │       │   │   │   ├── [L: 135] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -162,7 +162,7 @@
 │       │       └── [L: 372] client.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
-│       │   ├── [L: 638] anthropic_proxy.py
+│       │   ├── [L: 639] anthropic_proxy.py
 │       │   ├── clients/
 │       │   │   ├── [L:  23] __init__.py
 │       │   │   └── [L: 450] llm_client.py
@@ -223,6 +223,7 @@
     │   │   ├── [L:   1] __init__.py
     │   │   ├── llm/
     │   │   │   ├── [L:   1] __init__.py
+    │   │   │   ├── [L: 176] test_chat_node.py
     │   │   │   └── [L: 493] test_openrouter.py
     │   │   ├── [L: 209] test_base.py
     │   │   ├── [L: 206] test_bash.py
@@ -271,4 +272,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-58 directories, 214 files, 44,902 total lines
+58 directories, 215 files, 45,103 total lines

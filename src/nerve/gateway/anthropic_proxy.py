@@ -169,6 +169,7 @@ class AnthropicProxyServer:
 
         # Wait for shutdown
         await self._shutdown_event.wait()
+        await self.shutdown()
 
     async def shutdown(self) -> None:
         """Shutdown the server gracefully."""
