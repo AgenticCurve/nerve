@@ -115,7 +115,7 @@
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
 │       │   │   ├── [L:  56] base.py
-│       │   │   ├── [L: 359] claude.py
+│       │   │   ├── [L: 355] claude.py
 │       │   │   ├── [L:  92] gemini.py
 │       │   │   └── [L:  84] none.py
 │       │   ├── patterns/
@@ -279,4 +279,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 219 files, 46,184 total lines
+61 directories, 219 files, 46,180 total lines

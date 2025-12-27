@@ -116,9 +116,9 @@ class ClaudeParser(Parser):
             start_idx = last_prompt_idx
         else:
             # Fallback: if content starts with Claude response markers, use beginning
+            # Markers must be first character of line (no leading whitespace)
             for i, line in enumerate(lines):
-                stripped = line.strip()
-                if stripped.startswith("∴") or stripped.startswith("⏺"):
+                if line.startswith("∴") or line.startswith("⏺"):
                     start_idx = i - 1
                     break
             else:
@@ -239,16 +239,14 @@ class ClaudeParser(Parser):
 
         while i < len(lines):
             line = lines[i]
-            stripped = line.strip()
 
-            # Thinking section - must start with ∴ at beginning of line
-            if stripped.startswith("∴"):
+            # Thinking section - marker must be first character of line
+            if line.startswith("∴"):
                 content_lines: list[str] = []
                 i += 1
                 # Collect indented content until next section marker
                 while i < len(lines):
-                    next_stripped = lines[i].strip()
-                    if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                    if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                         break
                     content_lines.append(lines[i])
                     i += 1
@@ -260,9 +258,9 @@ class ClaudeParser(Parser):
                 )
                 continue
 
-            # Tool call or text (both start with ⏺)
-            if stripped.startswith("⏺"):
-                tool_match = re.match(r"^⏺\s+(\w+)\((.*)$", stripped)
+            # Tool call or text (both start with ⏺) - marker must be first character
+            if line.startswith("⏺"):
+                tool_match = re.match(r"^⏺\s+(\w+)\((.*)$", line)
                 if tool_match:
                     # Tool call - collect full args and result
                     tool_name = tool_match.group(1)
@@ -272,8 +270,7 @@ class ClaudeParser(Parser):
                     args_lines = [args_start]
                     i += 1
                     while i < len(lines) and not lines[i].strip().startswith("⎿"):
-                        next_stripped = lines[i].strip()
-                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                        if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                             break
                         args_lines.append(lines[i])
                         i += 1
@@ -283,7 +280,7 @@ class ClaudeParser(Parser):
                     if args_text.endswith(")"):
                         args_text = args_text[:-1]
 
-                    # Collect result (starts with ⎿)
+                    # Collect result (starts with ⎿) - ⎿ is indented, so use strip()
                     result_lines: list[str] = []
                     while i < len(lines):
                         result_line = lines[i]
@@ -292,7 +289,7 @@ class ClaudeParser(Parser):
                             # First result line - remove the ⎿ prefix
                             result_lines.append(result_stripped[1:].strip())
                             i += 1
-                        elif result_stripped.startswith("⏺") or result_stripped.startswith("∴"):
+                        elif result_line.startswith("⏺") or result_line.startswith("∴"):
                             break
                         elif result_lines:  # Continue collecting result
                             result_lines.append(result_line)
@@ -313,15 +310,14 @@ class ClaudeParser(Parser):
                     )
                 else:
                     # Text response - collect continuation lines
-                    text_content = stripped[1:].strip()  # Remove ⏺
+                    text_content = line[1:].strip()  # Remove ⏺
                     content_lines = [text_content] if text_content else []
                     i += 1
                     # Collect until next section marker
                     while i < len(lines):
-                        next_stripped = lines[i].strip()
-                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                        if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                             break
-                        if next_stripped:
+                        if lines[i].strip():
                             content_lines.append(lines[i])
                         i += 1
 
