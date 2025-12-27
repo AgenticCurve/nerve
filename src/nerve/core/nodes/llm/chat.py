@@ -1,0 +1,392 @@
+"""LLMChatNode - stateful conversation node with tool support.
+
+LLMChatNode wraps a SingleShotLLMNode (OpenRouterNode, GLMNode, etc.) and adds:
+- Conversation history (messages array persists across execute() calls)
+- System prompt support
+- Tool definitions and automatic tool call handling
+- Conversation persistence (save/load)
+
+This is the node to use for multi-turn conversations, agents, and tool use.
+For simple single-shot queries, use OpenRouterNode or GLMNode directly.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar, cast
+
+from nerve.core.nodes.base import NodeInfo, NodeState
+from nerve.core.nodes.context import ExecutionContext
+from nerve.core.nodes.llm.base import SingleShotLLMNode
+
+if TYPE_CHECKING:
+    from nerve.core.session.session import Session
+
+
+@dataclass
+class Message:
+    """A message in the conversation."""
+
+    role: str  # "system", "user", "assistant", "tool"
+    content: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None  # For assistant messages
+    tool_call_id: str | None = None  # For tool result messages
+    name: str | None = None  # Tool name for tool results
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API-compatible dict."""
+        msg: dict[str, Any] = {"role": self.role}
+        if self.content is not None:
+            msg["content"] = self.content
+        if self.tool_calls:
+            msg["tool_calls"] = self.tool_calls
+        if self.tool_call_id:
+            msg["tool_call_id"] = self.tool_call_id
+        if self.name:
+            msg["name"] = self.name
+        return msg
+
+
+@dataclass
+class ToolDefinition:
+    """Definition of an available tool."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]  # JSON Schema
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API-compatible dict (OpenAI format)."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
+# Type alias for tool executor function
+ToolExecutor = Callable[[str, dict[str, Any]], Awaitable[str]]
+
+
+@dataclass
+class LLMChatNode:
+    """Stateful conversation node built on top of stateless LLM node.
+
+    LLMChatNode maintains conversation state across execute() calls,
+    enabling multi-turn conversations and tool use.
+
+    Features:
+    - Automatic message history management
+    - System prompt support
+    - Tool definitions and automatic tool call loops
+    - Conversation persistence (save/load)
+    - Works with any SingleShotLLMNode (OpenRouterNode, GLMNode, etc.)
+
+    Args:
+        id: Unique identifier for this node.
+        session: Session to register this node with.
+        llm: The underlying stateless LLM node.
+        system: Optional system prompt.
+        tools: Optional list of tool definitions.
+        tool_executor: Optional async function to execute tools.
+            Signature: async def executor(name: str, args: dict) -> str
+        max_tool_rounds: Maximum tool call rounds before stopping (default: 10).
+        metadata: Additional metadata for the node.
+
+    Example:
+        >>> # Create underlying LLM node
+        >>> llm = OpenRouterNode(
+        ...     id="llm",
+        ...     session=session,
+        ...     api_key="sk-...",
+        ...     model="anthropic/claude-3-haiku",
+        ... )
+        >>>
+        >>> # Wrap in chat node
+        >>> chat = LLMChatNode(
+        ...     id="chat",
+        ...     session=session,
+        ...     llm=llm,
+        ...     system="You are a helpful coding assistant.",
+        ... )
+        >>>
+        >>> # Multi-turn conversation
+        >>> result1 = await chat.execute(ctx(input="What is Python?"))
+        >>> result2 = await chat.execute(ctx(input="Show me an example"))
+        >>> # result2 has full context from result1
+    """
+
+    node_type: ClassVar[str] = "llm_chat"
+
+    # Required fields
+    id: str
+    session: Session
+    llm: SingleShotLLMNode
+
+    # Conversation configuration
+    system: str | None = None
+    tools: list[ToolDefinition] = field(default_factory=list)
+    tool_executor: ToolExecutor | None = None
+    max_tool_rounds: int = 10
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Conversation state
+    messages: list[Message] = field(default_factory=list)
+
+    # Internal fields
+    persistent: bool = field(default=True, init=False)  # Chat nodes are persistent
+
+    def __post_init__(self) -> None:
+        """Validate and register with session."""
+        from nerve.core.validation import validate_name
+
+        # Validate node ID
+        validate_name(self.id, "node")
+
+        # Check for duplicates
+        if self.id in self.session.nodes:
+            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+
+        # Auto-register with session
+        self.session.nodes[self.id] = self
+
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
+        """Execute a conversation turn.
+
+        Args:
+            context: Execution context with input. Input should be a string
+                (user message) or can be None to continue after tool calls.
+
+        Returns:
+            Result dict with:
+            - success (bool): Whether the request succeeded
+            - content (str | None): Assistant's response
+            - tool_calls (list | None): Any tool calls made
+            - usage (dict | None): Token usage
+            - messages_count (int): Total messages in conversation
+            - error (str | None): Error message if failed
+        """
+        result: dict[str, Any] = {
+            "success": False,
+            "content": None,
+            "tool_calls": None,
+            "usage": None,
+            "messages_count": 0,
+            "error": None,
+        }
+
+        try:
+            # Add user message if input provided
+            if context.input is not None:
+                user_content = (
+                    context.input if isinstance(context.input, str) else str(context.input)
+                )
+                self.messages.append(Message(role="user", content=user_content))
+
+            # Execute with tool call loop
+            total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            rounds = 0
+
+            while rounds < self.max_tool_rounds:
+                rounds += 1
+
+                # Build request
+                request = self._build_request()
+
+                # Call underlying LLM
+                llm_result = await self.llm.execute(
+                    ExecutionContext(
+                        session=context.session or self.session,
+                        input=request,
+                    )
+                )
+
+                if not llm_result["success"]:
+                    result["error"] = llm_result.get("error")
+                    result["messages_count"] = len(self.messages)
+                    return result
+
+                # Accumulate usage
+                if llm_result.get("usage"):
+                    for key in total_usage:
+                        total_usage[key] += llm_result["usage"].get(key, 0)
+
+                # Parse tool calls from response
+                tool_calls = self._parse_tool_calls(llm_result)
+                content = llm_result.get("content")
+
+                # Add assistant message
+                self.messages.append(
+                    Message(
+                        role="assistant",
+                        content=content,
+                        tool_calls=tool_calls if tool_calls else None,
+                    )
+                )
+
+                # If no tool calls or no executor, we're done
+                if not tool_calls or not self.tool_executor:
+                    result["success"] = True
+                    result["content"] = content
+                    result["tool_calls"] = tool_calls
+                    result["usage"] = total_usage
+                    result["messages_count"] = len(self.messages)
+                    return result
+
+                # Execute tool calls and add results
+                for tc in tool_calls:
+                    tool_name = tc.get("function", {}).get("name", "")
+                    tool_args = tc.get("function", {}).get("arguments", {})
+                    tool_id = tc.get("id", "")
+
+                    # Parse arguments if they're a string
+                    if isinstance(tool_args, str):
+                        try:
+                            tool_args = json.loads(tool_args)
+                        except json.JSONDecodeError:
+                            tool_args = {"raw": tool_args}
+
+                    # Execute tool
+                    try:
+                        tool_result = await self.tool_executor(tool_name, tool_args)
+                    except Exception as e:
+                        tool_result = f"Error executing tool: {e}"
+
+                    # Add tool result message
+                    self.messages.append(
+                        Message(
+                            role="tool",
+                            content=tool_result,
+                            tool_call_id=tool_id,
+                            name=tool_name,
+                        )
+                    )
+
+                # Continue loop to get next response
+
+            # Max rounds reached
+            result["error"] = f"Max tool rounds ({self.max_tool_rounds}) reached"
+            result["messages_count"] = len(self.messages)
+
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {e}"
+            result["messages_count"] = len(self.messages)
+
+        return result
+
+    def _build_request(self) -> dict[str, Any]:
+        """Build API request from current conversation state."""
+        messages_list = []
+
+        # Add system message if present
+        if self.system:
+            messages_list.append({"role": "system", "content": self.system})
+
+        # Add conversation messages
+        for msg in self.messages:
+            messages_list.append(msg.to_dict())
+
+        request: dict[str, Any] = {"messages": messages_list}
+
+        # Add tools if defined
+        if self.tools:
+            request["tools"] = [t.to_dict() for t in self.tools]
+
+        return request
+
+    def _parse_tool_calls(self, llm_result: dict[str, Any]) -> list[dict[str, Any]] | None:
+        """Parse tool calls from LLM response.
+
+        Handles both OpenAI format (tool_calls in response) and
+        checking the raw response for tool_calls.
+        """
+        # Check for tool_calls in result
+        if "tool_calls" in llm_result and llm_result["tool_calls"]:
+            return cast(list[dict[str, Any]], llm_result["tool_calls"])
+
+        # Check raw response (some providers include it differently)
+        # This would need to be extended based on provider-specific formats
+        return None
+
+    def clear(self) -> None:
+        """Clear conversation history."""
+        self.messages.clear()
+
+    def get_messages(self) -> list[dict[str, Any]]:
+        """Get conversation messages as list of dicts."""
+        result = []
+        if self.system:
+            result.append({"role": "system", "content": self.system})
+        for msg in self.messages:
+            result.append(msg.to_dict())
+        return result
+
+    def save(self, path: Path | str) -> None:
+        """Save conversation to JSON file."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {
+            "id": self.id,
+            "system": self.system,
+            "messages": [msg.to_dict() for msg in self.messages],
+            "tools": [t.to_dict() for t in self.tools],
+        }
+
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def load(self, path: Path | str) -> None:
+        """Load conversation from JSON file."""
+        path = Path(path)
+
+        with open(path) as f:
+            data = json.load(f)
+
+        self.system = data.get("system")
+        self.messages = [
+            Message(
+                role=m["role"],
+                content=m.get("content"),
+                tool_calls=m.get("tool_calls"),
+                tool_call_id=m.get("tool_call_id"),
+                name=m.get("name"),
+            )
+            for m in data.get("messages", [])
+        ]
+
+    async def interrupt(self) -> None:
+        """Interrupt is a no-op for chat nodes."""
+        pass
+
+    async def close(self) -> None:
+        """Close the underlying LLM node."""
+        await self.llm.close()
+
+    def to_info(self) -> NodeInfo:
+        """Get node information."""
+        return NodeInfo(
+            id=self.id,
+            node_type=self.node_type,
+            state=NodeState.READY,
+            persistent=self.persistent,
+            metadata={
+                "llm_id": self.llm.id,
+                "llm_model": self.llm.model,
+                "system": self.system[:50] + "..."
+                if self.system and len(self.system) > 50
+                else self.system,
+                "messages_count": len(self.messages),
+                "tools_count": len(self.tools),
+                **self.metadata,
+            },
+        )
+
+    def __repr__(self) -> str:
+        return f"LLMChatNode(id={self.id!r}, llm={self.llm.id!r}, messages={len(self.messages)})"

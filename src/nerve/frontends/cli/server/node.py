@@ -10,7 +10,15 @@ from nerve.frontends.cli.utils import async_server_command, build_params, server
 from nerve.server.protocols import NODE_TYPE_TO_BACKEND
 
 # Node type choices for CLI (must match NODE_TYPE_TO_BACKEND keys)
-NODE_TYPE_CHOICES = ["PTYNode", "WezTermNode", "ClaudeWezTermNode"]
+NODE_TYPE_CHOICES = [
+    "PTYNode",
+    "WezTermNode",
+    "ClaudeWezTermNode",  # Terminal nodes
+    "BashNode",  # Ephemeral bash
+    "OpenRouterNode",
+    "GLMNode",  # Single-shot LLM
+    "LLMChatNode",  # Stateful chat
+]
 
 
 @server.group()
@@ -107,7 +115,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     "node_type",
     type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
-    help="Node type (PTYNode, WezTermNode, or ClaudeWezTermNode)",
+    help="Node type (persistent: PTYNode, WezTermNode, ClaudeWezTermNode; ephemeral: BashNode, OpenRouterNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
@@ -155,6 +163,68 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=False,
     help="Include request/response headers in debug logs (for research)",
 )
+# Ephemeral node options (BashNode, OpenRouterNode, GLMNode)
+@click.option(
+    "--cwd",
+    default=None,
+    help="Working directory (BashNode only)",
+)
+@click.option(
+    "--bash-timeout",
+    type=float,
+    default=None,
+    help="Execution timeout in seconds (BashNode only, default: 120.0)",
+)
+@click.option(
+    "--api-key",
+    default=None,
+    help="API key for LLM provider (LLM nodes: OpenRouterNode, GLMNode)",
+)
+@click.option(
+    "--llm-model",
+    default=None,
+    help="Model name, e.g., 'anthropic/claude-3-haiku' or 'glm-4.7' (LLM nodes)",
+)
+@click.option(
+    "--llm-base-url",
+    default=None,
+    help="Base URL for LLM API (LLM nodes, uses provider default if not set)",
+)
+@click.option(
+    "--llm-timeout",
+    type=float,
+    default=None,
+    help="Request timeout in seconds (LLM nodes, default: 120.0)",
+)
+@click.option(
+    "--llm-debug-dir",
+    default=None,
+    help="Directory for request/response debug logs (LLM nodes)",
+)
+@click.option(
+    "--thinking",
+    is_flag=True,
+    default=False,
+    help="Enable thinking/reasoning mode (GLMNode only)",
+)
+# LLMChatNode-specific options
+@click.option(
+    "--llm-provider",
+    type=click.Choice(["openrouter", "glm"]),
+    default=None,
+    help="LLM provider for chat node (LLMChatNode only)",
+)
+@click.option(
+    "--system",
+    default=None,
+    help="System prompt for chat node (LLMChatNode only)",
+)
+@click.option(
+    "--http-backend",
+    type=click.Choice(["aiohttp", "openai"]),
+    default="aiohttp",
+    help="HTTP backend for LLM nodes (aiohttp or openai SDK, default: aiohttp)",
+)
 @async_server_command
 async def node_create(
     name: str,
@@ -171,6 +241,20 @@ async def node_create(
     provider_debug_dir: str | None,
     transparent: bool,
     log_headers: bool,
+    # Ephemeral node options
+    cwd: str | None,
+    bash_timeout: float | None,
+    api_key: str | None,
+    llm_model: str | None,
+    llm_base_url: str | None,
+    llm_timeout: float | None,
+    llm_debug_dir: str | None,
+    thinking: bool,
+    # LLMChatNode options
+    llm_provider: str | None,
+    system: str | None,
+    # HTTP backend option
+    http_backend: str,
 ) -> None:
     """Create a new node.
 
@@ -225,6 +309,24 @@ async def node_create(
             --command "claude --dangerously-skip-permissions" \\
             --transparent \\
             --provider-debug-dir /tmp/proxy-logs
+
+    **Ephemeral nodes (BashNode - runs command once, auto-deletes):**
+
+        nerve server node create my-bash --server myproject \\
+            --type BashNode \\
+            --command "echo hello" \\
+            --cwd /tmp
+
+        nerve server node send my-bash "ls -la"
+
+    **Ephemeral nodes (OpenRouterNode - LLM API call, auto-deletes):**
+
+        nerve server node create my-llm --server myproject \\
+            --type OpenRouterNode \\
+            --api-key $OPENROUTER_API_KEY \\
+            --llm-model anthropic/claude-3-haiku
+
+        nerve server node send my-llm "What is 2+2?"
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -262,6 +364,49 @@ async def node_create(
         if api_format and node_type != "ClaudeWezTermNode":
             error_exit("Provider options require --type ClaudeWezTermNode")
 
+    # Validate ephemeral node options
+    if node_type == "BashNode":
+        # BashNode doesn't need special validation, uses command and cwd
+        pass
+    elif node_type in ("OpenRouterNode", "GLMNode"):
+        # Single-shot LLM nodes require api_key and llm_model
+        if not api_key:
+            error_exit(f"--api-key is required for {node_type}")
+        if not llm_model:
+            error_exit(f"--llm-model is required for {node_type}")
+        # --thinking only valid for GLMNode
+        if thinking and node_type != "GLMNode":
+            error_exit("--thinking is only valid for GLMNode")
+        # --llm-provider and --system are for LLMChatNode
+        if llm_provider:
+            error_exit("--llm-provider is only valid for LLMChatNode")
+    elif node_type == "LLMChatNode":
+        # Chat node requires api_key, llm_model, and llm_provider
+        if not api_key:
+            error_exit("--api-key is required for LLMChatNode")
+        if not llm_model:
+            error_exit("--llm-model is required for LLMChatNode")
+        if not llm_provider:
+            error_exit("--llm-provider is required for LLMChatNode (openrouter or glm)")
+        # --thinking only valid if provider is glm
+        if thinking and llm_provider != "glm":
+            error_exit("--thinking is only valid when --llm-provider is glm")
+    else:
+        # Non-LLM nodes shouldn't use LLM options
+        if api_key or llm_model or llm_base_url or llm_timeout:
+            error_exit(
+                "--api-key, --llm-model, --llm-base-url, --llm-timeout "
+                "are only valid for LLM nodes (OpenRouterNode, GLMNode, LLMChatNode)"
+            )
+        if thinking:
+            error_exit("--thinking is only valid for GLMNode or LLMChatNode with glm provider")
+        if llm_provider or system:
+            error_exit("--llm-provider and --system are only valid for LLMChatNode")
+        if cwd and node_type not in ("PTYNode", "WezTermNode", "ClaudeWezTermNode"):
+            error_exit("--cwd is only valid for BashNode and terminal nodes")
+        if bash_timeout:
+            error_exit("--bash-timeout is only valid for BashNode")
+
     # Map node type to wire protocol backend value
     backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")
 
@@ -277,6 +422,33 @@ async def node_create(
             params["command"] = command
         if pane_id:
             params["pane_id"] = pane_id
+        if cwd:
+            params["cwd"] = cwd
+
+        # Add BashNode options
+        if bash_timeout is not None:
+            params["bash_timeout"] = bash_timeout
+
+        # Add LLM node options (OpenRouterNode, GLMNode, LLMChatNode)
+        if api_key:
+            params["api_key"] = api_key
+        if llm_model:
+            params["llm_model"] = llm_model
+        if llm_base_url:
+            params["llm_base_url"] = llm_base_url
+        if llm_timeout is not None:
+            params["llm_timeout"] = llm_timeout
+        if llm_debug_dir:
+            params["llm_debug_dir"] = llm_debug_dir
+        if thinking:
+            params["llm_thinking"] = thinking
+        if llm_provider:
+            params["llm_provider"] = llm_provider
+        if system:
+            params["llm_system"] = system
+        # Add HTTP backend for LLM nodes
+        if http_backend != "aiohttp":  # Only send if not default
+            params["http_backend"] = http_backend
 
         # Add provider config if specified
         if api_format:

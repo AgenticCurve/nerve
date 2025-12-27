@@ -8,11 +8,15 @@ the Open/Closed Principle:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, Literal
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Node
+    from nerve.core.nodes.llm.base import SingleShotLLMNode
     from nerve.core.session import Session
+
+# HTTP backend type
+HttpBackend = Literal["aiohttp", "openai"]
 
 
 class NodeFactory:
@@ -34,7 +38,15 @@ class NodeFactory:
     """
 
     # Valid backends (immutable)
-    VALID_BACKENDS: ClassVar[tuple[str, ...]] = ("pty", "wezterm", "claude-wezterm")
+    VALID_BACKENDS: ClassVar[tuple[str, ...]] = (
+        "pty",
+        "wezterm",
+        "claude-wezterm",
+        "bash",
+        "openrouter",
+        "glm",
+        "llm-chat",
+    )
 
     async def create(
         self,
@@ -48,11 +60,26 @@ class NodeFactory:
         response_timeout: float = 1800.0,
         ready_timeout: float = 60.0,
         proxy_url: str | None = None,
+        # BashNode options
+        bash_timeout: float | None = None,
+        # LLM node options (OpenRouterNode, GLMNode)
+        api_key: str | None = None,
+        llm_model: str | None = None,
+        llm_base_url: str | None = None,
+        llm_timeout: float | None = None,
+        llm_debug_dir: str | None = None,
+        # GLMNode-specific options
+        llm_thinking: bool = False,
+        # LLMChatNode-specific options
+        llm_provider: str | None = None,  # "openrouter" or "glm"
+        llm_system: str | None = None,  # System prompt
+        # HTTP backend for LLM nodes
+        http_backend: HttpBackend = "aiohttp",
     ) -> Node:
         """Create a node of the specified backend type.
 
         Args:
-            backend: Node backend type ("pty", "wezterm", "claude-wezterm").
+            backend: Node backend type ("pty", "wezterm", "claude-wezterm", "bash", "openrouter", "glm", "llm-chat").
             session: Session to register node with.
             node_id: Node identifier.
             command: Command to run (e.g., "claude" or ["claude", "--flag"]).
@@ -62,6 +89,16 @@ class NodeFactory:
             response_timeout: Max wait for terminal response in seconds.
             ready_timeout: Max wait for terminal ready state in seconds.
             proxy_url: Proxy URL for claude-wezterm backend.
+            bash_timeout: Timeout for bash command execution (BashNode only).
+            api_key: API key for LLM provider (LLM nodes).
+            llm_model: Model name (LLM nodes).
+            llm_base_url: Base URL for LLM API (LLM nodes, uses provider default if None).
+            llm_timeout: Request timeout (LLM nodes).
+            llm_debug_dir: Directory for request/response logs (LLM nodes).
+            llm_thinking: Enable thinking/reasoning mode (GLMNode only).
+            llm_provider: LLM provider for chat node ("openrouter" or "glm").
+            llm_system: System prompt for chat node.
+            http_backend: HTTP backend for LLM nodes ("aiohttp" or "openai").
 
         Returns:
             The created node.
@@ -70,13 +107,23 @@ class NodeFactory:
             ValueError: If backend is unknown or invalid parameters.
         """
         # Deferred imports to avoid circular dependencies and for testability
+        from nerve.core.nodes.bash import BashNode
+        from nerve.core.nodes.llm import GLMNode, LLMChatNode, OpenRouterNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
             PTYNode,
             WezTermNode,
         )
 
-        node: PTYNode | WezTermNode | ClaudeWezTermNode
+        node: (
+            PTYNode
+            | WezTermNode
+            | ClaudeWezTermNode
+            | BashNode
+            | OpenRouterNode
+            | GLMNode
+            | LLMChatNode
+        )
 
         if backend == "pty":
             node = await PTYNode.create(
@@ -129,6 +176,100 @@ class NodeFactory:
                 response_timeout=response_timeout,
                 ready_timeout=ready_timeout,
                 proxy_url=proxy_url,
+            )
+        elif backend == "bash":
+            # BashNode is ephemeral - no lifecycle management
+            # Note: BashNode doesn't support history parameter
+            node = BashNode(
+                id=str(node_id),
+                session=session,
+                cwd=cwd,
+                timeout=bash_timeout or 120.0,
+            )
+        elif backend == "openrouter":
+            # OpenRouterNode is ephemeral - no lifecycle management
+            if not api_key:
+                raise ValueError("api_key is required for openrouter backend")
+            if not llm_model:
+                raise ValueError("llm_model is required for openrouter backend")
+
+            node = OpenRouterNode(
+                id=str(node_id),
+                session=session,
+                api_key=api_key,
+                model=llm_model,
+                base_url=llm_base_url,  # None uses provider default
+                timeout=llm_timeout or 120.0,
+                debug_dir=llm_debug_dir,
+                http_backend=http_backend,
+            )
+        elif backend == "glm":
+            # GLMNode is ephemeral - no lifecycle management
+            if not api_key:
+                raise ValueError("api_key is required for glm backend")
+            if not llm_model:
+                raise ValueError("llm_model is required for glm backend")
+
+            node = GLMNode(
+                id=str(node_id),
+                session=session,
+                api_key=api_key,
+                model=llm_model,
+                base_url=llm_base_url,  # None uses provider default
+                timeout=llm_timeout or 120.0,
+                debug_dir=llm_debug_dir,
+                thinking=llm_thinking,
+                http_backend=http_backend,
+            )
+        elif backend == "llm-chat":
+            # LLMChatNode is persistent - wraps a single-shot LLM node
+            if not api_key:
+                raise ValueError("api_key is required for llm-chat backend")
+            if not llm_model:
+                raise ValueError("llm_model is required for llm-chat backend")
+            if not llm_provider:
+                raise ValueError(
+                    "llm_provider is required for llm-chat backend (openrouter or glm)"
+                )
+
+            # Create underlying LLM node based on provider
+            # Use a unique ID for the inner node
+            inner_id = f"{node_id}-llm"
+            inner_llm: SingleShotLLMNode
+            if llm_provider == "openrouter":
+                inner_llm = OpenRouterNode(
+                    id=inner_id,
+                    session=session,
+                    api_key=api_key,
+                    model=llm_model,
+                    base_url=llm_base_url,
+                    timeout=llm_timeout or 120.0,
+                    debug_dir=llm_debug_dir,
+                    http_backend=http_backend,
+                )
+            elif llm_provider == "glm":
+                inner_llm = GLMNode(
+                    id=inner_id,
+                    session=session,
+                    api_key=api_key,
+                    model=llm_model,
+                    base_url=llm_base_url,
+                    timeout=llm_timeout or 120.0,
+                    debug_dir=llm_debug_dir,
+                    thinking=llm_thinking,
+                    http_backend=http_backend,
+                )
+            else:
+                raise ValueError(
+                    f"Unknown llm_provider: '{llm_provider}'. Use 'openrouter' or 'glm'"
+                )
+
+            # Create chat node wrapping the LLM
+            node = LLMChatNode(
+                id=str(node_id),
+                session=session,
+                llm=inner_llm,
+                system=llm_system,
             )
         else:
             raise ValueError(f"Unknown backend: '{backend}'. Valid backends: {self.VALID_BACKENDS}")

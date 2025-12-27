@@ -83,6 +83,7 @@ async def run_interactive(
         WezTermNode,
     )
     from nerve.core.nodes.bash import BashNode
+    from nerve.core.nodes.llm import OpenRouterNode
     from nerve.core.nodes.terminal import ClaudeWezTermNode
     from nerve.core.session import Session
 
@@ -135,6 +136,7 @@ async def run_interactive(
             "BashNode": BashNode,
             "FunctionNode": FunctionNode,
             "Graph": Graph,
+            "OpenRouterNode": OpenRouterNode,
             "PTYNode": PTYNode,
             "WezTermNode": WezTermNode,
             "ClaudeWezTermNode": ClaudeWezTermNode,

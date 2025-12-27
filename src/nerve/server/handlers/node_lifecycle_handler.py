@@ -10,7 +10,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from nerve.core.nodes import NodeState
 from nerve.server.protocols import Event, EventType
@@ -79,6 +79,23 @@ class NodeLifecycleHandler:
         ready_timeout = params.get("ready_timeout", 60.0)
         provider_dict = params.get("provider")
 
+        # Ephemeral node options
+        bash_timeout = params.get("bash_timeout")
+        api_key = params.get("api_key")
+        llm_model = params.get("llm_model")
+        llm_base_url = params.get("llm_base_url")
+        llm_timeout = params.get("llm_timeout")
+        llm_debug_dir = params.get("llm_debug_dir")
+        llm_thinking = params.get("llm_thinking", False)
+        # LLMChatNode options
+        llm_provider = params.get("llm_provider")
+        llm_system = params.get("llm_system")
+        # HTTP backend for LLM nodes
+        http_backend = cast(
+            Literal["aiohttp", "openai"],
+            params.get("http_backend", "aiohttp"),
+        )
+
         # Handle provider configuration and start proxy if needed
         proxy_url: str | None = None
         if provider_dict is not None:
@@ -102,6 +119,19 @@ class NodeLifecycleHandler:
                 response_timeout=response_timeout,
                 ready_timeout=ready_timeout,
                 proxy_url=proxy_url,
+                # Ephemeral node options
+                bash_timeout=bash_timeout,
+                api_key=api_key,
+                llm_model=llm_model,
+                llm_base_url=llm_base_url,
+                llm_timeout=llm_timeout,
+                llm_debug_dir=llm_debug_dir,
+                llm_thinking=llm_thinking,
+                # LLMChatNode options
+                llm_provider=llm_provider,
+                llm_system=llm_system,
+                # HTTP backend
+                http_backend=http_backend,
             )
         except Exception:
             # Cleanup proxy on failure
@@ -120,27 +150,31 @@ class NodeLifecycleHandler:
                     "backend": backend,
                     "pane_id": getattr(node, "pane_id", None),
                     "proxy_url": proxy_url,
+                    "persistent": node.persistent,
                 },
             )
         )
 
-        # Start monitoring (store task to prevent GC and enable cancellation)
-        task = asyncio.create_task(self._monitor_node(node))
-        self._monitoring_tasks[node.id] = task
+        # Only start monitoring for persistent nodes (PTYNode, WezTermNode, etc.)
+        # Ephemeral nodes (BashNode, OpenRouterNode) don't need lifecycle monitoring
+        if node.persistent:
+            # Start monitoring (store task to prevent GC and enable cancellation)
+            task = asyncio.create_task(self._monitor_node(node))
+            self._monitoring_tasks[node.id] = task
 
-        # Add done callback to handle exceptions and cleanup
-        def on_monitor_done(t: asyncio.Task[None]) -> None:
-            # Remove from tracking
-            self._monitoring_tasks.pop(node.id, None)
-            # Log any unhandled exceptions
-            try:
-                t.result()  # Raises if task failed
-            except asyncio.CancelledError:
-                pass  # Expected when node is deleted
-            except Exception as e:
-                logger.error(f"Monitoring task for node {node.id} failed: {e}", exc_info=True)
+            # Add done callback to handle exceptions and cleanup
+            def on_monitor_done(t: asyncio.Task[None]) -> None:
+                # Remove from tracking
+                self._monitoring_tasks.pop(node.id, None)
+                # Log any unhandled exceptions
+                try:
+                    t.result()  # Raises if task failed
+                except asyncio.CancelledError:
+                    pass  # Expected when node is deleted
+                except Exception as e:
+                    logger.error(f"Monitoring task for node {node.id} failed: {e}", exc_info=True)
 
-        task.add_done_callback(on_monitor_done)
+            task.add_done_callback(on_monitor_done)
 
         return {"node_id": node.id, "proxy_url": proxy_url}
 

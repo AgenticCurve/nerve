@@ -44,8 +44,15 @@
 │   │   ├── [L:  54] client.py
 │   │   └── [L:  40] server.py
 │   └── [L:  32] sample_graph.py
-├── [L:  24] Makefile
-├── [L:  89] pyproject.toml
+├── features/
+│   ├── glm/
+│   │   ├── [L: 214] glm_chat_node.py
+│   │   └── [L: 133] glm_node.py
+│   └── openrouter/
+│       ├── [L: 223] openrouter_chat_node.py
+│       └── [L: 162] openrouter_node.py
+├── [L:  36] Makefile
+├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
 │   ├── [L:  52] bump.py
@@ -61,7 +68,7 @@
 │   │   │   ├── [L:  67] models.py
 │   │   │   ├── [L: 149] parsing.py
 │   │   │   └── [L:  98] themes.py
-│   │   └── [L:1195] summarize_session.py
+│   │   └── [L:1199] summarize_session.py
 │   ├── [L:  85] run_anthropic_passthrough.py
 │   └── [L:  58] run_openai_proxy.py
 ├── src/
@@ -72,7 +79,7 @@
 │       ├── core/
 │       │   ├── [L: 178] __init__.py
 │       │   ├── nodes/
-│       │   │   ├── [L: 143] __init__.py
+│       │   │   ├── [L: 148] __init__.py
 │       │   │   ├── [L: 270] base.py
 │       │   │   ├── [L: 271] bash.py
 │       │   │   ├── [L: 190] budget.py
@@ -85,6 +92,12 @@
 │       │   │   │   ├── [L: 712] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
+│       │   │   ├── llm/
+│       │   │   │   ├── [L:  68] __init__.py
+│       │   │   │   ├── [L: 575] base.py
+│       │   │   │   ├── [L: 392] chat.py
+│       │   │   │   ├── [L: 135] glm.py
+│       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
@@ -129,15 +142,15 @@
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 340] core.py
+│       │   │   │   ├── [L: 342] core.py
 │       │   │   │   ├── [L:  83] display.py
-│       │   │   │   ├── [L:  83] file_runner.py
+│       │   │   │   ├── [L:  85] file_runner.py
 │       │   │   │   ├── [L: 486] registry.py
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 684] node.py
+│       │   │   │   ├── [L: 856] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -169,17 +182,17 @@
 │       │   ├── [L: 295] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 136] node_factory.py
+│       │   │   └── [L: 277] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
-│       │   │   ├── [L: 287] node_interaction_handler.py
-│       │   │   ├── [L: 364] node_lifecycle_handler.py
-│       │   │   ├── [L: 249] python_executor.py
+│       │   │   ├── [L: 340] node_interaction_handler.py
+│       │   │   ├── [L: 398] node_lifecycle_handler.py
+│       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   └── [L: 169] session_handler.py
-│       │   ├── [L: 162] protocols.py
+│       │   ├── [L: 166] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -208,6 +221,9 @@
     │   │   └── [L: 103] sample_pane_05.txt
     │   ├── nodes/
     │   │   ├── [L:   1] __init__.py
+    │   │   ├── llm/
+    │   │   │   ├── [L:   1] __init__.py
+    │   │   │   └── [L: 493] test_openrouter.py
     │   │   ├── [L: 209] test_base.py
     │   │   ├── [L: 206] test_bash.py
     │   │   ├── [L: 231] test_budget.py
@@ -255,4 +271,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-53 directories, 203 files, 41,966 total lines
+58 directories, 214 files, 44,902 total lines
