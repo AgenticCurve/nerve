@@ -237,8 +237,10 @@ def parse_conversation(data: dict) -> Conversation:
 
 def load_conversation(log_dir: Path) -> Conversation:
     for name in ["1_request.json", "1_anthropic_request.json"]:
-        if (f := log_dir / name).exists():
-            return parse_conversation(json.load(open(f)))
+        f = log_dir / name
+        if f.exists():
+            with open(f, encoding="utf-8") as fp:
+                return parse_conversation(json.load(fp))
     raise FileNotFoundError(f"No request file found in {log_dir}")
 
 

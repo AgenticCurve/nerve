@@ -48,18 +48,18 @@
 ├── scripts/
 │   ├── [L:  52] bump.py
 │   ├── proxy/
-│   │   ├── [L: 979] browse_conversation.py
+│   │   ├── [L: 981] browse_conversation.py
 │   │   ├── [L:1167] browse_file_operations.py
 │   │   ├── [L: 510] dump_request.py
 │   │   ├── shared/
 │   │   │   ├── [L:  44] __init__.py
 │   │   │   ├── [L:  23] cli.py
 │   │   │   ├── [L:  16] colors.py
-│   │   │   ├── [L:  70] formatting.py
+│   │   │   ├── [L:  74] formatting.py
 │   │   │   ├── [L:  62] models.py
 │   │   │   ├── [L: 149] parsing.py
 │   │   │   └── [L:  98] themes.py
-│   │   └── [L:1186] summarize_session.py
+│   │   └── [L:1198] summarize_session.py
 │   ├── [L:  85] run_anthropic_passthrough.py
 │   └── [L:  58] run_openai_proxy.py
 ├── src/
@@ -253,4 +253,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-52 directories, 202 files, 40,969 total lines
+52 directories, 202 files, 40,987 total lines

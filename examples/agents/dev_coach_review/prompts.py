@@ -76,7 +76,7 @@ YOUR ROLE:
 - Write clean, well-tested code
 - Follow existing patterns in the codebase
 - Ensure ALL PHASES are completed (ALL MEANS ALL)
-- Make a clean break (no backward compatibility). Enusre there's no feature regression.
+- Make a clean break (no backward compatibility). Ensure there's no feature regression.
 
 You are working with a Coach who will review your work.
 If you are stuck, ask the Coach for help. Coach will help you make decisions.
@@ -96,7 +96,7 @@ Please:
 3. Run tests if applicable
 4. Summarize what you changed
 - Ensure ALL PHASES are completed (ALL MEANS ALL)
-- Make a clean break (no backward compatibility). Enusre there's no feature regression.
+- Make a clean break (no backward compatibility). Ensure there's no feature regression.
 
 Remember: You are the ONLY one who can modify code."""
 

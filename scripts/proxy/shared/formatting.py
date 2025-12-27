@@ -14,8 +14,12 @@ def truncate(text: str, max_len: int, indicator: str = "...") -> str:
     Returns:
         Truncated text with indicator, or original if under max_len.
     """
+    if max_len <= 0:
+        return ""
     if len(text) <= max_len:
         return text
+    if max_len <= len(indicator):
+        return indicator[:max_len]
     return text[: max_len - len(indicator)] + indicator
 
 

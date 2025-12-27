@@ -73,14 +73,14 @@ def parse_conversation(log_dir: Path) -> list[Turn]:
     anthropic_request_file = log_dir / "1_anthropic_request.json"
 
     if messages_file.exists():
-        with open(messages_file) as f:
+        with open(messages_file, encoding="utf-8") as f:
             messages = json.load(f)
     elif request_file.exists():
-        with open(request_file) as f:
+        with open(request_file, encoding="utf-8") as f:
             data = json.load(f)
             messages = data.get("messages", [])
     elif anthropic_request_file.exists():
-        with open(anthropic_request_file) as f:
+        with open(anthropic_request_file, encoding="utf-8") as f:
             data = json.load(f)
             messages = data.get("messages", [])
     else:
@@ -170,7 +170,7 @@ def get_full_tree(root: Path, file_ops: dict[str, FileOperation], max_depth: int
         try:
             normalized = str(Path(fp).resolve())
             normalized_ops[normalized] = op
-        except Exception:
+        except (OSError, ValueError):
             normalized_ops[fp] = op
 
     def walk_dir(dir_path: Path, current_tree: dict, depth: int):

@@ -48,7 +48,7 @@ Review the PRD and see if something is missing.
 Essentially we want to break engine.py into small files/classes while ensuring
 no feature regression.
 
-Make sure the PRD proposes a clean break with no backward compatability.
+Make sure the PRD proposes a clean break with no backward compatibility.
 
 PRD can be found here: docs/prd/engine-architectural-refactoring.md
 

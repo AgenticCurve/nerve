@@ -215,7 +215,7 @@ def detect_request_type(log_dir: Path, preview: str) -> tuple[RequestType, str, 
         return "UNKNOWN", "", "", "", False
 
     try:
-        with open(request_file) as f:
+        with open(request_file, encoding="utf-8") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
         return "UNKNOWN", "", "", "", False
@@ -670,7 +670,11 @@ class SessionExplorer:
                 return False
 
             # Check if anything changed (compare request count and last seq)
-            if len(requests) == len(self.requests) and requests[-1].seq == self.requests[-1].seq:
+            if (
+                self.requests  # Ensure not empty before accessing [-1]
+                and len(requests) == len(self.requests)
+                and requests[-1].seq == self.requests[-1].seq
+            ):
                 return False
 
             clusters = group_into_clusters(requests, window_seconds=self.window_seconds)
@@ -963,7 +967,6 @@ class SessionExplorer:
 
                 icon = "▼ " if is_expanded else "▶ "
                 req_count = len(self._get_filtered_requests(cluster.requests))
-                key = truncate_oneline(cluster.get_grouping_key(), 50)
 
                 line = (
                     f"{indent}{icon}Cluster {cluster.number} ({cluster.time_str}, {req_count} reqs)"

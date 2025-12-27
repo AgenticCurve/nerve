@@ -137,13 +137,13 @@ def load_request_file(log_dir: Path) -> dict | None:
     for name in ["1_request.json", "1_anthropic_request.json"]:
         path = log_dir / name
         if path.exists():
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return json.load(f)
 
     # Also check for messages-only format
     messages_file = log_dir / "1_messages.json"
     if messages_file.exists():
-        with open(messages_file) as f:
+        with open(messages_file, encoding="utf-8") as f:
             return {"messages": json.load(f)}
 
     return None

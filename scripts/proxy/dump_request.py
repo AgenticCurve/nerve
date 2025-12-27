@@ -354,13 +354,13 @@ def read_log_directory(log_dir: Path) -> None:
     response_events = log_dir / "2_response_events.json"
 
     if anthropic_req.exists():
-        with open(anthropic_req) as f:
+        with open(anthropic_req, encoding="utf-8") as f:
             print_anthropic_request(json.load(f))
         if openai_req.exists():
-            with open(openai_req) as f:
+            with open(openai_req, encoding="utf-8") as f:
                 print_openai_request(json.load(f))
         if response_chunks.exists():
-            with open(response_chunks) as f:
+            with open(response_chunks, encoding="utf-8") as f:
                 chunks = json.load(f)
                 if chunks:
                     print_response_chunks(chunks)
@@ -368,10 +368,10 @@ def read_log_directory(log_dir: Path) -> None:
                     print(f"\n{C.DIM}[No response chunks]{C.RESET}")
 
     elif request.exists():
-        with open(request) as f:
+        with open(request, encoding="utf-8") as f:
             print_anthropic_request(json.load(f))
         if response_events.exists():
-            with open(response_events) as f:
+            with open(response_events, encoding="utf-8") as f:
                 events = json.load(f)
                 if events:
                     print_sse_response(events)
@@ -383,7 +383,7 @@ def read_log_directory(log_dir: Path) -> None:
 
 def read_single_file(file_path: Path) -> None:
     """Read and format a single JSON file."""
-    with open(file_path) as f:
+    with open(file_path, encoding="utf-8") as f:
         data = json.load(f)
 
     name = file_path.name
