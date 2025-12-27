@@ -45,12 +45,12 @@
 │   │   └── [L:  40] server.py
 │   └── [L:  32] sample_graph.py
 ├── [L:  24] Makefile
-├── [L:  88] pyproject.toml
+├── [L:  89] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
 │   ├── [L:  52] bump.py
 │   ├── proxy/
-│   │   ├── [L: 984] browse_conversation.py
+│   │   ├── [L:1200] browse_conversation.py
 │   │   ├── [L:1167] browse_file_operations.py
 │   │   ├── [L: 510] dump_request.py
 │   │   ├── shared/
@@ -137,7 +137,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 649] node.py
+│       │   │   │   ├── [L: 684] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -149,7 +149,7 @@
 │       │       └── [L: 372] client.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
-│       │   ├── [L: 357] anthropic_proxy.py
+│       │   ├── [L: 638] anthropic_proxy.py
 │       │   ├── clients/
 │       │   │   ├── [L:  23] __init__.py
 │       │   │   └── [L: 450] llm_client.py
@@ -174,13 +174,13 @@
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
 │       │   │   ├── [L: 287] node_interaction_handler.py
-│       │   │   ├── [L: 356] node_lifecycle_handler.py
+│       │   │   ├── [L: 364] node_lifecycle_handler.py
 │       │   │   ├── [L: 249] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   └── [L: 169] session_handler.py
 │       │   ├── [L: 162] protocols.py
-│       │   ├── [L: 466] proxy_manager.py
+│       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
 │       └── transport/
@@ -255,4 +255,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-53 directories, 203 files, 41,413 total lines
+53 directories, 203 files, 41,966 total lines

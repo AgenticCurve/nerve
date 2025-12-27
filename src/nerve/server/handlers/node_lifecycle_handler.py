@@ -169,7 +169,13 @@ class NodeLifecycleHandler:
             raise ValueError("provider config is only supported for claude-wezterm backend")
 
         # Validate required keys are present
-        required_keys = ["api_format", "base_url", "api_key"]
+        is_transparent = provider_dict.get("transparent", False)
+        if is_transparent:
+            # Transparent mode: only api_format and base_url required
+            required_keys = ["api_format", "base_url"]
+        else:
+            # Normal mode: api_key is also required
+            required_keys = ["api_format", "base_url", "api_key"]
         missing = [k for k in required_keys if k not in provider_dict]
         if missing:
             raise ValueError(
@@ -181,9 +187,11 @@ class NodeLifecycleHandler:
         provider_config = ProviderConfig(
             api_format=provider_dict["api_format"],
             base_url=provider_dict["base_url"],
-            api_key=provider_dict["api_key"],
+            api_key=provider_dict.get("api_key") or "",  # Empty for transparent mode
             model=provider_dict.get("model"),
             debug_dir=provider_dict.get("debug_dir"),
+            transparent=is_transparent,
+            log_headers=provider_dict.get("log_headers", False),
         )
 
         # Determine debug directory for request/response logs
