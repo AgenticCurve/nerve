@@ -512,7 +512,6 @@ class AnthropicProxyServer:
         forward_headers: dict[str, str] | None = None,
     ) -> web.Response:
         """Handle non-streaming response."""
-        from aiohttp import web
 
         url = f"{self.config.upstream_base_url}/v1/messages"
 

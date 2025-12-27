@@ -260,7 +260,15 @@ def parse_response_events(events_file: Path) -> dict | None:
         return None
 
     with open(events_file, encoding="utf-8") as fp:
-        lines = json.load(fp)
+        raw_data = json.load(fp)
+
+    # Handle both formats: flat list or {headers, events} wrapper
+    if isinstance(raw_data, dict) and "events" in raw_data:
+        lines = raw_data["events"]
+    elif isinstance(raw_data, list):
+        lines = raw_data
+    else:
+        return None
 
     # Parse event/data pairs
     content_blocks: list[dict] = []
@@ -336,9 +344,17 @@ def parse_openai_response_chunks(chunks_file: Path) -> dict | None:
         return None
 
     with open(chunks_file, encoding="utf-8") as fp:
-        chunks = json.load(fp)
+        raw_data = json.load(fp)
 
-    if not isinstance(chunks, list):
+    # Handle both formats: flat list or {headers, events/chunks} wrapper
+    if isinstance(raw_data, dict):
+        chunks = raw_data.get("events") or raw_data.get("chunks") or []
+    elif isinstance(raw_data, list):
+        chunks = raw_data
+    else:
+        return None
+
+    if not chunks:
         return None
 
     # Accumulate text and tool calls
@@ -406,6 +422,10 @@ def load_conversation(log_dir: Path) -> Conversation:
 
     if data is None:
         raise FileNotFoundError(f"No request file found in {log_dir}")
+
+    # Normalize structure: some formats have {headers, body} wrapper
+    if "body" in data and "messages" in data.get("body", {}):
+        data = data["body"]
 
     # Load and append response if available (check multiple formats)
     response_files = [
