@@ -304,7 +304,10 @@ class ConversationExplorer:
                     results.append(i)
                 elif nested and name.startswith("TOOL"):
                     # Deep search in tool - find tool index
-                    tool_idx = int(name.split("#")[1].split(":")[0]) - 1 if "#" in name else 0
+                    try:
+                        tool_idx = int(name.split("#")[1].split(":")[0]) - 1 if "#" in name else 0
+                    except (ValueError, IndexError):
+                        tool_idx = 0
                     if tool_idx < len(self.selected_turn.tool_calls):
                         if self.selected_turn.tool_calls[tool_idx].matches_search(q, nested=True):
                             results.append(i)

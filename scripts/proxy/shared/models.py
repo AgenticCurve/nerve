@@ -26,14 +26,19 @@ class ToolCall:
 
     def summary(self) -> str:
         """Generate a brief summary of the tool call."""
+
+        def _get_path(key: str) -> str:
+            val = self.args.get(key)
+            return Path(val).name if val else "?"
+
         extractors = {
-            "Edit": lambda: f"Edit -> {Path(self.args.get('file_path', '?')).name}",
-            "Read": lambda: f"Read -> {Path(self.args.get('file_path', '?')).name}",
-            "Write": lambda: f"Write -> {Path(self.args.get('file_path', '?')).name}",
-            "Bash": lambda: f"Bash -> {self.args.get('command', '?')[:40]}",
-            "Grep": lambda: f'Grep -> "{self.args.get("pattern", "?")[:20]}"',
-            "Glob": lambda: f"Glob -> {self.args.get('pattern', '?')[:30]}",
-            "Task": lambda: f"Task -> {self.args.get('description', '?')[:30]}",
+            "Edit": lambda: f"Edit -> {_get_path('file_path')}",
+            "Read": lambda: f"Read -> {_get_path('file_path')}",
+            "Write": lambda: f"Write -> {_get_path('file_path')}",
+            "Bash": lambda: f"Bash -> {(self.args.get('command') or '?')[:40]}",
+            "Grep": lambda: f'Grep -> "{(self.args.get("pattern") or "?")[:20]}"',
+            "Glob": lambda: f"Glob -> {(self.args.get('pattern') or '?')[:30]}",
+            "Task": lambda: f"Task -> {(self.args.get('description') or '?')[:30]}",
             "TodoWrite": lambda: "TodoWrite -> updated todos",
         }
         return extractors.get(self.name, lambda: self.name)()

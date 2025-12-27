@@ -14,7 +14,7 @@ ROUNDS = 3
 # =============================================================================
 
 # Initial topic for the debate
-DEBATE_TOPIC = "Is Python better than JavaScript? Keep responses under 100 words."
+DEBATE_TOPIC = "Is Python better than JavaScript?"
 
 # Prompt template for Python advocate
 PYTHON_ADVOCATE_PROMPT = "[Round {round_num}] You're arguing FOR Python. Opponent said: {message}. Keep it under 100 words."

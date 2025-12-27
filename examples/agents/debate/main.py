@@ -4,7 +4,7 @@
 This demonstrates two Claude instances debating each other.
 
 Usage:
-    python examples/agents/debate/main.py
+    python -m examples.agents.debate.main
 """
 
 import asyncio

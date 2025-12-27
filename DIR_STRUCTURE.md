@@ -1,4 +1,6 @@
 ./
+├── docs_for_agents/
+│   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
 │   ├── agents/
 │   │   ├── [L:  11] __init__.py
@@ -48,7 +50,7 @@
 ├── scripts/
 │   ├── [L:  52] bump.py
 │   ├── proxy/
-│   │   ├── [L: 981] browse_conversation.py
+│   │   ├── [L: 984] browse_conversation.py
 │   │   ├── [L:1167] browse_file_operations.py
 │   │   ├── [L: 510] dump_request.py
 │   │   ├── shared/
@@ -56,7 +58,7 @@
 │   │   │   ├── [L:  23] cli.py
 │   │   │   ├── [L:  16] colors.py
 │   │   │   ├── [L:  74] formatting.py
-│   │   │   ├── [L:  62] models.py
+│   │   │   ├── [L:  67] models.py
 │   │   │   ├── [L: 149] parsing.py
 │   │   │   └── [L:  98] themes.py
 │   │   └── [L:1198] summarize_session.py
@@ -253,4 +255,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-52 directories, 202 files, 40,987 total lines
+53 directories, 203 files, 41,218 total lines

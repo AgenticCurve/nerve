@@ -125,7 +125,7 @@ COACH_LOOP_PROMPT_TEMPLATE = """The Developer addressed your feedback:
 Dev has this bad habit of jumping ahead and writing unwanted things in PRD.
 Make sure the developer doesn't start coding or implementing anything yet.
 
-Give grades to dev on their work an clearly tell them what's missing.
+Give grades to dev on their work and clearly tell them what's missing.
 
 Review their updated work. If you are FULLY SATISFIED, respond with EXACTLY:
 "{acceptance_phrase}"

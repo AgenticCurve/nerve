@@ -142,7 +142,7 @@ COACH_LOOP_PROMPT_TEMPLATE = """The Developer addressed your feedback:
 Dev has this bad habit of jumping ahead and writing unwanted code.
 
 Ensure they add the wanted tests, refactor existing code for the new feature and no feature regression.
-Give grades to dev on their work an clearly tell them what's missing. Run tests as well.
+Give grades to dev on their work and clearly tell them what's missing. Run tests as well.
 
 Review their updated work. If you are FULLY SATISFIED, respond with EXACTLY:
 "{acceptance_phrase}"
