@@ -5,27 +5,18 @@ from __future__ import annotations
 import asyncio
 import os
 from code import compile_command
-from typing import Any
 
 from nerve.frontends.cli.repl.adapters import (
     LocalSessionAdapter,
     RemoteSessionAdapter,
     SessionAdapter,
 )
-from nerve.frontends.cli.repl.commands import (
-    handle_dry_local,
-    handle_dry_remote,
-    handle_read_local,
-    handle_read_remote,
-    handle_show_local,
-    handle_show_remote,
-    handle_validate_local,
-    handle_validate_remote,
-    print_history_repl,
+from nerve.frontends.cli.repl.registry import (
+    CommandAction,
+    CommandContext,
+    dispatch_command,
 )
-from nerve.frontends.cli.repl.display import print_help, print_nodes
 from nerve.frontends.cli.repl.state import REPLState
-from nerve.frontends.cli.utils import REMOTE_ERRORS
 
 # Guard against registering atexit handler multiple times
 _atexit_registered = False
@@ -99,12 +90,6 @@ async def run_interactive(
     adapter: SessionAdapter
     session: Session | None = None
     python_exec_enabled: bool
-    # Remote mode variables (only set when server_name is provided)
-    from nerve.transport import UnixSocketClient
-
-    remote_client: UnixSocketClient | None = None
-    remote_session_id: str | None = None
-    remote_server_name: str | None = None
 
     if server_name:
         # Server mode - connect to existing server
@@ -122,6 +107,8 @@ async def run_interactive(
             print("Error: Could not determine socket path for server")
             return
         try:
+            from nerve.transport import UnixSocketClient
+
             client = UnixSocketClient(socket_path)
             await client.connect()
             print("Connected!")
@@ -130,11 +117,7 @@ async def run_interactive(
             print(f"Make sure server is running: nerve server start --name {server_name}")
             return
 
-        remote_adapter = RemoteSessionAdapter(client, server_name, session_name)
-        adapter = remote_adapter
-        remote_client = client
-        remote_session_id = remote_adapter.session_id
-        remote_server_name = server_name
+        adapter = RemoteSessionAdapter(client, server_name, session_name)
         session_display = session_name or "default"
         print(f"Using session: {session_display}")
         python_exec_enabled = False
@@ -172,6 +155,14 @@ async def run_interactive(
     # Track current Graph
     current_graph: Graph | None = None
 
+    # Create command context
+    ctx = CommandContext(
+        adapter=adapter,
+        state=state,
+        session=session,
+        current_graph=current_graph,
+    )
+
     # Print startup message
     mode_str = f"Server: {server_name}" if server_name else f"Session: {adapter.name}"
     print("Nerve REPL")
@@ -179,15 +170,6 @@ async def run_interactive(
 
     buffer = ""
     interrupt_count = 0
-
-    from collections.abc import Coroutine
-    from typing import TypeVar
-
-    T = TypeVar("T")
-
-    async def run_async_operation(coro: Coroutine[Any, Any, T]) -> T:
-        """Helper to run async operations within the REPL."""
-        return await coro
 
     # Track if we should exit due to server disconnect
     server_disconnected = False
@@ -215,340 +197,30 @@ async def run_interactive(
                 parts = line.strip().split(maxsplit=2)
                 cmd = parts[0].lower() if parts else ""
 
-                if cmd == "help":
-                    print_help()
+                # Build command args from parts[1:]
+                cmd_args: list[str] = []
+                if len(parts) > 1:
+                    cmd_args.append(parts[1])
+                if len(parts) > 2:
+                    cmd_args.append(parts[2])
+
+                # Dispatch to command handler
+                result = await dispatch_command(ctx, cmd, cmd_args)
+                if result is not None:
+                    # Command was handled
+                    if result.action == CommandAction.BREAK:
+                        break
+                    elif result.action == CommandAction.DISCONNECT:
+                        server_disconnected = True
+                        break
+                    # Handle special case: reset command updates session/adapter
+                    if "new_session" in ctx.mutable:
+                        session = ctx.mutable.pop("new_session")
+                        adapter = LocalSessionAdapter(session)
+                        ctx.adapter = adapter
+                        ctx.session = session
+                        current_graph = ctx.current_graph
                     continue
-
-                elif cmd == "nodes":
-                    await print_nodes(adapter)
-                    continue
-
-                elif cmd == "graphs":
-                    try:
-                        graph_ids = await adapter.list_graphs()
-                        if graph_ids:
-                            print("\nGraphs:")
-                            for gid in graph_ids:
-                                print(f"  {gid}")
-                        else:
-                            print("No graphs defined")
-                    except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError):
-                        if not python_exec_enabled:  # Only for remote mode
-                            server_disconnected = True
-                            break
-                        raise
-                    continue
-
-                elif cmd == "session":
-                    try:
-                        # Refresh cached data before displaying
-                        await adapter.list_nodes()
-                        await adapter.list_graphs()
-
-                        print(f"\nSession: {adapter.name}")
-                        print(f"  ID: {adapter.id}")
-                        if hasattr(adapter, "server_name"):
-                            print(f"  Server: {adapter.server_name}")
-                        print(f"  Nodes: {adapter.node_count}")
-                        print(f"  Graphs: {adapter.graph_count}")
-                    except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError):
-                        if not python_exec_enabled:  # Only for remote mode
-                            server_disconnected = True
-                            break
-                        raise
-                    continue
-
-                elif cmd == "send":
-                    if len(parts) < 3:
-                        print("Usage: send <node> <text>")
-                        continue
-                    node_name = parts[1]
-                    text = parts[2]
-                    try:
-                        response = await adapter.execute_on_node(node_name, text)
-                        # Pretty print the response
-                        import json
-
-                        if isinstance(response, (dict, list)):
-                            print(json.dumps(response, indent=2))
-                        elif isinstance(response, str):
-                            # Try to parse as JSON/dict string
-                            try:
-                                # Try JSON first
-                                parsed = json.loads(response)
-                                print(json.dumps(parsed, indent=2))
-                            except (json.JSONDecodeError, ValueError):
-                                # Try eval as Python literal (safer than eval)
-                                try:
-                                    import ast
-
-                                    parsed = ast.literal_eval(response)
-                                    print(json.dumps(parsed, indent=2))
-                                except (ValueError, SyntaxError):
-                                    # Not JSON or dict, print as-is
-                                    print(response)
-                        else:
-                            print(response)
-                    except (
-                        ConnectionError,
-                        ConnectionResetError,
-                        BrokenPipeError,
-                        RuntimeError,
-                    ) as e:
-                        if not python_exec_enabled:  # Only for remote mode
-                            server_disconnected = True
-                            break
-                        print(f"Error: {e}")
-                    except Exception as e:
-                        print(f"Error: {e}")
-                    continue
-
-                elif cmd == "read":
-                    if len(parts) < 2:
-                        print("Usage: read <node>")
-                        continue
-
-                    node_name = parts[1]
-
-                    if not python_exec_enabled:
-                        # SERVER MODE
-                        assert remote_client is not None
-                        try:
-                            await handle_read_remote(remote_client, remote_session_id, node_name)
-                        except REMOTE_ERRORS:
-                            server_disconnected = True
-                            break
-                    else:
-                        # LOCAL MODE
-                        await handle_read_local(session, node_name)
-                    continue
-
-                elif cmd == "stop":
-                    # Local mode only - needs direct node access
-                    if not python_exec_enabled:
-                        print("Command not available in server mode")
-                        continue
-                    if len(parts) < 2:
-                        print("Usage: stop <node>")
-                        continue
-                    node_name = parts[1]
-                    node = session.get_node(node_name) if session else None
-                    if not node:
-                        print(f"Node not found: {node_name}")
-                        continue
-                    if hasattr(node, "stop"):
-                        try:
-                            await run_async_operation(node.stop())
-                            print(f"Stopped: {node_name}")
-                        except Exception as e:
-                            print(f"Error: {e}")
-                    else:
-                        print("Node does not support stop")
-                    continue
-
-                elif cmd == "delete":
-                    if len(parts) < 2:
-                        print("Usage: delete <node>")
-                        continue
-                    node_name = parts[1]
-                    try:
-                        success = await adapter.delete_node(node_name)
-                        if success:
-                            print(f"Deleted: {node_name}")
-                        else:
-                            print(f"Node not found: {node_name}")
-                    except Exception as e:
-                        print(f"Error: {e}")
-                    continue
-
-                elif cmd == "history":
-                    # Works in both local and server mode
-                    if len(parts) < 2:
-                        print("Usage: history <node> [--last N] [--op TYPE] [--summary]")
-                        continue
-
-                    node_name = parts[1]
-
-                    # Parse optional flags
-                    args = parts[2:] if len(parts) > 2 else []
-                    last = None
-                    op = None
-                    summary = False
-
-                    i = 0
-                    while i < len(args):
-                        if args[i] == "--last" and i + 1 < len(args):
-                            try:
-                                last = int(args[i + 1])
-                                i += 2
-                            except ValueError:
-                                print(f"Invalid --last value: {args[i + 1]}")
-                                break
-                        elif args[i] == "--op" and i + 1 < len(args):
-                            op = args[i + 1]
-                            i += 2
-                        elif args[i] == "--summary":
-                            summary = True
-                            i += 1
-                        else:
-                            i += 1
-
-                    # Import here to avoid circular deps
-                    from nerve.core.nodes.history import HistoryReader
-
-                    try:
-                        # Determine server and session names
-                        if python_exec_enabled:
-                            # Local mode
-                            server = session.server_name if session else "repl"
-                            sess = session.name if session else "default"
-                        else:
-                            # Server mode
-                            server = remote_server_name or "unknown"
-                            sess = adapter.name
-
-                        # Try to read history
-                        reader = HistoryReader.create(
-                            node_id=node_name,
-                            server_name=server,
-                            session_name=sess,
-                        )
-
-                        # Get entries
-                        if op:
-                            entries = reader.get_by_op(op)
-                        else:
-                            entries = reader.get_all()
-
-                        # Apply limit
-                        if last is not None and last < len(entries):
-                            entries = entries[-last:]
-
-                        if not entries:
-                            print("No history entries found")
-                            continue
-
-                        # Display
-                        print_history_repl(entries, summary, node_name, server, sess)
-
-                    except FileNotFoundError:
-                        print(f"No history found for node '{node_name}'")
-                    except Exception as e:
-                        print(f"Error reading history: {e}")
-                    continue
-
-                elif cmd == "reset":
-                    # Local mode only
-                    if not python_exec_enabled:
-                        print("Command not available in server mode")
-                        continue
-                    if session:
-                        await run_async_operation(session.stop())
-                    state.nodes.clear()
-                    # Recreate session
-                    session = Session(name="default", server_name="repl")
-                    state.namespace["session"] = session
-                    state.namespace["context"] = ExecutionContext(session=session)
-                    state.namespace["nodes"] = state.nodes
-                    # Update adapter
-                    adapter = LocalSessionAdapter(session)
-                    current_graph = None
-                    print("Session reset")
-                    continue
-
-                elif cmd == "show":
-                    # show [graph-name] - show specific graph or default 'graph' variable
-                    if not python_exec_enabled:
-                        # SERVER MODE
-                        assert remote_client is not None
-                        if len(parts) < 2:
-                            print("Usage: show <graph-name>")
-                            continue
-                        try:
-                            await handle_show_remote(remote_client, remote_session_id, parts[1])
-                        except REMOTE_ERRORS:
-                            server_disconnected = True
-                            break
-                    else:
-                        # LOCAL MODE
-                        graph_name = parts[1] if len(parts) > 1 else None
-                        await handle_show_local(adapter, state, current_graph, graph_name)
-                    continue
-
-                elif cmd == "validate":
-                    # validate [graph-name] - validate specific graph or default
-                    if not python_exec_enabled:
-                        # SERVER MODE
-                        assert remote_client is not None
-                        if len(parts) < 2:
-                            print("Usage: validate <graph-name>")
-                            continue
-                        try:
-                            await handle_validate_remote(remote_client, remote_session_id, parts[1])
-                        except REMOTE_ERRORS:
-                            server_disconnected = True
-                            break
-                    else:
-                        # LOCAL MODE
-                        graph_name = parts[1] if len(parts) > 1 else None
-                        await handle_validate_local(adapter, state, current_graph, graph_name)
-                    continue
-
-                elif cmd == "dry":
-                    # dry [graph-name] - dry run specific graph or default
-                    if not python_exec_enabled:
-                        # SERVER MODE
-                        assert remote_client is not None
-                        if len(parts) < 2:
-                            print("Usage: dry <graph-name>")
-                            continue
-                        try:
-                            await handle_dry_remote(remote_client, remote_session_id, parts[1])
-                        except REMOTE_ERRORS:
-                            server_disconnected = True
-                            break
-                    else:
-                        # LOCAL MODE
-                        graph_name = parts[1] if len(parts) > 1 else None
-                        await handle_dry_local(adapter, state, current_graph, graph_name)
-                    continue
-
-                elif cmd == "run":
-                    # run [graph-name] - run specific graph or default 'graph' variable
-                    # Only works in local mode (needs to execute graph)
-                    if not python_exec_enabled:
-                        print("Graph execution not available in server mode")
-                        print("Use server REPL commands instead")
-                        continue
-
-                    graph = None
-                    if len(parts) > 1:
-                        # run <graph-name> - look up from adapter
-                        graph_name = parts[1]
-                        graph = await adapter.get_graph(graph_name)
-                        if not graph:
-                            print(f"Graph not found: {graph_name}")
-                            continue
-                    else:
-                        # run - use 'graph' variable or current_graph
-                        graph = state.namespace.get("graph") or current_graph
-
-                    if graph:
-                        try:
-                            print("\nExecuting Graph...")
-                            context = ExecutionContext(session=session)
-                            results = await run_async_operation(graph.execute(context))
-                            state.namespace["_results"] = results
-                            print("\nResults stored in '_results'")
-                        except Exception as e:
-                            print(f"Error: {e}")
-                    else:
-                        print("No Graph defined")
-                    continue
-
-                elif cmd in ("exit", "quit"):
-                    print("Exiting...")
-                    break
 
             # Skip empty lines when not in multi-line mode
             if not buffer and not line.strip():
@@ -624,36 +296,20 @@ async def run_interactive(
                         # Track Graph
                         if "graph" in state.namespace:
                             current_graph = state.namespace["graph"]
+                            ctx.update_graph(current_graph)
 
                     except Exception as e:
                         print(f"Error: {e}")
                 else:
-                    # SERVER MODE - Send to server for execution
-                    assert remote_client is not None
+                    # SERVER MODE - Send to server for execution via adapter
+                    # RemoteSessionAdapter has execute_python; not in Protocol (local mode uses inline exec)
                     try:
-                        from nerve.server.protocols import Command, CommandType
+                        output, error = await ctx.adapter.execute_python(buffer, {})  # type: ignore[attr-defined]
 
-                        params = {"code": buffer}
-                        if remote_session_id:
-                            params["session_id"] = remote_session_id
-
-                        result = await remote_client.send_command(
-                            Command(
-                                type=CommandType.EXECUTE_PYTHON,
-                                params=params,
-                            )
-                        )
-
-                        if result.success and result.data:
-                            output = result.data.get("output", "")
-                            error = result.data.get("error")
-
-                            if error:
-                                print(f"Error: {error}")
-                            elif output:
-                                print(output, end="")
-                        else:
-                            print(f"Error: {result.error}")
+                        if error:
+                            print(f"Error: {error}")
+                        elif output:
+                            print(output, end="")
 
                     except (ConnectionError, ConnectionResetError, BrokenPipeError, RuntimeError):
                         server_disconnected = True
@@ -672,10 +328,11 @@ async def run_interactive(
         original_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         try:
+            is_local = ctx.adapter.supports_local_execution
             await cleanup_repl_resources(
-                adapter=adapter,
-                namespace=state.namespace if python_exec_enabled else None,
-                is_local_mode=python_exec_enabled,
+                adapter=ctx.adapter,
+                namespace=state.namespace if is_local else None,
+                is_local_mode=is_local,
                 server_disconnected=server_disconnected,
             )
         finally:

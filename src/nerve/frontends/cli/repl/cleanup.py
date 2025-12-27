@@ -16,13 +16,13 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from nerve.frontends.cli.repl.adapters import LocalSessionAdapter, RemoteSessionAdapter
+    from nerve.frontends.cli.repl.adapters import SessionAdapter
 
 logger = logging.getLogger(__name__)
 
 
 async def cleanup_repl_resources(
-    adapter: LocalSessionAdapter | RemoteSessionAdapter,
+    adapter: SessionAdapter,
     namespace: dict[str, Any] | None,
     is_local_mode: bool,
     server_disconnected: bool = False,
@@ -123,7 +123,7 @@ async def _cleanup_local_mode(namespace: dict[str, Any]) -> None:
 
 
 async def _cleanup_server_mode(
-    adapter: LocalSessionAdapter | RemoteSessionAdapter,
+    adapter: SessionAdapter,
 ) -> None:
     """Clean up server mode by stopping the adapter.
 

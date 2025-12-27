@@ -61,7 +61,7 @@
 │   │   │   ├── [L:  67] models.py
 │   │   │   ├── [L: 149] parsing.py
 │   │   │   └── [L:  98] themes.py
-│   │   └── [L:1198] summarize_session.py
+│   │   └── [L:1195] summarize_session.py
 │   ├── [L:  85] run_anthropic_passthrough.py
 │   └── [L:  58] run_openai_proxy.py
 ├── src/
@@ -125,14 +125,14 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 227] adapters.py
+│       │   │   │   ├── [L: 500] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
-│       │   │   │   ├── [L: 218] commands.py
-│       │   │   │   ├── [L: 683] core.py
+│       │   │   │   ├── [L: 340] core.py
 │       │   │   │   ├── [L:  83] display.py
 │       │   │   │   ├── [L:  83] file_runner.py
+│       │   │   │   ├── [L: 486] registry.py
 │       │   │   │   └── [L:  15] state.py
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
@@ -255,4 +255,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-53 directories, 203 files, 41,218 total lines
+53 directories, 203 files, 41,413 total lines
