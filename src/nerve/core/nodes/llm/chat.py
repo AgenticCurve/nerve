@@ -365,6 +365,30 @@ class LLMChatNode:
         """Interrupt is a no-op for chat nodes."""
         pass
 
+    async def stop(self) -> None:
+        """Stop the chat node and clean up the inner LLM node.
+
+        This method:
+        1. Removes the inner LLM node from the session registry
+        2. Closes the inner LLM node's HTTP resources
+        3. Removes this chat node from the session registry
+
+        This ensures that when a chat node is deleted, the inner LLM node
+        (created by NodeFactory with id "{node_id}-llm") is also properly
+        cleaned up and doesn't remain orphaned in session.nodes.
+        """
+        # Clean up inner LLM node
+        inner_id = self.llm.id
+        if inner_id in self.session.nodes:
+            self.session.nodes.pop(inner_id)
+
+        # Close HTTP resources on inner node
+        await self.llm.close()
+
+        # Remove self from session if still registered
+        if self.id in self.session.nodes:
+            self.session.nodes.pop(self.id)
+
     async def close(self) -> None:
         """Close the underlying LLM node."""
         await self.llm.close()
