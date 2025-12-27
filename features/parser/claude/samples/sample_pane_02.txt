@@ -1,0 +1,432 @@
+⏺ Explore(Explore parsers module structure)
+  ⎿  Prompt:
+       Explore the parsers in the codebase, particularly in src/nerve/core/parsers/. Identify what parsers exist, what they parse (Claude, OpenAI, etc.), and how they're used in the system.
+  ⎿  > Explore the parsers in the codebase, particularly in src/nerve/core/parsers/. Identify what parsers exist, what they parse (Claude, OpenAI, etc.), and how they're used in the system.
+
+  ⎿  Bash(find /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers -type f -name "*.py" | head -20)
+     Waiting…
+  ⎿  Read(~/agentic-curve/projects/nerve)
+
+  ⎿  Error: EISDIR: illegal operation on a directory, read
+
+  ⎿  /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/none.py
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/claude.py
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/__init__.py
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/gemini.py
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/base.py
+  ⎿  Read(src/nerve/core/parsers/__init__.py)
+
+  ⎿  Read(src/nerve/core/parsers/base.py)
+
+  ⎿  Read(src/nerve/core/parsers/claude.py)
+
+  ⎿  Read(src/nerve/core/parsers/none.py)
+
+  ⎿  Read(src/nerve/core/parsers/gemini.py)
+
+  ⎿  Read 63 lines
+
+  ⎿  Read 57 lines
+
+  ⎿  Read 345 lines
+
+  ⎿  Read 85 lines
+
+  ⎿  Read 93 lines
+
+  ⎿  Search(pattern: "from nerve.core.parsers|import.*Parser|get_parser", path: "/Users/pb/agentic-curve/projects/nerve/src")
+
+  ⎿  Search(pattern: "Parser\(|ClaudeParser|GeminiParser|NoneParser", path: "/Users/pb/agentic-curve/projects/nerve/src")
+
+  ⎿    ⎿  Found 8 files
+          src/nerve/core/parsers/claude.py
+          src/nerve/frontends/cli/extract.py
+          src/nerve/frontends/cli/repl/cli.py
+          src/nerve/core/__init__.py
+          src/nerve/core/parsers/__init__.py
+          src/nerve/core/parsers/none.py
+          src/nerve/core/parsers/gemini.py
+          src/nerve/core/parsers/base.py
+  ⎿    ⎿  Found 18 files
+          src/nerve/core/parsers/claude.py
+          src/nerve/frontends/cli/extract.py
+          src/nerve/core/nodes/terminal/wezterm_node.py
+          src/nerve/core/nodes/terminal/pty_node.py
+          src/nerve/core/nodes/context.py
+          src/nerve/server/handlers/python_executor.py
+          src/nerve/server/handlers/node_interaction_handler.py
+          src/nerve/frontends/cli/repl/file_runner.py
+          src/nerve/frontends/cli/repl/core.py
+          src/nerve/core/nodes/terminal/claude_wezterm_node.py
+          src/nerve/core/nodes/graph/step.py
+          src/nerve/core/nodes/graph/graph.py
+          src/nerve/core/nodes/graph/builder.py
+          src/nerve/core/__init__.py
+          src/nerve/core/parsers/__init__.py
+          src/nerve/core/parsers/none.py
+          src/nerve/core/session/persistence.py
+          src/nerve/core/parsers/gemini.py
+  ⎿  Search(pattern: "class ParsedResponse|class ParserType|class Section", path: "/Users/pb/agentic-curve/projects/nerve/src/nerve/core")
+
+  ⎿    ⎿  Found 1 file
+          src/nerve/core/types.py
+  ⎿  Read(src/nerve/core/types.py)
+
+  ⎿  Read 173 lines
+
+  ⎿  Read(src/nerve/core/nodes/context.py)
+
+  ⎿  Read(src/nerve/frontends/cli/extract.py)
+
+  ⎿  Read 203 lines
+
+  ⎿  Read 346 lines
+
+  ⎿  Search(pattern: "get_parser|\.parse\(", path: "/Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal", output_mode: "content", head_limit: 40)
+
+  ⎿  Read(src/nerve/core/nodes/terminal/pty_node.py · lines 1-100)
+
+  ⎿  Read 100 lines
+
+  ⎿    ⎿  Found 10 lines
+          src/nerve/core/nodes/terminal/pty_node.py:15:from nerve.core.parsers import get_parser
+          src/nerve/core/nodes/terminal/pty_node.py:257:        parser_instance = get_parser(parser_type)
+          src/nerve/core/nodes/terminal/pty_node.py:288:        result = parser_instance.parse(new_output)
+          src/nerve/core/nodes/terminal/pty_node.py:334:        parser_instance = get_parser(parser_type)
+          src/nerve/core/nodes/terminal/pty_node.py:536:        parser = get_parser(parser_type)
+          src/nerve/core/nodes/terminal/wezterm_node.py:15:from nerve.core.parsers import get_parser
+          src/nerve/core/nodes/terminal/wezterm_node.py:418:        parser_instance = get_parser(parser_type)
+          src/nerve/core/nodes/terminal/wezterm_node.py:439:        result = parser_instance.parse(buffer)
+          src/nerve/core/nodes/terminal/wezterm_node.py:485:        parser_instance = get_parser(parser_type)
+          src/nerve/core/nodes/terminal/wezterm_node.py:647:        parser = get_parser(parser_type)
+  ⎿  Read(src/nerve/core/nodes/terminal/pty_node.py · lines 250-349)
+
+  ⎿  Read 100 lines
+
+  ⎿  Bash(grep -r "ParserType\." /Users/pb/agentic-curve/projects/nerve/src --include="*.py" | head -20)
+     Waiting…
+  ⎿  Bash(find /Users/pb/agentic-curve/projects/nerve -path "*/tests/*" -name "*parser*" -type f)
+     Waiting…
+  ⎿  /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/__init__.py:        ParserType.CLAUDE: ClaudeParser,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/__init__.py:        ParserType.GEMINI: GeminiParser,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/__init__.py:        ParserType.NONE: NoneParser,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/claude_wezterm_node.py:    _default_parser: ParserType = field(default=ParserType.CLAUDE, init=False)
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/claude_wezterm_node.py:        parser: ParserType = ParserType.CLAUDE,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:    _default_parser: ParserType = field(default=ParserType.NONE, init=False)
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        actual_parser = default_parser or ParserType.NONE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        actual_parser = default_parser or ParserType.NONE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        actual_parser = default_parser or ParserType.NONE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        is_claude = parser_type == ParserType.CLAUDE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        is_claude = parser_type == ParserType.CLAUDE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/wezterm_node.py:        parser_type: ParserType = ParserType.NONE,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:    _default_parser: ParserType = field(default=ParserType.NONE, init=False)
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:        actual_parser = default_parser or ParserType.NONE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:        is_claude = parser_type == ParserType.CLAUDE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:        is_claude = parser_type == ParserType.CLAUDE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:        parser_type: ParserType = ParserType.NONE,
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes/terminal/pty_node.py:        if parser_type == ParserType.CLAUDE:
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/session/persistence.py:            parser_type = ParserType.NONE
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/session/persistence.py:        ...     parser_type=ParserType.CLAUDE,
+  ⎿  /Users/pb/agentic-curve/projects/nerve/tests/core/test_parsers.py
+
+  ⎿  Read(tests/core/test_parsers.py)
+
+  ⎿  Read 503 lines
+
+  ⎿  Bash(find /Users/pb/agentic-curve/projects/nerve/src/nerve -type d -name "parsers" -o -type d -name "nodes" | head -10)
+     Waiting…
+  ⎿  Bash(ls -la /Users/pb/agentic-curve/projects/nerve/src/nerve/core/)
+     Waiting…
+  ⎿  total 40
+     -rw-r--r--@  1 pb  staff  4194 25 Dec 18:38 __init__.py
+     drwxr-xr-x@  5 pb  staff   160 28 Dec 01:49 __pycache__
+     drwx------@ 11 pb  staff   352 28 Dec 01:49 .
+     drwx------@ 11 pb  staff   352 28 Dec 01:49 ..
+     drwxr-xr-x@ 15 pb  staff   480 28 Dec 01:49 nodes
+     drwx------@  8 pb  staff   256 28 Dec 02:12 parsers
+     drwx------@  5 pb  staff   160 25 Dec 13:15 patterns
+     drwx------@  9 pb  staff   288 28 Dec 01:49 pty
+     drwx------@  7 pb  staff   224 28 Dec 01:49 session
+     -rw-r--r--@  1 pb  staff  5425 25 Dec 13:15 types.py
+     -rw-r--r--@  1 pb  staff  1766 23 Dec 18:41 validation.py
+  ⎿  /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/core/nodes
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/frontends/cli/server/.mypy_cache/3.12/nerve/core/parsers
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/frontends/cli/server/.mypy_cache/3.12/nerve/core/nodes
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/server/handlers/.mypy_cache/3.12/nerve/core/parsers
+     /Users/pb/agentic-curve/projects/nerve/src/nerve/server/handlers/.mypy_cache/3.12/nerve/core/nodes
+  ⎿  Read(src/nerve/core/__init__.py)
+
+  ⎿  Read 179 lines
+
+  ⎿  Response:
+       Perfect! Now I have comprehensive information. Let me create a detailed exploration report.
+
+       Parser Architecture Exploration Report
+
+       Overview
+
+       The Nerve codebase implements a parser abstraction layer in /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/ that converts AI CLI output into structured, typed data. The
+       system supports multiple AI providers through a unified interface.
+
+       ---
+       Parser System Architecture
+
+       Core Components
+
+       1. Base Parser (base.py)
+       - Abstract base class defining the parser protocol
+       - Two required abstract methods:
+         - is_ready(content: str) -> bool: Checks if CLI is waiting for input
+         - parse(content: str) -> ParsedResponse: Converts raw output to structured response
+       - Optional parse_incremental() for streaming/incremental parsing
+
+       2. Parser Registry (__init__.py)
+       - Factory function get_parser(parser_type: ParserType) -> Parser
+       - Supports three parser types via ParserType enum:
+         - ParserType.CLAUDE → ClaudeParser
+         - ParserType.GEMINI → GeminiParser
+         - ParserType.NONE → NoneParser
+
+       ---
+       Implemented Parsers
+
+       1. ClaudeParser (claude.py) - FULLY IMPLEMENTED
+
+       Purpose: Parses Claude Code CLI output (vim-like terminal UI)
+
+       Key Features:
+       - Detects ready state by checking for "esc to interrupt" or "esc to cancel" markers
+       - Extracts token counts from status lines
+       - Parses structured sections from output markers:
+         - ∴ Thinking… → "thinking" sections
+         - ⏺ ToolName(args) → "tool_call" sections with metadata
+         - ⎿ → Tool result lines
+         - ⏺ text → "text" sections
+
+       Output Markers:
+       ∴ Thinking…        # Thinking block marker
+       ⏺ ToolName(...)    # Tool call or text marker
+       ⎿ result           # Result/output from tools
+       -- INSERT --        # INSERT mode indicator (ready state)
+
+       Parsing Logic:
+       - Extracts response between last user prompt ("> text") and current prompt
+       - Handles conversation compaction markers ("Conversation compacted")
+       - Strips trailing rating prompts and status lines
+       - Organizes output into Section objects with metadata
+
+       Section Types Extracted:
+       - type="thinking" - Internal reasoning
+       - type="tool_call" - Tool invocations with metadata: tool (name), args (parameters)
+       - type="text" - User-facing text responses
+
+       Metadata Example:
+       Section(
+           type="tool_call",
+           content="... file contents ...",  # Tool result
+           metadata={
+               "tool": "Read",
+               "args": 'file_path="main.py"'
+           }
+       )
+
+       2. GeminiParser (gemini.py) - STUB/TODO
+
+       Status: Placeholder implementation waiting for Gemini CLI observation
+
+       Current Implementation:
+       - Basic ready-state detection (looks for prompts like ">", "gemini>", ">>>")
+       - Returns entire content as a single text section
+       - No structured parsing of tool calls or thinking blocks
+
+       TODO: Needs reverse engineering of actual Gemini CLI output format
+
+       3. NoneParser (none.py) - FULLY IMPLEMENTED
+
+       Purpose: No-op parser for raw/unstructured CLIs
+
+       Key Features:
+       - Returns entire content as-is without parsing
+       - Detects ready state by checking for common prompt patterns: >, >>>, $, %, #, ❯
+       - Strips ANSI escape codes before prompt detection
+       - Useful for: custom CLIs, shell sessions, debugging
+
+       ---
+       Output Data Types
+
+       ParsedResponse (defined in types.py)
+
+       @dataclass(frozen=True)
+       class ParsedResponse:
+           raw: str                      # Full raw output
+           sections: tuple[Section, ...] # Parsed sections
+           is_complete: bool            # Response complete flag
+           is_ready: bool               # CLI ready for input
+           tokens: int | None           # Token count (if available)
+
+           @property
+           def text(self) -> str  # Extracts only "text" type sections
+
+       Section (defined in types.py)
+
+       @dataclass(frozen=True)
+       class Section:
+           type: str                           # "thinking", "tool_call", "text"
+           content: str                        # Text content
+           metadata: dict[str, Any]            # Additional data (tool, args, etc.)
+
+           @property
+           def tool(self) -> str | None        # For tool_call sections
+           @property
+           def args(self) -> str | None        # For tool_call sections
+           @property
+           def result(self) -> str | None      # Tool result from content
+
+       ---
+       Integration Points in the System
+
+       1. ExecutionContext (nodes/context.py)
+
+       - Carries parser configuration through node execution
+       - Method: with_parser(parser: ParserType) -> ExecutionContext
+       - Field: parser: ParserType | None (optional override)
+
+       2. Terminal Nodes (PTYNode, WezTermNode, ClaudeWezTermNode)
+
+       - Located: /src/nerve/core/nodes/terminal/
+       - Usage Pattern:
+       parser_type = context.parser or self._default_parser
+       parser_instance = get_parser(parser_type)
+       result = parser_instance.parse(output_buffer)
+       - Default Parsers:
+         - PTYNode: ParserType.NONE (raw output)
+         - WezTermNode: ParserType.NONE (raw output)
+         - ClaudeWezTermNode: ParserType.CLAUDE (specialized for Claude CLI)
+
+       3. CLI Extract Tool (frontends/cli/extract.py)
+
+       - Standalone command: nerve extract
+       - Supports: --type {claude|gemini} flag
+       - Features:
+         - Extract from file or stdin
+         - Extract from WezTerm pane (live capture)
+         - Output formats: JSON, raw, pretty-print, last-section-only
+         - List available WezTerm panes
+
+       4. Graph Execution (nodes/graph/)
+
+       - Parsers specified at execution context level
+       - Nodes use parser from context or fall back to default
+
+       5. Session Persistence (session/persistence.py)
+
+       - Saves/restores parser type with session metadata
+
+       ---
+       Usage Flow Example
+
+       User Input → PTYNode/WezTermNode → Parser.parse() → ParsedResponse
+                                               ↓
+                                   Section[] (thinking, tool_call, text)
+                                               ↓
+                           Application Logic (graph execution, REPL, etc.)
+
+       Concrete Example:
+       # Terminal node execution
+       parser = get_parser(ParserType.CLAUDE)
+       raw_output = "∴ Thinking…\n  Processing...\n⏺ Result\n-- INSERT --"
+       response = parser.parse(raw_output)
+
+       # response.sections contains:
+       # [Section(type='thinking', content='Processing...'),
+       #  Section(type='text', content='Result')]
+       response.is_ready  # True (has INSERT mode)
+       response.tokens    # Extracted from status line
+
+       ---
+       Key Design Principles
+
+       1. Parser Independence: Parsers know nothing about PTY, sessions, or events - purely functional
+       2. Factory Pattern: get_parser() centralizes parser instantiation
+       3. Type Safety: ParserType enum prevents invalid parser requests
+       4. Incremental Support: parse_incremental() enables streaming scenarios
+       5. Structured Output: All output converted to Section objects with typed metadata
+
+       ---
+       Test Coverage
+
+       Location: /Users/pb/agentic-curve/projects/nerve/tests/core/test_parsers.py
+
+       Test Classes:
+       - TestClaudeParser: Basic functionality
+       - TestClaudeParserRealWorld: Real captured output samples (pane_02, pane_03, pane_04)
+       - TestClaudeParserEdgeCases: 15+ edge cases (empty content, multiline thinking, tool args, rating prompts, conversation compaction)
+       - TestClaudeParserSectionMetadata: Metadata extraction verification
+       - TestClaudeParserRawExtraction: Raw response boundaries
+
+       Test Coverage: ClaudeParser thoroughly tested with real-world samples; GeminiParser awaits implementation
+
+       ---
+       Files Summary
+
+       | File        | Purpose                   | Status            |
+       |-------------|---------------------------|-------------------|
+       | base.py     | Parser protocol/ABC       | Complete          |
+       | claude.py   | Claude CLI parser         | Complete + tested |
+       | gemini.py   | Gemini CLI parser         | Stub (TODO)       |
+       | none.py     | No-op/pass-through parser | Complete          |
+       | __init__.py | Factory and exports       | Complete          |
+
+       Absolute Paths:
+       - /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/base.py
+       - /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/claude.py
+       - /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/gemini.py
+       - /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/none.py
+       - /Users/pb/agentic-curve/projects/nerve/src/nerve/core/parsers/__init__.py
+
+       ---
+       Parser Type Support Matrix
+
+       | Parser | Thinking | Tool Calls        | Text            | Ready Detection | Token Count | Status     |
+       |--------|----------|-------------------|-----------------|-----------------|-------------|------------|
+       | Claude | ✓        | ✓ (with metadata) | ✓               | ✓ (INSERT mode) | ✓           | Production |
+       | Gemini | ✗        | ✗                 | ✓ (raw)         | ✓ (basic)       | ✗           | TODO       |
+       | None   | ✗        | ✗                 | ✓ (full output) | ✓ (prompts)     | ✗           | Utility    |
+
+       ---
+       Dependencies & Integration
+
+       Imports:
+       - From nerve.core.types: ParserType, ParsedResponse, Section
+       - Used by: PTYNode, WezTermNode, ClaudeWezTermNode, CLI extract command, graph execution
+
+       No External Dependencies: Pure Python, uses only standard library (re module for regex)
+  ⎿  Done (22 tool uses · 49.8k tokens · 60s)
+
+∴ Thinking…
+
+  All 3 explore agents have completed. Let me summarize the findings for the user.
+
+⏺ All 3 explore agents completed. Here's a summary:
+
+  Core Module (src/nerve/core/)
+
+  - Nodes: Protocol-based architecture with ephemeral (BashNode, FunctionNode) and persistent (PTYNode, WezTermNode, LLM nodes) types
+  - Graph: Topological execution with error policies, budgets, cancellation, and tracing
+  - Session: Central workspace with auto-registration of nodes/graphs
+  - Key files: nodes/base.py (150L), nodes/graph/graph.py (712L), session/session.py
+
+  Frontends Module (src/nerve/frontends/)
+
+  - CLI: Main interface using rich-click with commands: extract, repl, wezterm, server
+  - SDK: NerveClient + RemoteNode for programmatic access (Unix socket, HTTP, standalone)
+  - MCP: Model Context Protocol server exposing nerve as AI tools
+  - REPL: Interactive environment with local/remote modes via SessionAdapter pattern
+
+  Parsers Module (src/nerve/core/parsers/)
+
+  - ClaudeParser: Fully implemented - extracts thinking (∴), tool calls (⏺), text, results (⎿)
+  - GeminiParser: Stub awaiting implementation
+  - NoneParser: Pass-through for raw output
+  - Output types: ParsedResponse with Section objects containing typed metadata

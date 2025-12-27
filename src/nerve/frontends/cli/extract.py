@@ -10,6 +10,15 @@ Usage:
     # Extract from stdin
     cat /tmp/output.txt | nerve extract
 
+    # Extract from WezTerm pane
+    nerve extract --pane 42
+
+    # List available WezTerm panes
+    nerve extract --list-panes
+
+    # Watch a pane (use watch command)
+    watch -n 2 'nerve extract --pane 42'
+
     # Output as JSON
     nerve extract --json /tmp/output.txt
 
@@ -24,10 +33,76 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 
 from nerve.core.parsers import get_parser
 from nerve.core.types import ParsedResponse, ParserType
+
+
+def get_wezterm_pane_text(pane_id: str) -> str:
+    """Get text content from a WezTerm pane.
+
+    Args:
+        pane_id: The WezTerm pane ID.
+
+    Returns:
+        The pane's text content.
+
+    Raises:
+        RuntimeError: If pane cannot be read.
+    """
+    cmd = ["wezterm", "cli", "get-text", "--pane-id", pane_id, "--start-line", "-50000"]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to read pane {pane_id}: {result.stderr}")
+        return result.stdout
+    except FileNotFoundError as err:
+        raise RuntimeError("wezterm CLI not found. Is WezTerm installed?") from err
+
+
+def list_wezterm_panes() -> list[dict]:
+    """List all WezTerm panes.
+
+    Returns:
+        List of pane info dicts with pane_id, title, cwd, etc.
+    """
+    try:
+        result = subprocess.run(
+            ["wezterm", "cli", "list", "--format", "json"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return []
+
+
+def format_pane_list(panes: list[dict]) -> str:
+    """Format pane list for display.
+
+    Args:
+        panes: List of pane info dicts.
+
+    Returns:
+        Formatted string for terminal display.
+    """
+    if not panes:
+        return "No WezTerm panes found. Is WezTerm running?"
+
+    lines = ["WezTerm Panes:", "=" * 60]
+    for pane in panes:
+        pane_id = pane.get("pane_id", "?")
+        title = pane.get("title", "")
+        cwd = pane.get("cwd", "")
+        # Truncate long paths
+        if len(cwd) > 40:
+            cwd = "..." + cwd[-37:]
+        lines.append(f"  [{pane_id}] {title[:30]:<30} {cwd}")
+    return "\n".join(lines)
 
 
 def extract_response(
@@ -168,12 +243,26 @@ Examples:
     cat output.txt | nerve extract    # From stdin
     nerve extract -l output.txt       # Last section only
     nerve extract -t gemini out.txt   # Parse Gemini output
+    nerve extract --pane 42           # Extract from WezTerm pane
+    nerve extract --list-panes        # List available panes
         """,
     )
     parser.add_argument(
         "file",
         nargs="?",
         help="File containing CLI output (stdin if not provided)",
+    )
+    parser.add_argument(
+        "--pane",
+        "-p",
+        metavar="ID",
+        help="WezTerm pane ID to extract from",
+    )
+    parser.add_argument(
+        "--list-panes",
+        "-P",
+        action="store_true",
+        help="List available WezTerm panes",
     )
     parser.add_argument(
         "--json",
@@ -209,11 +298,24 @@ Examples:
 
     args = parser.parse_args(argv)
 
+    # Handle --list-panes
+    if args.list_panes:
+        panes = list_wezterm_panes()
+        print(format_pane_list(panes))
+        return 0
+
     # Read input
     try:
-        content, source = read_input(args.file)
+        if args.pane:
+            content = get_wezterm_pane_text(args.pane)
+            source = f"pane: {args.pane}"
+        else:
+            content, source = read_input(args.file)
     except FileNotFoundError:
         print(f"Error: File not found: {args.file}", file=sys.stderr)
+        return 1
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
         return 1
     except OSError as e:
         print(f"Error reading input: {e}", file=sys.stderr)

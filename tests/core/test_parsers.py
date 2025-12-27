@@ -409,6 +409,42 @@ class TestClaudeParserEdgeCases:
         assert len(text) >= 1
         assert "42" in text[0].content
 
+    def test_markers_in_middle_of_line_not_parsed(self):
+        """Test that section markers in middle of line are NOT parsed as sections.
+
+        Markers like ∴, ⏺ should only be recognized at the START of a line,
+        not when they appear mid-line (e.g., in quoted text or explanations).
+        """
+        parser = ClaudeParser()
+        content = """
+> Tell me about Claude output format
+
+⏺ Claude uses these markers:
+  - "∴ Thinking..." starts a thinking block
+  - "⏺ ToolName(args)" indicates a tool call
+  - The ⏺ symbol is used for various outputs
+
+⏺ So when you see ∴ Thinking in a response, it means Claude is reasoning.
+
+───────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────
+  -- INSERT --                                    2000 tokens
+"""
+        response = parser.parse(content)
+
+        # Should have exactly 2 text sections (the two ⏺ lines at start)
+        text_sections = [s for s in response.sections if s.type == "text"]
+        assert len(text_sections) == 2
+
+        # Should NOT have any thinking sections (∴ appears mid-line only)
+        thinking_sections = [s for s in response.sections if s.type == "thinking"]
+        assert len(thinking_sections) == 0
+
+        # The markers mentioned in the text should be preserved in content
+        assert "∴ Thinking" in response.raw
+        assert "⏺ ToolName" in response.raw
+
     def test_rating_prompt_handling(self, sample_pane_03):
         """Test parser handles session rating prompt."""
         parser = ClaudeParser()

@@ -92,9 +92,12 @@ class ClaudeParser(Parser):
         lines = content.split("\n")
 
         # First, check for compaction separator (takes precedence)
+        # Real compaction lines start with ─ (box drawing char) like:
+        # ──── Conversation compacted ────────────────────────────────
         compaction_idx = -1
         for i, line in enumerate(lines):
-            if "Conversation compacted" in line or "conversation compacted" in line:
+            stripped = line.strip()
+            if stripped.startswith("─") and "conversation compacted" in stripped.lower():
                 compaction_idx = i
 
         # Find last user prompt ("> " followed by actual text, not suggestions)
@@ -121,10 +124,12 @@ class ClaudeParser(Parser):
             else:
                 return ""
 
-        # Find end (empty prompt before INSERT)
+        # Find end (empty prompt before status line)
+        # Status lines start with "-- INSERT --" or "⏵⏵" (after stripping whitespace)
         end_idx = len(lines)
         for i in range(len(lines) - 1, start_idx, -1):
-            if "-- INSERT --" in lines[i]:
+            stripped_line = lines[i].strip()
+            if stripped_line.startswith("-- INSERT --") or stripped_line.startswith("⏵⏵"):
                 for j in range(i - 1, max(start_idx, i - 10), -1):
                     stripped = lines[j].strip()
                     if stripped == ">" or stripped == "> ":
@@ -196,7 +201,7 @@ class ClaudeParser(Parser):
             return lines
 
         # Search from the end for the rating prompt marker
-        for i in range(len(lines) - 1, max(0, len(lines) - 10), -1):
+        for i in range(len(lines) - 1, max(0, len(lines) - 20), -1):
             line = lines[i].strip()
             if "How is Claude doing this session" in line:
                 # Found rating prompt - return everything before it
@@ -236,8 +241,8 @@ class ClaudeParser(Parser):
             line = lines[i]
             stripped = line.strip()
 
-            # Thinking section
-            if "∴ Thinking" in line or stripped.startswith("∴"):
+            # Thinking section - must start with ∴ at beginning of line
+            if stripped.startswith("∴"):
                 content_lines: list[str] = []
                 i += 1
                 # Collect indented content until next section marker
@@ -336,8 +341,18 @@ class ClaudeParser(Parser):
     def _extract_tokens(self, content: str) -> int | None:
         """Extract token count from status line."""
         for line in reversed(content.split("\n")):
-            # Look for token count in status lines (INSERT mode or shortcuts hint)
-            if ("-- INSERT --" in line or "? for shortcuts" in line) and "tokens" in line:
+            stripped = line.strip()
+            # Look for token count in status lines
+            # Valid status line patterns (must start with these to avoid diff/quoted content):
+            # - "-- INSERT --" (insert mode)
+            # - "?" (shortcuts hint)
+            # - "⏵⏵" (bypass permissions mode)
+            is_status_line = (
+                stripped.startswith("-- INSERT --")
+                or stripped.startswith("?")
+                or stripped.startswith("⏵⏵")
+            )
+            if is_status_line and "tokens" in line:
                 match = re.search(r"(\d+)\s*tokens", line)
                 if match:
                     return int(match.group(1))

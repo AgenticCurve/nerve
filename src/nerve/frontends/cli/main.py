@@ -76,6 +76,8 @@ def _run_cli() -> None:
     # =========================================================================
     @cli.command()
     @click.argument("file", required=False)
+    @click.option("--pane", "-p", "pane_id", help="WezTerm pane ID to extract from")
+    @click.option("--list-panes", "-P", is_flag=True, help="List available WezTerm panes")
     @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
     @click.option("--raw", "-r", is_flag=True, help="Show only raw response")
     @click.option("--last", "-l", is_flag=True, help="Show only the last section")
@@ -83,6 +85,8 @@ def _run_cli() -> None:
     @click.option("--type", "-t", "cli_type", default="claude", help="CLI type (claude, gemini)")
     def extract(
         file: str | None,
+        pane_id: str | None,
+        list_panes: bool,
         json_output: bool,
         raw: bool,
         last: bool,
@@ -103,12 +107,20 @@ def _run_cli() -> None:
             cat output.txt | nerve extract
 
             nerve extract --last output.txt
+
+            nerve extract --pane 42
+
+            nerve extract --list-panes
         """
         from nerve.frontends.cli.extract import main as extract_main
 
         args = []
         if file:
             args.append(file)
+        if pane_id:
+            args.extend(["--pane", pane_id])
+        if list_panes:
+            args.append("--list-panes")
         if json_output:
             args.append("--json")
         if raw:

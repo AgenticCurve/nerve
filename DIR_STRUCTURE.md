@@ -48,9 +48,16 @@
 │   ├── glm/
 │   │   ├── [L: 214] glm_chat_node.py
 │   │   └── [L: 133] glm_node.py
-│   └── openrouter/
-│       ├── [L: 223] openrouter_chat_node.py
-│       └── [L: 162] openrouter_node.py
+│   ├── openrouter/
+│   │   ├── [L: 223] openrouter_chat_node.py
+│   │   └── [L: 162] openrouter_node.py
+│   └── parser/
+│       └── claude/
+│           └── samples/
+│               ├── [L:  48] sample_pane_01.txt
+│               ├── [L: 432] sample_pane_02.txt
+│               ├── [L: 379] sample_pane_03.txt
+│               └── [L:  57] sample_pane_04.txt
 ├── [L:  36] Makefile
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
@@ -108,7 +115,7 @@
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
 │       │   │   ├── [L:  56] base.py
-│       │   │   ├── [L: 344] claude.py
+│       │   │   ├── [L: 359] claude.py
 │       │   │   ├── [L:  92] gemini.py
 │       │   │   └── [L:  84] none.py
 │       │   ├── patterns/
@@ -133,8 +140,8 @@
 │       │   ├── [L:  15] __init__.py
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
-│       │   │   ├── [L: 243] extract.py
-│       │   │   ├── [L: 182] main.py
+│       │   │   ├── [L: 345] extract.py
+│       │   │   ├── [L: 194] main.py
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
@@ -241,7 +248,7 @@
     │   │   └── [L: 103] test_session_factory.py
     │   ├── [L: 549] test_history.py
     │   ├── [L: 412] test_managers.py
-    │   ├── [L: 502] test_parsers.py
+    │   ├── [L: 538] test_parsers.py
     │   └── [L:  90] test_validation.py
     ├── frontends/
     │   ├── [L:   1] __init__.py
@@ -272,4 +279,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-58 directories, 215 files, 45,103 total lines
+61 directories, 219 files, 46,184 total lines
