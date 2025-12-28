@@ -1,7 +1,7 @@
 """Commander - Unified command center for nerve nodes.
 
 A block-based timeline interface for interacting with nodes.
-Supports sending commands to nodes and executing Python code.
+Connects to a nerve server and session for execution.
 """
 
 from __future__ import annotations
@@ -9,46 +9,50 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
 from rich.console import Console
 
-from nerve.core.nodes import BashNode, ExecutionContext
-from nerve.core.session import Session
 from nerve.frontends.tui.commander.blocks import Block, Timeline
-from nerve.frontends.tui.commander.themes import DEFAULT_THEME, get_theme
+from nerve.frontends.tui.commander.themes import get_theme
+
+if TYPE_CHECKING:
+    from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
+    from nerve.transport import UnixSocketClient
 
 
 @dataclass
 class Commander:
     """Unified command center for interacting with nodes.
 
-    Provides a block-based timeline interface where each interaction
-    is displayed as a discrete block with input/output.
+    Connects to a nerve server/session and provides a block-based
+    timeline interface for interacting with nodes.
 
     Example:
-        >>> commander = Commander(theme="nord")
+        >>> commander = Commander(server_name="local", session_name="default")
         >>> await commander.run()
     """
 
     # Configuration
+    server_name: str = "local"
+    session_name: str = "default"
     theme_name: str = "default"
-    session_name: str = "commander"
 
     # State (initialized in __post_init__ or run)
     console: Console = field(init=False)
-    session: Session = field(init=False)
     timeline: Timeline = field(default_factory=Timeline)
-    nodes: dict[str, Any] = field(default_factory=dict)
+    nodes: dict[str, str] = field(default_factory=dict)  # node_id -> node_type
+
+    # Server connection (initialized in run)
+    _client: UnixSocketClient | None = field(default=None, init=False)
+    _adapter: RemoteSessionAdapter | None = field(default=None, init=False)
 
     # Internal
     _prompt_session: PromptSession[str] = field(init=False)
     _running: bool = field(default=False, init=False)
-    _active_node: Any = field(default=None, init=False)  # Node currently executing
-    _active_task: asyncio.Task[Any] | None = field(default=None, init=False)
+    _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
 
     def __post_init__(self) -> None:
@@ -61,13 +65,40 @@ class Commander:
         """Run the commander REPL loop."""
         import signal
 
+        from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
+        from nerve.frontends.cli.utils import get_server_transport
+        from nerve.transport import UnixSocketClient
+
         self._running = True
 
-        # Create session
-        self.session = Session(name=self.session_name, server_name="commander")
+        # Connect to server
+        transport_type, socket_path = get_server_transport(self.server_name)
 
-        # Create default bash node
-        self._create_default_nodes()
+        if transport_type != "unix":
+            self.console.print(f"[error]Only unix socket servers supported[/]")
+            self.console.print(f"[dim]Server '{self.server_name}' uses {transport_type}[/]")
+            return
+
+        if socket_path is None:
+            self.console.print("[error]Could not determine socket path[/]")
+            return
+
+        self.console.print(f"[dim]Connecting to server '{self.server_name}'...[/]")
+        try:
+            self._client = UnixSocketClient(socket_path)
+            await self._client.connect()
+        except Exception as e:
+            self.console.print(f"[error]Failed to connect: {e}[/]")
+            self.console.print(
+                f"[dim]Make sure server is running: nerve server start --name {self.server_name}[/]"
+            )
+            return
+
+        self._adapter = RemoteSessionAdapter(self._client, self.server_name, self.session_name)
+        self.console.print(f"[dim]Connected! Session: {self.session_name}[/]")
+
+        # Fetch nodes from session
+        await self._sync_nodes()
 
         # Print welcome
         self._print_welcome()
@@ -77,9 +108,9 @@ class Commander:
 
         def sigint_handler(signum: int, frame: Any) -> None:
             """Handle Ctrl-C by interrupting active node."""
-            if self._active_node is not None and hasattr(self._active_node, "interrupt"):
+            if self._active_node_id is not None and self._client is not None:
                 # Schedule interrupt on the event loop
-                asyncio.ensure_future(self._active_node.interrupt())
+                asyncio.ensure_future(self._send_interrupt(self._active_node_id))
             # Don't exit - let the command complete with interrupted status
 
         signal.signal(signal.SIGINT, sigint_handler)
@@ -114,20 +145,49 @@ class Commander:
         # Cleanup
         await self._cleanup()
 
-    def _create_default_nodes(self) -> None:
-        """Create default nodes for the session."""
-        # Create a bash node
-        bash = BashNode(id="bash", session=self.session, timeout=30.0)
-        self.nodes["bash"] = bash
+    async def _sync_nodes(self) -> None:
+        """Fetch nodes from server session."""
+        if self._adapter is None:
+            return
+
+        try:
+            node_list = await self._adapter.list_nodes()
+            self.nodes.clear()
+            for node_id, node_type in node_list:
+                self.nodes[node_id] = node_type
+        except Exception as e:
+            self.console.print(f"[warning]Failed to fetch nodes: {e}[/]")
+
+    async def _send_interrupt(self, node_id: str) -> None:
+        """Send interrupt signal to a node via server."""
+        if self._client is None:
+            return
+
+        from nerve.server.protocols import Command, CommandType
+
+        try:
+            await self._client.send_command(
+                Command(
+                    type=CommandType.SEND_INTERRUPT,
+                    params={"node_id": node_id, "session_id": self.session_name},
+                )
+            )
+        except Exception:
+            pass  # Ignore errors during interrupt
 
     def _print_welcome(self) -> None:
         """Print welcome message."""
         self.console.print()
         self.console.print("[bold]Commander[/] - Nerve Command Center", style="prompt")
-        self.console.print("Type [bold]@bash <command>[/] to run bash commands", style="dim")
         self.console.print(
-            "Type [bold]:help[/] for more commands, [bold]:exit[/] to quit", style="dim"
+            f"[dim]Server: {self.server_name} | Session: {self.session_name} | Nodes: {len(self.nodes)}[/]"
         )
+        if self.nodes:
+            self.console.print(f"[dim]Use @<node> <message> to interact. :help for commands.[/]")
+        else:
+            self.console.print(
+                "[dim]No nodes in session. Create nodes first with: nerve server node create[/]"
+            )
         self.console.print()
 
     async def _handle_input(self, user_input: str) -> None:
@@ -187,7 +247,7 @@ class Commander:
             self._print_help()
 
         elif command == "nodes":
-            self._print_nodes()
+            await self._print_nodes()
 
         elif command == "timeline":
             self._print_timeline(args)
@@ -199,7 +259,7 @@ class Commander:
             self._clean_blocks()
 
         elif command == "refresh":
-            self._refresh_view()
+            await self._refresh_view()
 
         elif command == "theme":
             self._switch_theme(args)
@@ -212,6 +272,10 @@ class Commander:
 
     async def _handle_node_message(self, message: str) -> None:
         """Handle @node_name message syntax."""
+        if self._adapter is None:
+            self.console.print("[error]Not connected to server[/]")
+            return
+
         parts = message.split(maxsplit=1)
         if not parts:
             self.console.print("[warning]Usage: @node_name message[/]")
@@ -224,109 +288,93 @@ class Commander:
             self.console.print(f"[warning]No message provided for @{node_id}[/]")
             return
 
-        # Expand variables like $blocks[1]['output']
+        # Expand variables like :::1['output']
         text = self._expand_variables(text)
 
         if node_id not in self.nodes:
-            self.console.print(f"[error]Node not found: {node_id}[/]")
-            self.console.print(f"[dim]Available nodes: {', '.join(self.nodes.keys())}[/]")
-            return
+            # Try to sync nodes in case new ones were added
+            await self._sync_nodes()
+            if node_id not in self.nodes:
+                self.console.print(f"[error]Node not found: {node_id}[/]")
+                self.console.print(
+                    f"[dim]Available nodes: {', '.join(self.nodes.keys()) or 'none'}[/]"
+                )
+                return
 
-        node = self.nodes[node_id]
-        block_type = self._get_block_type(node)
+        node_type = self.nodes[node_id]
+        block_type = self._get_block_type_from_str(node_type)
 
         # Track active node for interrupt support
-        self._active_node = node
+        self._active_node_id = node_id
 
-        # Execute and time it
+        # Execute via server and time it
         start_time = time.monotonic()
-        interrupted = False
         try:
-            ctx = ExecutionContext(session=self.session, input=text)
-            result = await node.execute(ctx)
+            response = await self._adapter.execute_on_node(node_id, text)
             duration_ms = (time.monotonic() - start_time) * 1000
 
-            # Check if result indicates interruption
-            if isinstance(result, dict) and result.get("interrupted"):
-                interrupted = True
-
-            # Extract output based on result type
-            raw_result = result if isinstance(result, dict) else {"result": result}
-            if isinstance(result, dict):
-                if result.get("success"):
-                    output = result.get("stdout", "") or result.get("content", "")
-                    error = None
-                else:
-                    output = result.get("stdout", "")
-                    error = result.get("stderr") or result.get("error", "Command failed")
-            else:
-                output = str(result)
-                error = None
-
-            # Create and render block
+            # Create block with response
             block = Block(
                 block_type=block_type,
                 node_id=node_id,
                 input_text=text,
-                output_text=output.strip() if isinstance(output, str) else str(output),
-                error=error,
-                raw=raw_result,
+                output_text=response.strip() if response else "",
+                error=None,
+                raw={"response": response},
                 duration_ms=duration_ms,
             )
 
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
+            error_msg = str(e)
             block = Block(
                 block_type=block_type,
                 node_id=node_id,
                 input_text=text,
-                error=f"{type(e).__name__}: {e}",
-                raw={"exception": str(e), "exception_type": type(e).__name__},
+                output_text="",
+                error=error_msg,
+                raw={"error": error_msg},
                 duration_ms=duration_ms,
             )
         finally:
-            self._active_node = None
+            self._active_node_id = None
 
         self.timeline.add(block)
         self.timeline.render_last(self.console)
 
-        if interrupted:
-            self.console.print("[dim]Command interrupted (Ctrl+C)[/]")
-
     async def _handle_python(self, code: str) -> None:
-        """Handle Python code execution."""
+        """Handle Python code execution via server."""
         if not code:
             self.console.print("[dim]Enter Python code after >>>[/]")
             return
 
-        # Build namespace with useful references
-        namespace: dict[str, Any] = {
-            "session": self.session,
-            "nodes": self.nodes,
-            "timeline": self.timeline,
-            "blocks": self.timeline,  # Alias for easy access: blocks[1]['output']
-        }
+        if self._adapter is None:
+            self.console.print("[error]Not connected to server[/]")
+            return
 
         start_time = time.monotonic()
         try:
-            # Try eval first (for expressions)
-            try:
-                result = eval(code, namespace)
-                output = repr(result) if result is not None else ""
-            except SyntaxError:
-                # Fall back to exec (for statements)
-                exec(code, namespace)
-                output = ""
-
+            # execute_python returns (output, error) tuple
+            # namespace is ignored in remote mode but required by interface
+            output, error = await self._adapter.execute_python(code, {})
             duration_ms = (time.monotonic() - start_time) * 1000
 
-            block = Block(
-                block_type="python",
-                node_id=None,
-                input_text=code,
-                output_text=output,
-                duration_ms=duration_ms,
-            )
+            if error:
+                block = Block(
+                    block_type="python",
+                    node_id=None,
+                    input_text=code,
+                    error=error,
+                    duration_ms=duration_ms,
+                )
+            else:
+                block = Block(
+                    block_type="python",
+                    node_id=None,
+                    input_text=code,
+                    output_text=output.strip() if output else "",
+                    duration_ms=duration_ms,
+                )
 
         except Exception as e:
             duration_ms = (time.monotonic() - start_time) * 1000
@@ -341,12 +389,19 @@ class Commander:
         self.timeline.add(block)
         self.timeline.render_last(self.console)
 
-    def _get_block_type(self, node: Any) -> str:
-        """Determine block type from node class."""
-        class_name = type(node).__name__
-        if "Bash" in class_name:
+    def _get_block_type_from_str(self, node_type: str) -> str:
+        """Determine block type from node type string.
+
+        Args:
+            node_type: Node type name from server (e.g., "BashNode", "LLMChatNode").
+
+        Returns:
+            Block type for rendering ("bash", "llm", or "node").
+        """
+        node_type_lower = node_type.lower()
+        if "bash" in node_type_lower:
             return "bash"
-        elif "LLM" in class_name or "Chat" in class_name:
+        elif "llm" in node_type_lower or "chat" in node_type_lower:
             return "llm"
         else:
             return "node"
@@ -466,13 +521,17 @@ class Commander:
         self.console.print("  [bold]:exit[/]          Exit world or commander")
         self.console.print()
 
-    def _print_nodes(self) -> None:
-        """Print available nodes."""
+    async def _print_nodes(self) -> None:
+        """Print available nodes (syncs from server first)."""
+        await self._sync_nodes()
+
         self.console.print()
         self.console.print("[bold]Available Nodes:[/]")
-        for node_id, node in self.nodes.items():
-            node_type = type(node).__name__
-            self.console.print(f"  [bold]{node_id}[/] ({node_type})")
+        if not self.nodes:
+            self.console.print("  [dim]No nodes in session[/]")
+        else:
+            for node_id, node_type in self.nodes.items():
+                self.console.print(f"  [bold]{node_id}[/] ({node_type})")
         self.console.print()
 
     def _print_timeline(self, args: str) -> None:
@@ -544,7 +603,7 @@ class Commander:
 
         self.console.print()
         if world_id == "python":
-            self.console.print(f"[bold]World: python[/]")
+            self.console.print("[bold]World: python[/]")
             self.console.print("[dim]Type Python code directly. :exit or :back to leave.[/]")
             # Show python blocks
             python_blocks = self.timeline.filter_by_type("python")
@@ -556,15 +615,9 @@ class Commander:
             else:
                 self.console.print()
         else:
-            node = self.nodes[world_id]
-            node_type = type(node).__name__
+            node_type = self.nodes.get(world_id, "?")
             self.console.print(f"[bold]World: @{world_id}[/] ({node_type})")
             self.console.print("[dim]Type commands directly. :exit or :back to leave.[/]")
-
-            # Show node-specific state
-            if hasattr(node, "messages"):
-                messages = node.messages
-                self.console.print(f"[dim]Conversation: {len(messages)} messages[/]")
 
             # Show blocks for this node
             node_blocks = self.timeline.filter_by_node(world_id)
@@ -592,19 +645,21 @@ class Commander:
         self.console.print(f"[dim]Cleared {count} blocks. Starting fresh from :::1[/]")
         self.console.print()
 
-    def _refresh_view(self) -> None:
+    async def _refresh_view(self) -> None:
         """Clear screen and re-render current view."""
+        # Sync nodes from server before refresh
+        await self._sync_nodes()
+
         self.console.clear()
 
         # Re-render based on current context
         if self._current_world:
             # In a world - show world header and filtered blocks
             if self._current_world == "python":
-                self.console.print(f"[bold]World: python[/]")
+                self.console.print("[bold]World: python[/]")
                 blocks = self.timeline.filter_by_type("python")
             else:
-                node = self.nodes.get(self._current_world)
-                node_type = type(node).__name__ if node else "?"
+                node_type = self.nodes.get(self._current_world, "?")
                 self.console.print(f"[bold]World: @{self._current_world}[/] ({node_type})")
                 blocks = self.timeline.filter_by_node(self._current_world)
 
@@ -624,14 +679,30 @@ class Commander:
 
     async def _cleanup(self) -> None:
         """Cleanup resources."""
-        await self.session.stop()
+        if self._client is not None:
+            try:
+                await self._client.close()
+            except Exception:
+                pass  # Ignore close errors
+        self._client = None
+        self._adapter = None
 
 
-async def run_commander(theme: str = "default") -> None:
+async def run_commander(
+    server_name: str = "local",
+    session_name: str = "default",
+    theme: str = "default",
+) -> None:
     """Run the commander TUI.
 
     Args:
-        theme: Theme name (default, nord, dracula, mono)
+        server_name: Server to connect to (default: "local").
+        session_name: Session to use (default: "default").
+        theme: Theme name (default, nord, dracula, mono).
     """
-    commander = Commander(theme_name=theme)
+    commander = Commander(
+        server_name=server_name,
+        session_name=session_name,
+        theme_name=theme,
+    )
     await commander.run()

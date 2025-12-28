@@ -62,6 +62,12 @@ class SessionHandler:
             tags=tags,
             server_name=self.server_name,
         )
+
+        # Auto-create built-in identity node for debugging/testing
+        from nerve.core.nodes.identity import IdentityNode
+
+        IdentityNode(id="identity", session=session)
+
         self.session_registry.add_session(name, session)
 
         logger.debug(

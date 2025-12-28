@@ -392,7 +392,27 @@ class RemoteSessionAdapter:
         )
         if result.success:
             data = result.data or {}
-            return str(data.get("response", ""))
+            response = data.get("response", "")
+
+            # Handle different response types:
+            # - Terminal nodes: dict with "raw" key containing the text
+            # - Ephemeral nodes (BashNode): dict with "stdout"/"stderr" keys
+            # - IdentityNode: dict with "output" key
+            if isinstance(response, dict):
+                # Try common output keys in order of preference
+                if "raw" in response:
+                    return str(response["raw"])
+                elif "output" in response:
+                    return str(response["output"])
+                elif "stdout" in response:
+                    stdout = response.get("stdout", "")
+                    stderr = response.get("stderr", "")
+                    return stdout if stdout else stderr
+                else:
+                    # Fallback: stringify the dict
+                    return str(response)
+            else:
+                return str(response)
         else:
             raise ValueError(result.error)
 

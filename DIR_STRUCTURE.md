@@ -89,7 +89,7 @@
 │       │   ├── [L: 194] __init__.py
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
-│       │   │   ├── [L: 155] __init__.py
+│       │   │   ├── [L: 160] __init__.py
 │       │   │   ├── [L: 305] base.py
 │       │   │   ├── [L: 408] bash.py
 │       │   │   ├── [L: 190] budget.py
@@ -102,6 +102,7 @@
 │       │   │   │   ├── [L:1009] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
+│       │   │   ├── [L: 133] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
 │       │   │   │   ├── [L: 657] base.py
@@ -147,11 +148,11 @@
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 347] extract.py
-│       │   │   ├── [L: 229] main.py
+│       │   │   ├── [L: 242] main.py
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 500] adapters.py
+│       │   │   │   ├── [L: 520] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -163,7 +164,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 909] node.py
+│       │   │   │   ├── [L: 910] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -178,7 +179,7 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 225] blocks.py
-│       │           ├── [L: 637] commander.py
+│       │           ├── [L: 702] commander.py
 │       │           └── [L: 140] themes.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
@@ -199,10 +200,10 @@
 │       │       └── [L: 197] validation.py
 │       ├── server/
 │       │   ├── [L:  65] __init__.py
-│       │   ├── [L: 295] engine.py
+│       │   ├── [L: 300] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 313] node_factory.py
+│       │   │   └── [L: 322] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
@@ -211,8 +212,8 @@
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
-│       │   │   └── [L: 187] session_handler.py
-│       │   ├── [L: 166] protocols.py
+│       │   │   └── [L: 193] session_handler.py
+│       │   ├── [L: 167] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -293,4 +294,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-63 directories, 231 files, 51,679 total lines
+63 directories, 232 files, 51,937 total lines

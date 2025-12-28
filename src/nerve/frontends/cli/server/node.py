@@ -15,6 +15,7 @@ NODE_TYPE_CHOICES = [
     "WezTermNode",
     "ClaudeWezTermNode",  # Terminal nodes
     "BashNode",  # Ephemeral bash
+    "IdentityNode",  # Ephemeral identity (echo)
     "OpenRouterNode",
     "GLMNode",  # Single-shot LLM
     "LLMChatNode",  # Stateful chat
@@ -115,7 +116,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     "node_type",
     type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
-    help="Node type (persistent: PTYNode, WezTermNode, ClaudeWezTermNode; ephemeral: BashNode, OpenRouterNode)",
+    help="Node type (persistent: PTYNode, WezTermNode, ClaudeWezTermNode; ephemeral: BashNode, IdentityNode, OpenRouterNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"

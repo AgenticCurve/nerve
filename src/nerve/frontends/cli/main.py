@@ -189,13 +189,26 @@ def _run_cli() -> None:
 
     @cli.command()
     @click.option(
+        "--server",
+        "-s",
+        "server_name",
+        default="local",
+        help="Server to connect to (default: local)",
+    )
+    @click.option(
+        "--session",
+        "session_name",
+        default="default",
+        help="Session to use (default: default)",
+    )
+    @click.option(
         "--theme",
         "-t",
         default="default",
         type=click.Choice(["default", "nord", "dracula", "mono"]),
         help="Color theme (default: default)",
     )
-    def commander(theme: str) -> None:
+    def commander(server_name: str, session_name: str, theme: str) -> None:
         """Interactive command center for nodes.
 
         A block-based timeline interface for interacting with nodes.
@@ -220,7 +233,7 @@ def _run_cli() -> None:
         """
         from nerve.frontends.tui.commander import run_commander
 
-        asyncio.run(run_commander(theme=theme))
+        asyncio.run(run_commander(server_name=server_name, session_name=session_name, theme=theme))
 
     cli()
 

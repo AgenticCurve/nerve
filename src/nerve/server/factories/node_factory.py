@@ -43,6 +43,7 @@ class NodeFactory:
         "wezterm",
         "claude-wezterm",
         "bash",
+        "identity",
         "openrouter",
         "glm",
         "llm-chat",
@@ -85,7 +86,7 @@ class NodeFactory:
         """Create a node of the specified backend type.
 
         Args:
-            backend: Node backend type ("pty", "wezterm", "claude-wezterm", "bash", "openrouter", "glm", "llm-chat").
+            backend: Node backend type ("pty", "wezterm", "claude-wezterm", "bash", "identity", "openrouter", "glm", "llm-chat").
             session: Session to register node with.
             node_id: Node identifier.
             command: Command to run (e.g., "claude" or ["claude", "--flag"]).
@@ -117,6 +118,7 @@ class NodeFactory:
         """
         # Deferred imports to avoid circular dependencies and for testability
         from nerve.core.nodes.bash import BashNode
+        from nerve.core.nodes.identity import IdentityNode
         from nerve.core.nodes.llm import GLMNode, LLMChatNode, OpenRouterNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
@@ -129,6 +131,7 @@ class NodeFactory:
             | WezTermNode
             | ClaudeWezTermNode
             | BashNode
+            | IdentityNode
             | OpenRouterNode
             | GLMNode
             | LLMChatNode
@@ -194,6 +197,12 @@ class NodeFactory:
                 session=session,
                 cwd=cwd,
                 timeout=bash_timeout or 120.0,
+            )
+        elif backend == "identity":
+            # IdentityNode is ephemeral - echoes input as output
+            node = IdentityNode(
+                id=str(node_id),
+                session=session,
             )
         elif backend == "openrouter":
             # OpenRouterNode is ephemeral - no lifecycle management

@@ -227,6 +227,11 @@ def build_nerve_engine(
     session_registry.add_session("default", default_session)
     session_registry.set_default("default")
 
+    # Auto-create built-in identity node for debugging/testing
+    from nerve.core.nodes.identity import IdentityNode
+
+    IdentityNode(id="identity", session=default_session)
+
     # Shared dependencies
     proxy_manager = ProxyManager()
     validation = ValidationHelpers()

@@ -1,7 +1,7 @@
 """Node abstraction - unified interface for executable units of work.
 
 Nodes are executable units that can be:
-- Ephemeral (stateless): FunctionNode, BashNode, Graph
+- Ephemeral (stateless): FunctionNode, BashNode, IdentityNode, Graph
 - Persistent (stateful): PTYNode, WezTermNode, ClaudeWezTermNode
 
 Core abstractions:
@@ -11,6 +11,7 @@ Core abstractions:
     NodeConfig: Base configuration for nodes
     FunctionNode: Wraps sync/async callables
     BashNode: Runs bash commands via subprocess
+    IdentityNode: Echoes input as output (identity function)
 
 Graph abstractions:
     Graph: Orchestrates node execution with dependencies
@@ -69,6 +70,9 @@ from nerve.core.nodes.base import (
 # Bash node
 from nerve.core.nodes.bash import BashNode
 
+# Identity node
+from nerve.core.nodes.identity import IdentityNode
+
 # Agent capabilities: Budgets
 from nerve.core.nodes.budget import Budget, BudgetExceededError, ResourceUsage
 
@@ -116,6 +120,7 @@ __all__ = [
     "PersistentNode",
     "FunctionNode",
     "BashNode",
+    "IdentityNode",
     # LLM
     "OpenRouterNode",
     # Context
