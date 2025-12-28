@@ -51,13 +51,16 @@
 │   ├── openrouter/
 │   │   ├── [L: 223] openrouter_chat_node.py
 │   │   └── [L: 162] openrouter_node.py
-│   └── parser/
-│       └── claude/
-│           └── samples/
-│               ├── [L:  48] sample_pane_01.txt
-│               ├── [L: 432] sample_pane_02.txt
-│               ├── [L: 379] sample_pane_03.txt
-│               └── [L:  57] sample_pane_04.txt
+│   ├── parser/
+│   │   └── claude/
+│   │       └── samples/
+│   │           ├── [L:  48] sample_pane_01.txt
+│   │           ├── [L: 432] sample_pane_02.txt
+│   │           ├── [L: 379] sample_pane_03.txt
+│   │           └── [L:  57] sample_pane_04.txt
+│   └── tools/
+│       ├── [L: 161] bash_tool_test.py
+│       └── [L: 176] claude_tool_test.py
 ├── [L:  36] Makefile
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
@@ -87,9 +90,9 @@
 │       │   ├── [L: 194] __init__.py
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
-│       │   │   ├── [L: 148] __init__.py
+│       │   │   ├── [L: 155] __init__.py
 │       │   │   ├── [L: 305] base.py
-│       │   │   ├── [L: 347] bash.py
+│       │   │   ├── [L: 408] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -102,7 +105,7 @@
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 655] base.py
+│       │   │   │   ├── [L: 657] base.py
 │       │   │   │   ├── [L: 541] chat.py
 │       │   │   │   ├── [L: 135] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
@@ -111,9 +114,10 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 582] claude_wezterm_node.py
+│       │   │   │   ├── [L: 638] claude_wezterm_node.py
 │       │   │   │   ├── [L: 717] pty_node.py
 │       │   │   │   └── [L: 814] wezterm_node.py
+│       │   │   ├── [L: 342] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
@@ -244,6 +248,7 @@
     │   │   ├── [L: 524] test_graph.py
     │   │   ├── [L: 121] test_policies.py
     │   │   ├── [L: 924] test_terminal.py
+    │   │   ├── [L: 301] test_tools.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
     │   ├── session/
@@ -282,4 +287,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 222 files, 48,882 total lines
+62 directories, 226 files, 49,988 total lines

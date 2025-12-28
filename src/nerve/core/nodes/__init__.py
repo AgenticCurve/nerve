@@ -101,6 +101,9 @@ from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
 # Agent capabilities: Tracing
 from nerve.core.nodes.trace import ExecutionTrace, StepTrace
 
+# Tool adapter
+from nerve.core.nodes.tools import ToolCapable, is_tool_capable, tools_from_nodes
+
 # Terminal node type alias
 TerminalNode = PTYNode | WezTermNode | ClaudeWezTermNode
 
@@ -145,4 +148,8 @@ __all__ = [
     "HistoryReader",
     "HistoryError",
     "HISTORY_BUFFER_LINES",
+    # Tools
+    "ToolCapable",
+    "is_tool_capable",
+    "tools_from_nodes",
 ]

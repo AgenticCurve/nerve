@@ -11,7 +11,7 @@ import shlex
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
@@ -575,6 +575,62 @@ class ClaudeWezTermNode:
             persistent=self.persistent,
             metadata=metadata,
         )
+
+    # -------------------------------------------------------------------------
+    # Tool-capable interface (opt-in for LLMChatNode tool use)
+    # -------------------------------------------------------------------------
+
+    def tool_description(self) -> str:
+        """Return description of this tool for LLM.
+
+        Returns:
+            Human-readable description of what this tool does.
+        """
+        return "Ask Claude (another AI assistant) for help, opinions, or to perform tasks"
+
+    def tool_parameters(self) -> dict[str, Any]:
+        """Return JSON Schema for tool parameters.
+
+        Returns:
+            JSON Schema dict defining accepted parameters.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "description": "The message or question to send to Claude",
+                },
+            },
+            "required": ["message"],
+        }
+
+    def tool_input(self, args: dict[str, Any]) -> str:
+        """Convert tool arguments to context.input value.
+
+        Args:
+            args: Arguments from LLM's tool call.
+
+        Returns:
+            Message string to send to Claude.
+        """
+        message = args.get("message", "")
+        return str(message) if message else ""
+
+    def tool_result(self, result: ParsedResponse) -> str:
+        """Convert execute() result to string for LLM.
+
+        Args:
+            result: ParsedResponse from execute().
+
+        Returns:
+            Claude's response text (last text section only).
+        """
+        # Get only the last text section (most recent/final response)
+        text_sections = [s for s in result.sections if s.type == "text"]
+        if text_sections:
+            return text_sections[-1].content
+        return "(no response)"
 
     def __repr__(self) -> str:
         return (
