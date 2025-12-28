@@ -38,6 +38,84 @@ if TYPE_CHECKING:
     from nerve.core.session.session import Session
 
 
+# =============================================================================
+# Shared Logging Utilities
+# =============================================================================
+
+# Standard log format used across all nerve loggers
+LOG_FORMAT = "%(asctime)s.%(msecs)03d - %(levelname)s - %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def create_log_formatter() -> logging.Formatter:
+    """Create the standard log formatter used by all nerve loggers."""
+    return logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+
+
+def add_log_handlers(
+    logger: logging.Logger,
+    handlers_cache: dict[str, logging.Handler],
+    cache_key: str,
+    log_file: Path | None = None,
+    file_logging: bool = True,
+    console_logging: bool = False,
+) -> None:
+    """Add file and/or console handlers to a logger.
+
+    This is a shared utility used by SessionLogger and _GraphRunLogger
+    to configure loggers consistently.
+
+    Args:
+        logger: Logger to configure.
+        handlers_cache: Dict to store handler references for cleanup.
+        cache_key: Key for caching handlers.
+        log_file: Path for file handler (required if file_logging=True).
+        file_logging: Whether to add file handler.
+        console_logging: Whether to add console handler.
+    """
+    formatter = create_log_formatter()
+
+    if file_logging and log_file:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        handlers_cache[f"{cache_key}:file"] = file_handler
+
+    if console_logging:
+        import sys
+
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        handlers_cache[f"{cache_key}:console"] = console_handler
+
+
+def close_loggers(
+    handlers: dict[str, logging.Handler],
+    loggers: dict[str, logging.Logger],
+) -> None:
+    """Close all handlers and clean up loggers.
+
+    Args:
+        handlers: Dict of handler references to close.
+        loggers: Dict of logger references to clean up.
+    """
+    for handler in handlers.values():
+        handler.close()
+    for logger in loggers.values():
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+    handlers.clear()
+    loggers.clear()
+
+
+# =============================================================================
+# Logger Context for Node Execution
+# =============================================================================
+
+
 @dataclass
 class LoggerContext:
     """Result of get_execution_logger.
@@ -160,13 +238,6 @@ class SessionLogger:
             self.graph_runs_dir.mkdir(parents=True, exist_ok=True)
             self.node_runs_dir.mkdir(parents=True, exist_ok=True)
 
-    def _create_formatter(self) -> logging.Formatter:
-        """Create the standard log formatter."""
-        return logging.Formatter(
-            "%(asctime)s.%(msecs)03d - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
     def _add_handlers(
         self,
         logger: logging.Logger,
@@ -180,23 +251,14 @@ class SessionLogger:
             cache_key: Key for caching handlers.
             log_file: Path for file handler (required if file_logging=True).
         """
-        formatter = self._create_formatter()
-
-        if self.file_logging and log_file:
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-            self._handlers[f"{cache_key}:file"] = file_handler
-
-        if self.console_logging:
-            import sys
-
-            console_handler = logging.StreamHandler(sys.stderr)
-            console_handler.setLevel(logging.DEBUG)
-            console_handler.setFormatter(formatter)
-            logger.addHandler(console_handler)
-            self._handlers[f"{cache_key}:console"] = console_handler
+        add_log_handlers(
+            logger,
+            self._handlers,
+            cache_key,
+            log_file,
+            self.file_logging,
+            self.console_logging,
+        )
 
     def get_graph_run_dir(self, run_id: str) -> Path:
         """Get directory for a specific graph run.
@@ -562,17 +624,13 @@ class SessionLogger:
 
     def close(self) -> None:
         """Close all file handlers."""
-        for handler in self._handlers.values():
-            handler.close()
-        for logger in self._loggers.values():
-            for handler in logger.handlers[:]:
-                logger.removeHandler(handler)
+        # Close session logger separately since it's not in _loggers
         if self._session_logger:
             for handler in self._session_logger.handlers[:]:
                 self._session_logger.removeHandler(handler)
-        self._handlers.clear()
-        self._loggers.clear()
-        self._session_logger = None
+            self._session_logger = None
+        # Use shared cleanup utility for cached loggers
+        close_loggers(self._handlers, self._loggers)
 
     # =========================================================================
     # Factory
@@ -646,13 +704,6 @@ class _GraphRunLogger:
         if self.file_logging:
             self._log_dir.mkdir(parents=True, exist_ok=True)
 
-    def _create_formatter(self) -> logging.Formatter:
-        """Create the standard log formatter."""
-        return logging.Formatter(
-            "%(asctime)s.%(msecs)03d - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
     def get_logger(self, name: str) -> logging.Logger:
         """Get or create a logger for a specific component.
 
@@ -672,34 +723,20 @@ class _GraphRunLogger:
         # Don't propagate to root logger (avoid duplicate console output)
         logger.propagate = False
 
-        formatter = self._create_formatter()
-
-        if self.file_logging:
-            log_file = self._log_dir / f"{name}.log"
-            file_handler = logging.FileHandler(log_file)
-            file_handler.setLevel(logging.DEBUG)
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-            self._handlers[f"{name}:file"] = file_handler
-
-        if self.console_logging:
-            import sys
-
-            console_handler = logging.StreamHandler(sys.stderr)
-            console_handler.setLevel(logging.DEBUG)
-            console_handler.setFormatter(formatter)
-            logger.addHandler(console_handler)
-            self._handlers[f"{name}:console"] = console_handler
+        # Use shared handler utility
+        log_file = self._log_dir / f"{name}.log" if self.file_logging else None
+        add_log_handlers(
+            logger,
+            self._handlers,
+            name,
+            log_file,
+            self.file_logging,
+            self.console_logging,
+        )
 
         self._loggers[name] = logger
         return logger
 
     def close(self) -> None:
         """Close all handlers."""
-        for handler in self._handlers.values():
-            handler.close()
-        for logger in self._loggers.values():
-            for handler in logger.handlers[:]:
-                logger.removeHandler(handler)
-        self._handlers.clear()
-        self._loggers.clear()
+        close_loggers(self._handlers, self._loggers)

@@ -189,6 +189,7 @@ def log_error(
     identifier: str,
     action: str,
     error: str | Exception,
+    correlation_id: str | None = None,
     exec_id: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -199,11 +200,14 @@ def log_error(
         identifier: Primary identifier.
         action: Action name (e.g., "step_failed", "graph_failed").
         error: Error message or exception.
+        correlation_id: Optional correlation ID for tracking related operations.
         exec_id: Optional execution ID for direct node execution.
         **kwargs: Additional key=value pairs to log.
     """
     if logger is None:
         return
+    if correlation_id:
+        kwargs["corr_id"] = correlation_id
     if exec_id:
         kwargs["exec_id"] = exec_id
     error_msg = truncate(str(error), max_length=200)
@@ -217,6 +221,7 @@ def log_warning(
     logger: logging.Logger | None,
     identifier: str,
     action: str,
+    correlation_id: str | None = None,
     exec_id: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -226,11 +231,14 @@ def log_warning(
         logger: Logger to use. If None, this is a no-op.
         identifier: Primary identifier.
         action: Action name (e.g., "retry", "budget_warning").
+        correlation_id: Optional correlation ID for tracking related operations.
         exec_id: Optional execution ID for direct node execution.
         **kwargs: Additional key=value pairs to log.
     """
     if logger is None:
         return
+    if correlation_id:
+        kwargs["corr_id"] = correlation_id
     if exec_id:
         kwargs["exec_id"] = exec_id
     kv_pairs = ", ".join(f"{k}={truncate(v)}" for k, v in kwargs.items())
@@ -242,6 +250,7 @@ def log_info(
     logger: logging.Logger | None,
     identifier: str,
     action: str,
+    correlation_id: str | None = None,
     exec_id: str | None = None,
     **kwargs: Any,
 ) -> None:
@@ -251,11 +260,14 @@ def log_info(
         logger: Logger to use. If None, this is a no-op.
         identifier: Primary identifier.
         action: Action name.
+        correlation_id: Optional correlation ID for tracking related operations.
         exec_id: Optional execution ID for direct node execution.
         **kwargs: Additional key=value pairs to log.
     """
     if logger is None:
         return
+    if correlation_id:
+        kwargs["corr_id"] = correlation_id
     if exec_id:
         kwargs["exec_id"] = exec_id
     kv_pairs = ", ".join(f"{k}={truncate(v)}" for k, v in kwargs.items())

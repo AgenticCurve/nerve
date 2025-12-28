@@ -214,9 +214,9 @@ class SingleShotLLMNode:
         """
         from nerve.core.nodes.session_logging import get_execution_logger
 
-        # Get logger and exec_id
+        # Get logger and exec_id (fallback to context.exec_id for consistency)
         log_ctx = get_execution_logger(self.id, context, self.session)
-        exec_id = log_ctx.exec_id
+        exec_id = log_ctx.exec_id or context.exec_id
 
         # Initialize result structure
         result: dict[str, Any] = {

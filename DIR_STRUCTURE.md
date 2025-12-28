@@ -107,8 +107,8 @@
 │       │   │   │   ├── [L: 135] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
-│       │   │   ├── [L: 290] run_logging.py
-│       │   │   ├── [L: 705] session_logging.py
+│       │   │   ├── [L: 302] run_logging.py
+│       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
 │       │   │   │   ├── [L: 582] claude_wezterm_node.py
@@ -282,4 +282,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 222 files, 48,833 total lines
+61 directories, 222 files, 48,882 total lines
