@@ -47,7 +47,8 @@
 ├── features/
 │   ├── glm/
 │   │   ├── [L: 214] glm_chat_node.py
-│   │   └── [L: 133] glm_node.py
+│   │   ├── [L: 133] glm_node.py
+│   │   └── [L: 414] tool_calling.py
 │   ├── openrouter/
 │   │   ├── [L: 223] openrouter_chat_node.py
 │   │   ├── [L: 162] openrouter_node.py
@@ -105,7 +106,7 @@
 │       │   │   │   ├── [L:  68] __init__.py
 │       │   │   │   ├── [L: 657] base.py
 │       │   │   │   ├── [L: 560] chat.py
-│       │   │   │   ├── [L: 135] glm.py
+│       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L: 302] run_logging.py
@@ -285,4 +286,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 225 files, 50,083 total lines
+61 directories, 226 files, 50,503 total lines
