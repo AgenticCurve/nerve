@@ -90,6 +90,10 @@ class NodeLifecycleHandler:
         # LLMChatNode options
         llm_provider = params.get("llm_provider")
         llm_system = params.get("llm_system")
+        # Tool calling options (LLMChatNode only)
+        tool_node_ids = params.get("tool_node_ids")
+        tool_choice = params.get("tool_choice")
+        parallel_tool_calls = params.get("parallel_tool_calls")
         # HTTP backend for LLM nodes
         http_backend = cast(
             Literal["aiohttp", "openai"],
@@ -138,6 +142,10 @@ class NodeLifecycleHandler:
                 # LLMChatNode options
                 llm_provider=llm_provider,
                 llm_system=llm_system,
+                # Tool calling options
+                tool_node_ids=tool_node_ids,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
                 # HTTP backend
                 http_backend=http_backend,
             )
@@ -177,9 +185,10 @@ class NodeLifecycleHandler:
             )
         )
 
-        # Only start monitoring for persistent nodes (PTYNode, WezTermNode, etc.)
-        # Ephemeral nodes (BashNode, OpenRouterNode) don't need lifecycle monitoring
-        if node.persistent:
+        # Only start monitoring for persistent nodes with state (PTYNode, WezTermNode, etc.)
+        # Ephemeral nodes (BashNode, OpenRouterNode) and stateless persistent nodes
+        # (LLMChatNode) don't need lifecycle monitoring
+        if node.persistent and hasattr(node, "state"):
             # Start monitoring (store task to prevent GC and enable cancellation)
             task = asyncio.create_task(self._monitor_node(node))
             self._monitoring_tasks[node.id] = task

@@ -73,6 +73,12 @@ class NodeFactory:
         # LLMChatNode-specific options
         llm_provider: str | None = None,  # "openrouter" or "glm"
         llm_system: str | None = None,  # System prompt
+        # Tool calling options (LLMChatNode only)
+        tool_node_ids: list[str] | None = None,  # Node IDs to use as tools
+        tool_choice: str
+        | dict[str, object]
+        | None = None,  # "auto", "none", "required", or force dict
+        parallel_tool_calls: bool | None = None,  # Control parallel tool execution
         # HTTP backend for LLM nodes
         http_backend: HttpBackend = "aiohttp",
     ) -> Node:
@@ -98,6 +104,9 @@ class NodeFactory:
             llm_thinking: Enable thinking/reasoning mode (GLMNode only).
             llm_provider: LLM provider for chat node ("openrouter" or "glm").
             llm_system: System prompt for chat node.
+            tool_node_ids: List of node IDs to use as tools (LLMChatNode only).
+            tool_choice: Tool choice mode - "auto", "none", "required", or force dict.
+            parallel_tool_calls: Control parallel tool execution (True/False/None).
             http_backend: HTTP backend for LLM nodes ("aiohttp" or "openai").
 
         Returns:
@@ -264,12 +273,39 @@ class NodeFactory:
                     f"Unknown llm_provider: '{llm_provider}'. Use 'openrouter' or 'glm'"
                 )
 
+            # Set up tools if tool_node_ids provided
+            tools = None
+            tool_executor = None
+            if tool_node_ids:
+                from nerve.core.nodes import is_tool_capable, tools_from_nodes
+
+                # Look up tool nodes from session
+                tool_nodes = []
+                for tid in tool_node_ids:
+                    if tid not in session.nodes:
+                        raise ValueError(f"Tool node '{tid}' not found in session")
+                    tool_node = session.nodes[tid]
+                    if not is_tool_capable(tool_node):
+                        raise ValueError(
+                            f"Node '{tid}' is not tool-capable. "
+                            "It must implement tool_description(), tool_parameters(), "
+                            "tool_input(), and tool_result() methods."
+                        )
+                    tool_nodes.append(tool_node)
+
+                # Create tool definitions and executor
+                tools, tool_executor = tools_from_nodes(tool_nodes)
+
             # Create chat node wrapping the LLM
             node = LLMChatNode(
                 id=str(node_id),
                 session=session,
                 llm=inner_llm,
                 system=llm_system,
+                tools=tools or [],
+                tool_executor=tool_executor,
+                tool_choice=tool_choice,
+                parallel_tool_calls=parallel_tool_calls,
             )
         else:
             raise ValueError(f"Unknown backend: '{backend}'. Valid backends: {self.VALID_BACKENDS}")

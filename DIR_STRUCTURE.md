@@ -163,7 +163,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 856] node.py
+│       │   │   │   ├── [L: 909] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -195,12 +195,12 @@
 │       │   ├── [L: 295] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 277] node_factory.py
+│       │   │   └── [L: 313] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
 │       │   │   ├── [L: 362] node_interaction_handler.py
-│       │   │   ├── [L: 423] node_lifecycle_handler.py
+│       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
@@ -286,4 +286,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 226 files, 50,503 total lines
+61 directories, 226 files, 50,601 total lines

@@ -225,6 +225,29 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default="aiohttp",
     help="HTTP backend for LLM nodes (aiohttp or openai SDK, default: aiohttp)",
 )
+# Tool calling options (LLMChatNode only)
+@click.option(
+    "--tool",
+    "tool_node_ids",
+    multiple=True,
+    help="Node ID to use as tool (repeatable). Node must exist and be tool-capable.",
+)
+@click.option(
+    "--tool-choice",
+    type=click.Choice(["auto", "none", "required"]),
+    default=None,
+    help="Tool choice mode: auto (default), none (disable), required (must use tool)",
+)
+@click.option(
+    "--force-tool",
+    default=None,
+    help="Force specific tool by name (alternative to --tool-choice)",
+)
+@click.option(
+    "--parallel-tool-calls/--no-parallel-tool-calls",
+    default=None,
+    help="Enable/disable parallel tool calls (default: provider decides)",
+)
 @async_server_command
 async def node_create(
     name: str,
@@ -255,6 +278,11 @@ async def node_create(
     system: str | None,
     # HTTP backend option
     http_backend: str,
+    # Tool calling options
+    tool_node_ids: tuple[str, ...],
+    tool_choice: str | None,
+    force_tool: str | None,
+    parallel_tool_calls: bool | None,
 ) -> None:
     """Create a new node.
 
@@ -391,6 +419,9 @@ async def node_create(
         # --thinking only valid if provider is glm
         if thinking and llm_provider != "glm":
             error_exit("--thinking is only valid when --llm-provider is glm")
+        # --force-tool and --tool-choice are mutually exclusive
+        if force_tool and tool_choice:
+            error_exit("--force-tool and --tool-choice are mutually exclusive")
     else:
         # Non-LLM nodes shouldn't use LLM options
         if api_key or llm_model or llm_base_url or llm_timeout:
@@ -406,6 +437,17 @@ async def node_create(
             error_exit("--cwd is only valid for BashNode and terminal nodes")
         if bash_timeout:
             error_exit("--bash-timeout is only valid for BashNode")
+
+    # Tool options are only valid for LLMChatNode
+    if node_type != "LLMChatNode":
+        if tool_node_ids:
+            error_exit("--tool is only valid for LLMChatNode")
+        if tool_choice:
+            error_exit("--tool-choice is only valid for LLMChatNode")
+        if force_tool:
+            error_exit("--force-tool is only valid for LLMChatNode")
+        if parallel_tool_calls is not None:
+            error_exit("--parallel-tool-calls is only valid for LLMChatNode")
 
     # Map node type to wire protocol backend value
     backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")
@@ -449,6 +491,17 @@ async def node_create(
         # Add HTTP backend for LLM nodes
         if http_backend != "aiohttp":  # Only send if not default
             params["http_backend"] = http_backend
+
+        # Add tool calling options (LLMChatNode only)
+        if tool_node_ids:
+            params["tool_node_ids"] = list(tool_node_ids)
+        if force_tool:
+            # Convert --force-tool to tool_choice format
+            params["tool_choice"] = {"type": "function", "function": {"name": force_tool}}
+        elif tool_choice:
+            params["tool_choice"] = tool_choice
+        if parallel_tool_calls is not None:
+            params["parallel_tool_calls"] = parallel_tool_calls
 
         # Add provider config if specified
         if api_format:
