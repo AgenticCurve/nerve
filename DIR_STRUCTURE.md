@@ -47,10 +47,12 @@
 ├── features/
 │   ├── glm/
 │   │   ├── [L: 214] glm_chat_node.py
-│   │   └── [L: 133] glm_node.py
+│   │   ├── [L: 133] glm_node.py
+│   │   └── [L: 414] tool_calling.py
 │   ├── openrouter/
 │   │   ├── [L: 223] openrouter_chat_node.py
-│   │   └── [L: 162] openrouter_node.py
+│   │   ├── [L: 162] openrouter_node.py
+│   │   └── [L: 414] tool_calling.py
 │   └── parser/
 │       └── claude/
 │           └── samples/
@@ -87,9 +89,9 @@
 │       │   ├── [L: 194] __init__.py
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
-│       │   │   ├── [L: 148] __init__.py
+│       │   │   ├── [L: 155] __init__.py
 │       │   │   ├── [L: 305] base.py
-│       │   │   ├── [L: 347] bash.py
+│       │   │   ├── [L: 408] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -102,18 +104,19 @@
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 655] base.py
-│       │   │   │   ├── [L: 541] chat.py
-│       │   │   │   ├── [L: 135] glm.py
+│       │   │   │   ├── [L: 657] base.py
+│       │   │   │   ├── [L: 560] chat.py
+│       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L: 302] run_logging.py
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 582] claude_wezterm_node.py
+│       │   │   │   ├── [L: 638] claude_wezterm_node.py
 │       │   │   │   ├── [L: 717] pty_node.py
 │       │   │   │   └── [L: 814] wezterm_node.py
+│       │   │   ├── [L: 340] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
@@ -160,7 +163,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 856] node.py
+│       │   │   │   ├── [L: 909] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -192,12 +195,12 @@
 │       │   ├── [L: 295] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 277] node_factory.py
+│       │   │   └── [L: 313] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
 │       │   │   ├── [L: 362] node_interaction_handler.py
-│       │   │   ├── [L: 423] node_lifecycle_handler.py
+│       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
@@ -244,6 +247,7 @@
     │   │   ├── [L: 524] test_graph.py
     │   │   ├── [L: 121] test_policies.py
     │   │   ├── [L: 924] test_terminal.py
+    │   │   ├── [L: 302] test_tools.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
     │   ├── session/
@@ -282,4 +286,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 222 files, 48,882 total lines
+61 directories, 226 files, 50,601 total lines

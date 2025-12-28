@@ -73,6 +73,12 @@ class GLMNode(SingleShotLLMNode):
     - Optional thinking mode for chain-of-thought reasoning
     - Auto-registers with session on creation
 
+    Tool Calling Notes:
+    - tool_choice parameter works correctly (force specific tool, "none", "auto")
+    - parallel_tool_calls=False is NOT respected by GLM - the model will still
+      make parallel tool calls regardless of this setting. This appears to be
+      a limitation of the Z.AI API endpoint.
+
     Args:
         id: Unique identifier for this node.
         session: Session to register this node with.

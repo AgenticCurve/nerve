@@ -222,6 +222,7 @@ class SingleShotLLMNode:
         result: dict[str, Any] = {
             "success": False,
             "content": None,
+            "tool_calls": None,  # For tool use
             "model": None,
             "finish_reason": None,
             "usage": None,
@@ -284,6 +285,7 @@ class SingleShotLLMNode:
                 choice = response_data["choices"][0]
                 message = choice.get("message", {})
                 result["content"] = message.get("content")
+                result["tool_calls"] = message.get("tool_calls")  # For tool use
                 result["finish_reason"] = choice.get("finish_reason")
 
             result["model"] = response_data.get("model", self.model)

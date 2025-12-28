@@ -343,5 +343,66 @@ class BashNode:
             },
         )
 
+    # -------------------------------------------------------------------------
+    # Tool-capable interface (opt-in for LLMChatNode tool use)
+    # -------------------------------------------------------------------------
+
+    def tool_description(self) -> str:
+        """Return description of this tool for LLM.
+
+        Returns:
+            Human-readable description of what this tool does.
+        """
+        return "Execute bash/shell commands and return stdout/stderr"
+
+    def tool_parameters(self) -> dict[str, Any]:
+        """Return JSON Schema for tool parameters.
+
+        Returns:
+            JSON Schema dict defining accepted parameters.
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": "The bash command to execute",
+                },
+            },
+            "required": ["command"],
+        }
+
+    def tool_input(self, args: dict[str, Any]) -> str:
+        """Convert tool arguments to context.input value.
+
+        Args:
+            args: Arguments from LLM's tool call.
+
+        Returns:
+            Command string to execute.
+        """
+        command = args.get("command", "")
+        return str(command) if command else ""
+
+    def tool_result(self, result: dict[str, Any]) -> str:
+        """Convert execute() result to string for LLM.
+
+        Args:
+            result: Result dict from execute().
+
+        Returns:
+            Formatted string with command output or error.
+        """
+        if result.get("success"):
+            stdout = result.get("stdout", "")
+            return stdout if stdout else "(no output)"
+
+        # Error case - include stderr and exit code
+        stderr = result.get("stderr", "")
+        error = result.get("error", "")
+        exit_code = result.get("exit_code", "?")
+        error_msg = stderr or error or "Command failed"
+        return f"Error (exit {exit_code}): {error_msg}"
+
     def __repr__(self) -> str:
         return f"BashNode(id={self.id!r}, cwd={self.cwd!r})"
