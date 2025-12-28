@@ -147,7 +147,7 @@
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 347] extract.py
-│       │   │   ├── [L: 194] main.py
+│       │   │   ├── [L: 229] main.py
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
@@ -170,9 +170,16 @@
 │       │   ├── mcp/
 │       │   │   ├── [L:  30] __init__.py
 │       │   │   └── [L: 213] server.py
-│       │   └── sdk/
-│       │       ├── [L:  27] __init__.py
-│       │       └── [L: 372] client.py
+│       │   ├── sdk/
+│       │   │   ├── [L:  27] __init__.py
+│       │   │   └── [L: 372] client.py
+│       │   └── tui/
+│       │       ├── [L:   8] __init__.py
+│       │       └── commander/
+│       │           ├── [L:  33] __init__.py
+│       │           ├── [L: 225] blocks.py
+│       │           ├── [L: 589] commander.py
+│       │           └── [L: 138] themes.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -286,4 +293,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 226 files, 50,601 total lines
+63 directories, 231 files, 51,629 total lines

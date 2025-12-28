@@ -187,6 +187,41 @@ def _run_cli() -> None:
                 sys.exit(1)
             asyncio.run(run_interactive(server_name=server_name, session_name=session_name))
 
+    @cli.command()
+    @click.option(
+        "--theme",
+        "-t",
+        default="default",
+        type=click.Choice(["default", "nord", "dracula", "mono"]),
+        help="Color theme (default: default)",
+    )
+    def commander(theme: str) -> None:
+        """Interactive command center for nodes.
+
+        A block-based timeline interface for interacting with nodes.
+        Each interaction is displayed as a discrete block with input/output.
+
+        **Commands:**
+
+            @node message     Send message to a node
+            >>> code          Execute Python code
+            Ctrl+C            Interrupt running command
+            :nodes            List available nodes
+            :timeline         Show session timeline
+            :world node       Show node's history/state
+            :theme name       Switch theme
+            :exit             Exit
+
+        **Examples:**
+
+            nerve commander                    # Default theme
+            nerve commander --theme nord       # Nord color scheme
+            nerve commander -t dracula         # Dracula theme
+        """
+        from nerve.frontends.tui.commander import run_commander
+
+        asyncio.run(run_commander(theme=theme))
+
     cli()
 
 
