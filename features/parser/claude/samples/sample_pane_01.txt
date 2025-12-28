@@ -1,0 +1,48 @@
+⏺ Search(pattern: "extract", path: "src/nerve/frontends/cli")
+  ⎿  Found 2 files
+     src/nerve/frontends/cli/main.py
+     src/nerve/frontends/cli/extract.py
+
+∴ Thinking…
+
+  There's an extract.py file. Let me look at it to see how it works.
+
+⏺ Read(src/nerve/frontends/cli/extract.py)
+  ⎿  Read 244 lines
+
+∴ Thinking…
+
+  Now I understand. There's a nerve extract CLI command for testing the parser. Let me show the user how to use it.
+
+⏺ Yes! There's nerve extract for testing the parser. Here's how to use it:
+
+  # Extract from a file
+  nerve extract /path/to/output.txt
+
+  # Extract from stdin
+  cat /path/to/output.txt | nerve extract
+
+  # Output as JSON (useful for seeing structure)
+  nerve extract --json /path/to/output.txt
+
+  # Show only raw response
+  nerve extract --raw /path/to/output.txt
+
+  # Show only last section
+  nerve extract --last /path/to/output.txt
+
+  # Full content (no truncation)
+  nerve extract --full /path/to/output.txt
+
+  # Parse Gemini output instead of Claude
+  nerve extract --type gemini /path/to/output.txt
+
+  The command uses the Claude parser by default (ParserType.CLAUDE). It parses the content and shows structured sections (text, tool calls, etc.).
+
+  Do you have a sample file to test with, or would you like to test it interactively via stdin?
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)                                                                                                                                          29317 tokens
+

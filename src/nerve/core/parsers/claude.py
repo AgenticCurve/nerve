@@ -92,9 +92,12 @@ class ClaudeParser(Parser):
         lines = content.split("\n")
 
         # First, check for compaction separator (takes precedence)
+        # Real compaction lines start with ─ (box drawing char) like:
+        # ──── Conversation compacted ────────────────────────────────
         compaction_idx = -1
         for i, line in enumerate(lines):
-            if "Conversation compacted" in line or "conversation compacted" in line:
+            stripped = line.strip()
+            if stripped.startswith("─") and "conversation compacted" in stripped.lower():
                 compaction_idx = i
 
         # Find last user prompt ("> " followed by actual text, not suggestions)
@@ -113,18 +116,20 @@ class ClaudeParser(Parser):
             start_idx = last_prompt_idx
         else:
             # Fallback: if content starts with Claude response markers, use beginning
+            # Markers must be first character of line (no leading whitespace)
             for i, line in enumerate(lines):
-                stripped = line.strip()
-                if stripped.startswith("∴") or stripped.startswith("⏺"):
+                if line.startswith("∴") or line.startswith("⏺"):
                     start_idx = i - 1
                     break
             else:
                 return ""
 
-        # Find end (empty prompt before INSERT)
+        # Find end (empty prompt before status line)
+        # Status lines start with "-- INSERT --" or "⏵⏵" (after stripping whitespace)
         end_idx = len(lines)
         for i in range(len(lines) - 1, start_idx, -1):
-            if "-- INSERT --" in lines[i]:
+            stripped_line = lines[i].strip()
+            if stripped_line.startswith("-- INSERT --") or stripped_line.startswith("⏵⏵"):
                 for j in range(i - 1, max(start_idx, i - 10), -1):
                     stripped = lines[j].strip()
                     if stripped == ">" or stripped == "> ":
@@ -196,7 +201,7 @@ class ClaudeParser(Parser):
             return lines
 
         # Search from the end for the rating prompt marker
-        for i in range(len(lines) - 1, max(0, len(lines) - 10), -1):
+        for i in range(len(lines) - 1, max(0, len(lines) - 20), -1):
             line = lines[i].strip()
             if "How is Claude doing this session" in line:
                 # Found rating prompt - return everything before it
@@ -234,16 +239,14 @@ class ClaudeParser(Parser):
 
         while i < len(lines):
             line = lines[i]
-            stripped = line.strip()
 
-            # Thinking section
-            if "∴ Thinking" in line or stripped.startswith("∴"):
+            # Thinking section - marker must be first character of line
+            if line.startswith("∴"):
                 content_lines: list[str] = []
                 i += 1
                 # Collect indented content until next section marker
                 while i < len(lines):
-                    next_stripped = lines[i].strip()
-                    if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                    if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                         break
                     content_lines.append(lines[i])
                     i += 1
@@ -255,9 +258,9 @@ class ClaudeParser(Parser):
                 )
                 continue
 
-            # Tool call or text (both start with ⏺)
-            if stripped.startswith("⏺"):
-                tool_match = re.match(r"^⏺\s+(\w+)\((.*)$", stripped)
+            # Tool call or text (both start with ⏺) - marker must be first character
+            if line.startswith("⏺"):
+                tool_match = re.match(r"^⏺\s+(\w+)\((.*)$", line)
                 if tool_match:
                     # Tool call - collect full args and result
                     tool_name = tool_match.group(1)
@@ -267,8 +270,7 @@ class ClaudeParser(Parser):
                     args_lines = [args_start]
                     i += 1
                     while i < len(lines) and not lines[i].strip().startswith("⎿"):
-                        next_stripped = lines[i].strip()
-                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                        if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                             break
                         args_lines.append(lines[i])
                         i += 1
@@ -278,7 +280,7 @@ class ClaudeParser(Parser):
                     if args_text.endswith(")"):
                         args_text = args_text[:-1]
 
-                    # Collect result (starts with ⎿)
+                    # Collect result (starts with ⎿) - ⎿ is indented, so use strip()
                     result_lines: list[str] = []
                     while i < len(lines):
                         result_line = lines[i]
@@ -287,7 +289,7 @@ class ClaudeParser(Parser):
                             # First result line - remove the ⎿ prefix
                             result_lines.append(result_stripped[1:].strip())
                             i += 1
-                        elif result_stripped.startswith("⏺") or result_stripped.startswith("∴"):
+                        elif result_line.startswith("⏺") or result_line.startswith("∴"):
                             break
                         elif result_lines:  # Continue collecting result
                             result_lines.append(result_line)
@@ -308,15 +310,14 @@ class ClaudeParser(Parser):
                     )
                 else:
                     # Text response - collect continuation lines
-                    text_content = stripped[1:].strip()  # Remove ⏺
+                    text_content = line[1:].strip()  # Remove ⏺
                     content_lines = [text_content] if text_content else []
                     i += 1
                     # Collect until next section marker
                     while i < len(lines):
-                        next_stripped = lines[i].strip()
-                        if next_stripped.startswith("⏺") or next_stripped.startswith("∴"):
+                        if lines[i].startswith("⏺") or lines[i].startswith("∴"):
                             break
-                        if next_stripped:
+                        if lines[i].strip():
                             content_lines.append(lines[i])
                         i += 1
 
@@ -336,8 +337,18 @@ class ClaudeParser(Parser):
     def _extract_tokens(self, content: str) -> int | None:
         """Extract token count from status line."""
         for line in reversed(content.split("\n")):
-            # Look for token count in status lines (INSERT mode or shortcuts hint)
-            if ("-- INSERT --" in line or "? for shortcuts" in line) and "tokens" in line:
+            stripped = line.strip()
+            # Look for token count in status lines
+            # Valid status line patterns (must start with these to avoid diff/quoted content):
+            # - "-- INSERT --" (insert mode)
+            # - "?" (shortcuts hint)
+            # - "⏵⏵" (bypass permissions mode)
+            is_status_line = (
+                stripped.startswith("-- INSERT --")
+                or stripped.startswith("?")
+                or stripped.startswith("⏵⏵")
+            )
+            if is_status_line and "tokens" in line:
                 match = re.search(r"(\d+)\s*tokens", line)
                 if match:
                     return int(match.group(1))

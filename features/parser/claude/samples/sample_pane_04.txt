@@ -1,0 +1,57 @@
+⏺ Found some remaining issues:
+
+  1. Line 59: "esc to interrupt" in line_lower - could match if text contains this phrase
+  2. Line 205: "How is Claude doing this session" in line - could match quoted content
+
+  Let me check the context and fix them:
+
+⏺ Read(src/nerve/core/parsers/claude.py · lines 55-64)
+  ⎿  Read 10 lines
+
+∴ Thinking…
+
+  The "esc to interrupt" check is in is_ready(). Looking at how Claude Code displays this, it appears in the status line like:
+    ∴ Thinking…                                           (esc to interrupt)
+
+  The status indicator is typically right-aligned and appears in a specific format. Let me think about what the actual line looks like - it probably ends with "(esc to interrupt)" or similar.
+
+  Actually, looking at it more carefully, the "esc to interrupt" text is part of the status UI. It's not at the start of a line - it appears at the end/right side of the screen. So we can't use
+  startswith.
+
+  But we could check that it's at the END of the line (after stripping) or that it's in parentheses like (esc to interrupt).
+
+  Let me check what the actual format looks like:
+
+⏺ Bash(grep -rn "esc to interrupt" tests/ features/ 2>/dev/null | head -5)
+  ⎿  tests/core/test_parsers.py:25:  (esc to interrupt)
+     tests/core/test_parsers.py:61:        """Test sample_pane_02 is ready (no 'esc to interrupt' present).
+     tests/core/test_parsers.py:63:        The new is_ready logic only checks for 'esc to interrupt' in the
+     tests/core/test_parsers.py:67:        # Does not contain "esc to interrupt"
+     tests/core/test_parsers.py:68:        assert "esc to interrupt" not in sample_pane_02.lower()
+  ⎿  Interrupted · What should Claude do instead?
+
+> that's alright... no an issue
+
+∴ Thinking…
+
+  The user is saying that the remaining "in" checks are not an issue. They're fine with the current state. The "esc to interrupt" and "How is Claude doing" checks are probably specific enough that
+  they won't cause false positives in practice.
+
+  Let me just confirm the current state is good.
+
+⏺ Got it. The remaining in checks are for very specific phrases that are unlikely to appear in normal quoted content:
+
+  - "esc to interrupt" / "esc to cancel" - Claude UI status text
+  - "How is Claude doing this session" - rating prompt
+  - "(tab to accept)" - already combined with startswith(">")
+  - "tokens" / "conversation compacted" - already combined with startswith checks
+
+  The main issues that caused false positives (section markers ∴, ⏺, compaction ─, and -- INSERT --) are now fixed. All 42 tests pass.
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)                                                                                                                                          92673 tokens
+
+
+
