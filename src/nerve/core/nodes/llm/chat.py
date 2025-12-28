@@ -99,6 +99,13 @@ class LLMChatNode:
         tool_executor: Optional async function to execute tools.
             Signature: async def executor(name: str, args: dict) -> str
         max_tool_rounds: Maximum tool call rounds before stopping (default: 10).
+        tool_choice: Control tool usage. Can be:
+            - "auto": Let LLM decide (default behavior)
+            - "none": Disable tool usage for this conversation
+            - {"type": "function", "function": {"name": "tool_name"}}: Force specific tool
+        parallel_tool_calls: Control parallel tool execution.
+            - True: Allow multiple tools in one response (default for most models)
+            - False: Force sequential tool calls
         metadata: Additional metadata for the node.
 
     Example:
@@ -136,6 +143,10 @@ class LLMChatNode:
     tools: list[ToolDefinition] = field(default_factory=list)
     tool_executor: ToolExecutor | None = None
     max_tool_rounds: int = 10
+    tool_choice: str | dict[str, Any] | None = (
+        None  # "auto", "none", or {"type": "function", "function": {"name": "..."}}
+    )
+    parallel_tool_calls: bool | None = None  # Control parallel vs sequential tool execution
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # Conversation state
@@ -422,6 +433,14 @@ class LLMChatNode:
         # Add tools if defined
         if self.tools:
             request["tools"] = [t.to_dict() for t in self.tools]
+
+            # Add tool_choice if specified ("auto", "none", or force specific tool)
+            if self.tool_choice is not None:
+                request["tool_choice"] = self.tool_choice
+
+            # Add parallel_tool_calls if specified
+            if self.parallel_tool_calls is not None:
+                request["parallel_tool_calls"] = self.parallel_tool_calls
 
         return request
 

@@ -1,15 +1,16 @@
 """Tests for node-as-tool adapter."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from nerve.core.nodes import BashNode, ExecutionContext
 from nerve.core.nodes.tools import (
     ToolCapable,
     is_tool_capable,
+    node_to_tool_definition,
     tools_from_nodes,
     truncate_result,
-    node_to_tool_definition,
 )
 from nerve.core.session import Session
 

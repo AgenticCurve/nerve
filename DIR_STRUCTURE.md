@@ -50,17 +50,15 @@
 │   │   └── [L: 133] glm_node.py
 │   ├── openrouter/
 │   │   ├── [L: 223] openrouter_chat_node.py
-│   │   └── [L: 162] openrouter_node.py
-│   ├── parser/
-│   │   └── claude/
-│   │       └── samples/
-│   │           ├── [L:  48] sample_pane_01.txt
-│   │           ├── [L: 432] sample_pane_02.txt
-│   │           ├── [L: 379] sample_pane_03.txt
-│   │           └── [L:  57] sample_pane_04.txt
-│   └── tools/
-│       ├── [L: 161] bash_tool_test.py
-│       └── [L: 176] claude_tool_test.py
+│   │   ├── [L: 162] openrouter_node.py
+│   │   └── [L: 414] tool_calling.py
+│   └── parser/
+│       └── claude/
+│           └── samples/
+│               ├── [L:  48] sample_pane_01.txt
+│               ├── [L: 432] sample_pane_02.txt
+│               ├── [L: 379] sample_pane_03.txt
+│               └── [L:  57] sample_pane_04.txt
 ├── [L:  36] Makefile
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
@@ -106,7 +104,7 @@
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
 │       │   │   │   ├── [L: 657] base.py
-│       │   │   │   ├── [L: 541] chat.py
+│       │   │   │   ├── [L: 560] chat.py
 │       │   │   │   ├── [L: 135] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -117,7 +115,7 @@
 │       │   │   │   ├── [L: 638] claude_wezterm_node.py
 │       │   │   │   ├── [L: 717] pty_node.py
 │       │   │   │   └── [L: 814] wezterm_node.py
-│       │   │   ├── [L: 342] tools.py
+│       │   │   ├── [L: 340] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
@@ -248,7 +246,7 @@
     │   │   ├── [L: 524] test_graph.py
     │   │   ├── [L: 121] test_policies.py
     │   │   ├── [L: 924] test_terminal.py
-    │   │   ├── [L: 301] test_tools.py
+    │   │   ├── [L: 302] test_tools.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
     │   ├── session/
@@ -287,4 +285,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-62 directories, 226 files, 49,988 total lines
+61 directories, 225 files, 50,083 total lines
