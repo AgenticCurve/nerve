@@ -16,11 +16,13 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
+from nerve.core.nodes.run_logging import log_complete, log_error, log_start, log_warning
 
 if TYPE_CHECKING:
     from nerve.core.session.session import Session
@@ -107,6 +109,12 @@ class BashNode:
         # Auto-register with session
         self.session.nodes[self.id] = self
 
+        # Log node registration
+        if self.session.session_logger:
+            self.session.session_logger.log_node_lifecycle(
+                self.id, "BashNode", persistent=self.persistent
+            )
+
     async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute a bash command and return JSON result.
 
@@ -130,6 +138,12 @@ class BashNode:
             steps, not here. Use interrupt() to stop execution during this
             node's execution.
         """
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Get logger and exec_id
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id
+
         # Initialize result structure
         result = {
             "success": False,
@@ -141,6 +155,8 @@ class BashNode:
             "interrupted": False,
         }
 
+        start_mono = time.monotonic()
+
         try:
             # Get command from context
             command = str(context.input) if context.input else ""
@@ -149,6 +165,17 @@ class BashNode:
             if not command:
                 result["error"] = "No command provided in context.input"
                 return result
+
+            # Log command start
+            log_start(
+                log_ctx.logger,
+                self.id,
+                "bash_start",
+                exec_id=exec_id,
+                command=command,
+                cwd=self.cwd,
+                timeout=context.timeout or self.timeout,
+            )
 
             # Build environment
             env = None
@@ -190,16 +217,56 @@ class BashNode:
                     # Interrupted (SIGINT exit codes)
                     result["interrupted"] = True
                     result["error"] = "Command interrupted (Ctrl+C)"
+                    duration = time.monotonic() - start_mono
+                    log_warning(
+                        log_ctx.logger,
+                        self.id,
+                        "bash_interrupted",
+                        exec_id=exec_id,
+                        exit_code=proc.returncode,
+                        duration_s=f"{duration:.1f}",
+                    )
                 elif proc.returncode == 0:
                     result["success"] = True
+                    duration = time.monotonic() - start_mono
+                    log_complete(
+                        log_ctx.logger,
+                        self.id,
+                        "bash_complete",
+                        duration,
+                        exec_id=exec_id,
+                        exit_code=0,
+                    )
                 else:
-                    result["error"] = f"Command exited with code {proc.returncode}"
+                    error_msg = f"Command exited with code {proc.returncode}"
+                    result["error"] = error_msg
+                    duration = time.monotonic() - start_mono
+                    log_error(
+                        log_ctx.logger,
+                        self.id,
+                        "bash_failed",
+                        error_msg,
+                        exec_id=exec_id,
+                        exit_code=proc.returncode,
+                        duration_s=f"{duration:.1f}",
+                    )
 
             except TimeoutError:
                 # Kill the process on timeout
                 proc.kill()
                 await proc.wait()
-                result["error"] = f"Command timed out after {timeout}s"
+                error_msg = f"Command timed out after {timeout}s"
+                result["error"] = error_msg
+                duration = time.monotonic() - start_mono
+                log_error(
+                    log_ctx.logger,
+                    self.id,
+                    "bash_timeout",
+                    error_msg,
+                    exec_id=exec_id,
+                    timeout=timeout,
+                    duration_s=f"{duration:.1f}",
+                )
 
             finally:
                 # Clear current process reference (critical for interrupt safety)
@@ -209,6 +276,15 @@ class BashNode:
         except Exception as e:
             # Catch any other exceptions (file not found, permission denied, etc.)
             result["error"] = f"{type(e).__name__}: {str(e)}"
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "bash_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
 
         return result
 

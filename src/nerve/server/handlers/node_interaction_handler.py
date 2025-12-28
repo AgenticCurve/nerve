@@ -6,6 +6,8 @@ Distinction: Manages HOW to interact with nodes, not their existence
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -14,6 +16,8 @@ from nerve.core.nodes.history import HistoryReader
 from nerve.core.parsers import get_parser
 from nerve.core.types import ParserType
 from nerve.server.protocols import Event, EventType
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nerve.core.types import ParsedResponse
@@ -113,6 +117,16 @@ class NodeInteractionHandler:
         # Convert parser string to ParserType, or None to use node's default
         parser_type = ParserType(parser_str) if parser_str else None
 
+        start_time = time.monotonic()
+        logger.debug(
+            "execute_start: node_id=%s, input_len=%d, parser=%s, stream=%s, timeout=%s",
+            node_id,
+            len(text),
+            parser_str,
+            stream,
+            timeout,
+        )
+
         await self.event_sink.emit(
             Event(
                 type=EventType.NODE_BUSY,
@@ -199,6 +213,14 @@ class NodeInteractionHandler:
 
         # Auto-delete ephemeral nodes after execution
         await self._auto_delete_if_ephemeral(node, session)
+
+        duration = time.monotonic() - start_time
+        logger.debug(
+            "execute_complete: node_id=%s, duration=%.2fs, response_type=%s",
+            node_id,
+            duration,
+            type(response).__name__,
+        )
 
         return {"response": response_data}
 

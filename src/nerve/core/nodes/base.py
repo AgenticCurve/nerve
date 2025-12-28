@@ -12,6 +12,7 @@ Persistent nodes maintain state across executions; ephemeral nodes are stateless
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -222,6 +223,12 @@ class FunctionNode:
         # Auto-register with session
         self.session.nodes[self.id] = self
 
+        # Log node registration
+        if self.session.session_logger:
+            self.session.session_logger.log_node_lifecycle(
+                self.id, "FunctionNode", persistent=self.persistent
+            )
+
     async def execute(self, context: ExecutionContext) -> Any:
         """Execute the wrapped function.
 
@@ -233,12 +240,40 @@ class FunctionNode:
         Returns:
             The function's return value.
         """
+        from nerve.core.nodes.run_logging import log_complete, log_error, log_start
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Get logger and exec_id
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
+        # Get function name for logging
+        fn_name = getattr(self.fn, "__name__", repr(self.fn))
+
+        log_start(log_ctx.logger, self.id, "function_start", exec_id=exec_id, fn=fn_name)
+
+        start_mono = time.monotonic()
         self._current_task = asyncio.current_task()
         try:
             result = self.fn(context)
             if asyncio.iscoroutine(result):
-                return await result
+                result = await result
+
+            duration = time.monotonic() - start_mono
+            log_complete(log_ctx.logger, self.id, "function_complete", duration, exec_id=exec_id)
+
             return result
+        except Exception as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "function_failed",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
         finally:
             self._current_task = None
 

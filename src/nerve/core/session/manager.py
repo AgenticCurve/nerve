@@ -67,6 +67,12 @@ class SessionManager:
             tags=tags or [],
         )
         self._sessions[session.id] = session
+        logger.debug(
+            "session_created: id=%s, name=%s, tags=%s",
+            session.id,
+            session.name,
+            tags or [],
+        )
         return session
 
     def get_session(self, session_id: str) -> Session | None:
@@ -113,13 +119,19 @@ class SessionManager:
         """
         session = self._sessions.get(session_id)
         if session:
+            logger.debug("session_closing: id=%s, nodes=%d", session_id, len(session.nodes))
             await session.stop()
             del self._sessions[session_id]
+            logger.debug("session_closed: id=%s", session_id)
             return True
+        logger.debug("session_close_failed: id=%s, reason=not_found", session_id)
         return False
 
     async def close_all(self) -> None:
         """Close all sessions."""
+        session_count = len(self._sessions)
+        logger.debug("closing_all_sessions: count=%d", session_count)
         for session in self._sessions.values():
             await session.stop()
         self._sessions.clear()
+        logger.debug("all_sessions_closed: count=%d", session_count)

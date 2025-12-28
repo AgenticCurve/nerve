@@ -13,6 +13,7 @@ For simple single-shot queries, use OpenRouterNode or GLMNode directly.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.llm.base import SingleShotLLMNode
+from nerve.core.nodes.run_logging import log_complete, log_error, log_start, log_warning
 
 if TYPE_CHECKING:
     from nerve.core.session.session import Session
@@ -156,6 +158,12 @@ class LLMChatNode:
         # Auto-register with session
         self.session.nodes[self.id] = self
 
+        # Log node registration
+        if self.session.session_logger:
+            self.session.session_logger.log_node_lifecycle(
+                self.id, "LLMChatNode", persistent=self.persistent
+            )
+
     async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute a conversation turn.
 
@@ -172,6 +180,12 @@ class LLMChatNode:
             - messages_count (int): Total messages in conversation
             - error (str | None): Error message if failed
         """
+        # Get logger and exec_id
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
         result: dict[str, Any] = {
             "success": False,
             "content": None,
@@ -180,6 +194,18 @@ class LLMChatNode:
             "messages_count": 0,
             "error": None,
         }
+
+        start_mono = time.monotonic()
+
+        # Log chat turn start
+        log_start(
+            log_ctx.logger,
+            self.id,
+            "chat_turn_start",
+            exec_id=exec_id,
+            messages=len(self.messages),
+            has_input=context.input is not None,
+        )
 
         try:
             # Add user message if input provided
@@ -199,17 +225,27 @@ class LLMChatNode:
                 # Build request
                 request = self._build_request()
 
-                # Call underlying LLM
-                llm_result = await self.llm.execute(
-                    ExecutionContext(
-                        session=context.session or self.session,
-                        input=request,
-                    )
+                # Call underlying LLM (pass run_logger for LLM logging)
+                llm_context = ExecutionContext(
+                    session=context.session or self.session,
+                    input=request,
+                    run_logger=context.run_logger,
                 )
+                llm_result = await self.llm.execute(llm_context)
 
                 if not llm_result["success"]:
                     result["error"] = llm_result.get("error")
                     result["messages_count"] = len(self.messages)
+                    duration = time.monotonic() - start_mono
+                    log_error(
+                        log_ctx.logger,
+                        self.id,
+                        "chat_llm_error",
+                        result["error"] or "Unknown error",
+                        exec_id=exec_id,
+                        round=rounds,
+                        duration_s=f"{duration:.1f}",
+                    )
                     return result
 
                 # Accumulate usage
@@ -237,9 +273,36 @@ class LLMChatNode:
                     result["tool_calls"] = tool_calls
                     result["usage"] = total_usage
                     result["messages_count"] = len(self.messages)
+
+                    duration = time.monotonic() - start_mono
+                    log_complete(
+                        log_ctx.logger,
+                        self.id,
+                        "chat_turn_complete",
+                        duration,
+                        exec_id=exec_id,
+                        rounds=rounds,
+                        tokens=total_usage["total_tokens"],
+                        messages=len(self.messages),
+                    )
                     return result
 
+                # Log tool calls
+                tool_round_start = time.monotonic()
+                tool_names = [tc.get("function", {}).get("name", "?") for tc in tool_calls]
+                log_start(
+                    log_ctx.logger,
+                    self.id,
+                    "chat_tool_round_start",
+                    exec_id=exec_id,
+                    round=rounds,
+                    tools=tool_names,
+                    tool_count=len(tool_calls),
+                )
+
                 # Execute tool calls and add results
+                tools_succeeded = 0
+                tools_failed = 0
                 for tc in tool_calls:
                     tool_name = tc.get("function", {}).get("name", "")
                     tool_args = tc.get("function", {}).get("arguments", {})
@@ -253,10 +316,32 @@ class LLMChatNode:
                             tool_args = {"raw": tool_args}
 
                     # Execute tool
+                    tool_start = time.monotonic()
                     try:
                         tool_result = await self.tool_executor(tool_name, tool_args)
+                        tools_succeeded += 1
+                        tool_duration = time.monotonic() - tool_start
+                        log_complete(
+                            log_ctx.logger,
+                            self.id,
+                            "chat_tool_complete",
+                            tool_duration,
+                            exec_id=exec_id,
+                            tool=tool_name,
+                        )
                     except Exception as e:
                         tool_result = f"Error executing tool: {e}"
+                        tools_failed += 1
+                        tool_duration = time.monotonic() - tool_start
+                        log_error(
+                            log_ctx.logger,
+                            self.id,
+                            "chat_tool_error",
+                            e,
+                            exec_id=exec_id,
+                            tool=tool_name,
+                            duration_s=f"{tool_duration:.1f}",
+                        )
 
                     # Add tool result message
                     self.messages.append(
@@ -268,15 +353,55 @@ class LLMChatNode:
                         )
                     )
 
+                # Log tool round summary
+                round_duration = time.monotonic() - tool_round_start
+                log_complete(
+                    log_ctx.logger,
+                    self.id,
+                    "chat_tool_round_complete",
+                    round_duration,
+                    exec_id=exec_id,
+                    round=rounds,
+                    tools_total=len(tool_calls),
+                    tools_succeeded=tools_succeeded,
+                    tools_failed=tools_failed,
+                )
+
                 # Continue loop to get next response
 
-            # Max rounds reached
+            # Max rounds reached - include context about last tools
             result["error"] = f"Max tool rounds ({self.max_tool_rounds}) reached"
             result["messages_count"] = len(self.messages)
+            result["usage"] = total_usage
+            duration = time.monotonic() - start_mono
+            # Get last tool names for context
+            last_tool_names = (
+                [tc.get("function", {}).get("name", "?") for tc in tool_calls] if tool_calls else []
+            )
+            log_warning(
+                log_ctx.logger,
+                self.id,
+                "chat_max_rounds",
+                exec_id=exec_id,
+                max_rounds=self.max_tool_rounds,
+                last_round=rounds,
+                last_tools=last_tool_names,
+                total_tokens=total_usage["total_tokens"],
+                duration_s=f"{duration:.1f}",
+            )
 
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
             result["messages_count"] = len(self.messages)
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "chat_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
 
         return result
 

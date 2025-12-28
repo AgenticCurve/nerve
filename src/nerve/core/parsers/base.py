@@ -1,8 +1,11 @@
 """Base parser protocol."""
 
+import logging
 from abc import ABC, abstractmethod
 
 from nerve.core.types import ParsedResponse
+
+logger = logging.getLogger(__name__)
 
 
 class Parser(ABC):

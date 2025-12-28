@@ -84,40 +84,43 @@
 │       ├── [L:   3] __version__.py
 │       ├── [L: 231] compose.py
 │       ├── core/
-│       │   ├── [L: 178] __init__.py
+│       │   ├── [L: 194] __init__.py
+│       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 148] __init__.py
-│       │   │   ├── [L: 270] base.py
-│       │   │   ├── [L: 271] bash.py
+│       │   │   ├── [L: 305] base.py
+│       │   │   ├── [L: 347] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
-│       │   │   ├── [L: 202] context.py
+│       │   │   ├── [L: 256] context.py
 │       │   │   ├── graph/
 │       │   │   │   ├── [L:  21] __init__.py
 │       │   │   │   ├── [L: 151] builder.py
 │       │   │   │   ├── [L:  29] events.py
-│       │   │   │   ├── [L: 712] graph.py
+│       │   │   │   ├── [L:1009] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 575] base.py
-│       │   │   │   ├── [L: 416] chat.py
+│       │   │   │   ├── [L: 655] base.py
+│       │   │   │   ├── [L: 541] chat.py
 │       │   │   │   ├── [L: 135] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
+│       │   │   ├── [L: 290] run_logging.py
+│       │   │   ├── [L: 705] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 472] claude_wezterm_node.py
-│       │   │   │   ├── [L: 598] pty_node.py
-│       │   │   │   └── [L: 684] wezterm_node.py
+│       │   │   │   ├── [L: 582] claude_wezterm_node.py
+│       │   │   │   ├── [L: 717] pty_node.py
+│       │   │   │   └── [L: 814] wezterm_node.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
-│       │   │   ├── [L:  56] base.py
-│       │   │   ├── [L: 355] claude.py
-│       │   │   ├── [L:  92] gemini.py
-│       │   │   └── [L:  84] none.py
+│       │   │   ├── [L:  59] base.py
+│       │   │   ├── [L: 373] claude.py
+│       │   │   ├── [L: 104] gemini.py
+│       │   │   └── [L:  96] none.py
 │       │   ├── patterns/
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 215] debate.py
@@ -131,16 +134,16 @@
 │       │   │   └── [L: 528] wezterm_backend.py
 │       │   ├── session/
 │       │   │   ├── [L:  60] __init__.py
-│       │   │   ├── [L: 125] manager.py
+│       │   │   ├── [L: 137] manager.py
 │       │   │   ├── [L: 257] persistence.py
-│       │   │   └── [L: 289] session.py
+│       │   │   └── [L: 375] session.py
 │       │   ├── [L: 172] types.py
 │       │   └── [L:  64] validation.py
 │       ├── frontends/
 │       │   ├── [L:  15] __init__.py
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
-│       │   │   ├── [L: 345] extract.py
+│       │   │   ├── [L: 347] extract.py
 │       │   │   ├── [L: 194] main.py
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
@@ -176,7 +179,7 @@
 │       │   ├── [L:  17] errors.py
 │       │   ├── [L: 553] openai_proxy.py
 │       │   ├── [L:  28] passthrough_proxy.py
-│       │   ├── [L:  96] tracing.py
+│       │   ├── [L: 260] tracing.py
 │       │   └── transforms/
 │       │       ├── [L:  42] __init__.py
 │       │       ├── [L: 429] anthropic.py
@@ -193,12 +196,12 @@
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
-│       │   │   ├── [L: 340] node_interaction_handler.py
-│       │   │   ├── [L: 398] node_lifecycle_handler.py
+│       │   │   ├── [L: 362] node_interaction_handler.py
+│       │   │   ├── [L: 423] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
-│       │   │   └── [L: 169] session_handler.py
+│       │   │   └── [L: 187] session_handler.py
 │       │   ├── [L: 166] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
@@ -279,4 +282,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-61 directories, 219 files, 46,180 total lines
+61 directories, 222 files, 48,833 total lines

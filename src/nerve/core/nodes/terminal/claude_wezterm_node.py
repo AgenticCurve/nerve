@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import shlex
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
+from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.core.nodes.terminal.wezterm_node import WezTermNode
 from nerve.core.types import ParsedResponse, ParserType
 
@@ -208,6 +210,16 @@ class ClaudeWezTermNode:
             # NOW register (only after successful async init)
             session.nodes[id] = wrapper
 
+            # Log node registration and start (persistent node)
+            if session.session_logger:
+                session.session_logger.log_node_lifecycle(
+                    id,
+                    "ClaudeWezTermNode",
+                    persistent=True,
+                    started=True,
+                    command=command,
+                )
+
             return wrapper
 
         except Exception:
@@ -260,6 +272,27 @@ class ClaudeWezTermNode:
 
         self._last_input = str(context.input) if context.input else ""
 
+        # Get logger and exec_id
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
+        start_mono = time.monotonic()
+
+        # Log terminal start
+        log_start(
+            log_ctx.logger,
+            self.id,
+            "terminal_start",
+            exec_id=exec_id,
+            input=self._last_input[:200] + "..."
+            if len(self._last_input) > 200
+            else self._last_input,
+            parser=str(context.parser or self._default_parser),
+            pane_id=self.pane_id,
+        )
+
         # History: capture timestamp
         ts_start = None
         if self._history_writer and self._history_writer.enabled:
@@ -269,28 +302,53 @@ class ClaudeWezTermNode:
         parser_type = context.parser or self._default_parser
         exec_context = context.with_parser(parser_type)
 
-        # Delegate to inner
-        result = await self._inner.execute(exec_context)
+        try:
+            # Delegate to inner
+            result = await self._inner.execute(exec_context)
 
-        # History: log send
-        if self._history_writer and self._history_writer.enabled and ts_start is not None:
-            response_data = {
-                "sections": [
-                    {"type": s.type, "content": s.content, "metadata": s.metadata}
-                    for s in result.sections
-                ],
-                "tokens": result.tokens,
-                "is_complete": result.is_complete,
-                "is_ready": result.is_ready,
-            }
-            self._history_writer.log_send(
-                input=self._last_input,
-                response=response_data,
-                preceding_buffer_seq=None,
-                ts_start=ts_start,
+            # Log terminal complete
+            duration = time.monotonic() - start_mono
+            log_complete(
+                log_ctx.logger,
+                self.id,
+                "terminal_complete",
+                duration,
+                exec_id=exec_id,
+                output_len=len(self._inner.buffer),
+                sections=len(result.sections),
             )
 
-        return result
+            # History: log send
+            if self._history_writer and self._history_writer.enabled and ts_start is not None:
+                response_data = {
+                    "sections": [
+                        {"type": s.type, "content": s.content, "metadata": s.metadata}
+                        for s in result.sections
+                    ],
+                    "tokens": result.tokens,
+                    "is_complete": result.is_complete,
+                    "is_ready": result.is_ready,
+                }
+                self._history_writer.log_send(
+                    input=self._last_input,
+                    response=response_data,
+                    preceding_buffer_seq=None,
+                    ts_start=ts_start,
+                )
+
+            return result
+
+        except Exception as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "terminal_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
@@ -306,6 +364,28 @@ class ClaudeWezTermNode:
 
         self._last_input = str(context.input) if context.input else ""
 
+        # Get logger and exec_id
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
+        start_mono = time.monotonic()
+        chunks_count = 0
+
+        # Log terminal stream start
+        log_start(
+            log_ctx.logger,
+            self.id,
+            "terminal_stream_start",
+            exec_id=exec_id,
+            input=self._last_input[:200] + "..."
+            if len(self._last_input) > 200
+            else self._last_input,
+            parser=str(context.parser or self._default_parser),
+            pane_id=self.pane_id,
+        )
+
         # History: capture timestamp
         ts_start = None
         if self._history_writer and self._history_writer.enabled:
@@ -314,19 +394,45 @@ class ClaudeWezTermNode:
         parser_type = context.parser or self._default_parser
         exec_context = context.with_parser(parser_type)
 
-        async for chunk in self._inner.execute_stream(exec_context):
-            yield chunk
+        try:
+            async for chunk in self._inner.execute_stream(exec_context):
+                chunks_count += 1
+                yield chunk
 
-        # History: log streaming operation
-        if self._history_writer and self._history_writer.enabled and ts_start is not None:
-            final_buffer = self._inner.read_tail(HISTORY_BUFFER_LINES)
-            self._history_writer.log_send_stream(
-                input=self._last_input,
-                final_buffer=final_buffer,
-                parser=parser_type.value,
-                preceding_buffer_seq=None,
-                ts_start=ts_start,
+            # Log terminal stream complete
+            duration = time.monotonic() - start_mono
+            log_complete(
+                log_ctx.logger,
+                self.id,
+                "terminal_stream_complete",
+                duration,
+                exec_id=exec_id,
+                chunks=chunks_count,
             )
+
+            # History: log streaming operation
+            if self._history_writer and self._history_writer.enabled and ts_start is not None:
+                final_buffer = self._inner.read_tail(HISTORY_BUFFER_LINES)
+                self._history_writer.log_send_stream(
+                    input=self._last_input,
+                    final_buffer=final_buffer,
+                    parser=parser_type.value,
+                    preceding_buffer_seq=None,
+                    ts_start=ts_start,
+                )
+
+        except Exception as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "terminal_stream_error",
+                e,
+                exec_id=exec_id,
+                chunks=chunks_count,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
 
     async def send(
         self,
@@ -439,6 +545,10 @@ class ClaudeWezTermNode:
 
         await self._inner.stop()
         self.state = NodeState.STOPPED
+
+        # Log node stopped (persistent node)
+        if self.session and self.session.session_logger:
+            self.session.session_logger.log_node_stopped(self.id, reason="stopped")
 
     async def reset(self) -> None:
         """Reset state while keeping resources running.
