@@ -90,8 +90,8 @@
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
-│       │   │   ├── [L: 305] base.py
-│       │   │   ├── [L: 408] bash.py
+│       │   │   ├── [L: 324] base.py
+│       │   │   ├── [L: 429] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -102,10 +102,10 @@
 │       │   │   │   ├── [L:1009] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
-│       │   │   ├── [L: 133] identity.py
+│       │   │   ├── [L: 151] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 657] base.py
+│       │   │   │   ├── [L: 683] base.py
 │       │   │   │   ├── [L: 560] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
@@ -140,7 +140,7 @@
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 137] manager.py
 │       │   │   ├── [L: 257] persistence.py
-│       │   │   └── [L: 375] session.py
+│       │   │   └── [L: 380] session.py
 │       │   ├── [L: 172] types.py
 │       │   └── [L:  64] validation.py
 │       ├── frontends/
@@ -164,7 +164,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 910] node.py
+│       │   │   │   ├── [L: 911] node.py
 │       │   │   │   └── [L: 206] session.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
@@ -179,8 +179,8 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 225] blocks.py
-│       │           ├── [L: 702] commander.py
-│       │           └── [L: 140] themes.py
+│       │           ├── [L: 742] commander.py
+│       │           └── [L: 139] themes.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -200,19 +200,19 @@
 │       │       └── [L: 197] validation.py
 │       ├── server/
 │       │   ├── [L:  65] __init__.py
-│       │   ├── [L: 300] engine.py
+│       │   ├── [L: 297] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
 │       │   │   └── [L: 322] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
-│       │   │   ├── [L: 362] node_interaction_handler.py
+│       │   │   ├── [L: 329] node_interaction_handler.py
 │       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
-│       │   │   └── [L: 193] session_handler.py
+│       │   │   └── [L: 190] session_handler.py
 │       │   ├── [L: 167] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
@@ -262,7 +262,7 @@
     │   │   ├── [L:   0] __init__.py
     │   │   └── [L: 103] test_session_factory.py
     │   ├── [L: 549] test_history.py
-    │   ├── [L: 412] test_managers.py
+    │   ├── [L: 415] test_managers.py
     │   ├── [L: 538] test_parsers.py
     │   └── [L:  90] test_validation.py
     ├── frontends/
@@ -289,9 +289,9 @@
     │   ├── [L: 287] test_engine_proxy.py
     │   ├── [L: 302] test_engine_sessions.py
     │   ├── [L: 284] test_proxy_manager.py
-    │   ├── [L: 194] test_session_registry.py
+    │   ├── [L: 195] test_session_registry.py
     │   └── [L: 204] test_validation.py
     └── transport/
         └── [L:   1] __init__.py
 
-63 directories, 232 files, 51,937 total lines
+63 directories, 232 files, 52,031 total lines

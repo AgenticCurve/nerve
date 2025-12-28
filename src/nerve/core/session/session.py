@@ -73,7 +73,7 @@ class Session:
         >>> # Create terminal node (async)
         >>> node = await PTYNode.create(id="shell", session=session, command="bash")
         >>>
-        >>> # Create ephemeral nodes (sync)
+        >>> # Create stateless nodes (sync)
         >>> bash = BashNode(id="runner", session=session, cwd="/tmp")
         >>> fn = FunctionNode(id="transform", session=session, fn=lambda ctx: ctx.input)
         >>> graph = Graph(id="pipeline", session=session)
@@ -109,7 +109,7 @@ class Session:
     _start_time: float | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
-        """Initialize session logger after dataclass initialization."""
+        """Initialize session logger and auto-create identity node."""
         from nerve.core.nodes.session_logging import SessionLogger
 
         self._session_logger = SessionLogger.create(
@@ -118,6 +118,11 @@ class Session:
             file_logging=self.file_logging,
             console_logging=self.console_logging,
         )
+
+        # Auto-create built-in identity node - lifecycle tied to session
+        from nerve.core.nodes.identity import IdentityNode
+
+        IdentityNode(id="identity", session=self)
 
     @property
     def session_logger(self) -> SessionLogger | None:
@@ -252,10 +257,10 @@ class Session:
         return deleted
 
     async def start(self) -> None:
-        """Start all persistent nodes (including those inside graphs).
+        """Start all stateful nodes (including those inside graphs).
 
-        Persistent nodes (PTYNode, WezTermNode, etc.) need to be started
-        before they can execute. This method starts all persistent nodes
+        Stateful nodes (PTYNode, WezTermNode, etc.) need to be started
+        before they can execute. This method starts all stateful nodes
         registered in the session.
         """
         self._start_time = time.time()
@@ -315,10 +320,10 @@ class Session:
             self._session_logger = None
 
     def _collect_persistent_nodes(self) -> list[Node]:
-        """Recursively find all persistent nodes.
+        """Recursively find all stateful nodes.
 
         Returns:
-            List of persistent nodes (including nested in graphs).
+            List of stateful nodes (including nested in graphs).
         """
         from nerve.core.nodes.graph import Graph
 

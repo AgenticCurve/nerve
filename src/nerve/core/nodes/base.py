@@ -1,12 +1,13 @@
 """Node abstraction - unified interface for executable units of work.
 
 A Node represents any executable unit:
-- FunctionNode: Wraps sync/async callables (ephemeral)
-- PTYNode: PTY-based terminal (persistent)
-- WezTermNode: WezTerm pane attachment (persistent)
+- FunctionNode: Wraps sync/async callables (stateless)
+- PTYNode: PTY-based terminal (stateful)
+- WezTermNode: WezTerm pane attachment (stateful)
 - Graph: Contains steps with nodes (can be nested)
 
-Persistent nodes maintain state across executions; ephemeral nodes are stateless.
+Stateful nodes maintain state across executions; stateless nodes do not.
+All nodes persist in the session until explicitly deleted.
 """
 
 from __future__ import annotations
@@ -96,15 +97,18 @@ class Node(Protocol):
     def persistent(self) -> bool:
         """Whether this node maintains state across executions.
 
-        Persistent nodes:
-        - Maintain state between execute() calls
-        - Must implement start() and stop()
-        - Examples: PTYNode, WezTermNode
+        Stateful nodes (persistent=True):
+        - Maintain state between execute() calls (e.g., terminal buffer, conversation history)
+        - Must implement start() and stop() lifecycle methods
+        - Examples: PTYNode, WezTermNode, LLMChatNode
 
-        Ephemeral nodes:
-        - Stateless, can be executed multiple times independently
+        Stateless nodes (persistent=False):
+        - No state between execute() calls - each execution is independent
         - No lifecycle management needed
-        - Examples: FunctionNode, Graph
+        - Examples: FunctionNode, BashNode, IdentityNode, OpenRouterNode
+
+        Note: All nodes persist in the session until explicitly deleted.
+        The 'persistent' flag only indicates whether state is maintained between calls.
         """
         ...
 
@@ -122,11 +126,11 @@ class Node(Protocol):
     async def interrupt(self) -> None:
         """Request interruption of current execution.
 
-        For ephemeral nodes (persistent=False):
+        For stateless nodes (persistent=False):
             Best-effort cancellation. May cancel the current async task.
             No guarantee for sync operations.
 
-        For persistent nodes (persistent=True):
+        For stateful nodes (persistent=True):
             Should stop the current operation (e.g., send Ctrl+C to process).
             Resources remain allocated; use stop() to release them.
 
@@ -139,19 +143,21 @@ class Node(Protocol):
 
 
 class PersistentNode(Node, Protocol):
-    """Protocol extension for nodes that maintain state.
+    """Protocol extension for stateful nodes that maintain state.
 
-    Persistent nodes have additional lifecycle methods for
-    initialization and cleanup. They should be started before
-    use and stopped when no longer needed.
+    Stateful nodes (persistent=True) have additional lifecycle methods for
+    initialization and cleanup. They should be started before use and
+    stopped when no longer needed.
 
-    The Session manages lifecycle of registered persistent nodes.
+    Examples: PTYNode, WezTermNode, LLMChatNode
+
+    The Session manages lifecycle of registered stateful nodes.
     """
 
     async def start(self) -> None:
         """Initialize resources.
 
-        Called by Session.start() for all registered persistent nodes.
+        Called by Session.start() for all registered stateful nodes.
         After this call, the node should be in READY state.
         """
         ...
@@ -159,7 +165,7 @@ class PersistentNode(Node, Protocol):
     async def stop(self) -> None:
         """Release resources.
 
-        Called by Session.stop() for all registered persistent nodes.
+        Called by Session.stop() for all registered stateful nodes.
         After this call, the node should be in STOPPED state.
         """
         ...
@@ -167,10 +173,10 @@ class PersistentNode(Node, Protocol):
 
 @dataclass
 class FunctionNode:
-    """Wraps a sync or async callable as an ephemeral node.
+    """Wraps a sync or async callable as a stateless node.
 
-    FunctionNodes are stateless - they can be called multiple times
-    with different inputs and produce independent results.
+    FunctionNodes are stateless (persistent=False) - they can be called
+    multiple times with different inputs and produce independent results.
 
     The wrapped function receives an ExecutionContext and should return
     a result. Both sync and async functions are supported.
@@ -207,6 +213,7 @@ class FunctionNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _current_task: asyncio.Task[Any] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -242,6 +249,10 @@ class FunctionNode:
         """
         from nerve.core.nodes.run_logging import log_complete, log_error, log_start
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            raise RuntimeError("Node is stopped")
 
         # Get logger and exec_id
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -287,6 +298,14 @@ class FunctionNode:
         if self._current_task is not None:
             self._current_task.cancel()
 
+    async def stop(self) -> None:
+        """Stop the node and mark as unusable.
+
+        Sets state to STOPPED. Future execute() calls will raise RuntimeError.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        self.state = NodeState.STOPPED
+
     def to_info(self) -> NodeInfo:
         """Get node information.
 
@@ -296,7 +315,7 @@ class FunctionNode:
         return NodeInfo(
             id=self.id,
             node_type="function",
-            state=NodeState.READY,  # FunctionNodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata=self.metadata,
         )

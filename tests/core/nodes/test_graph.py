@@ -341,9 +341,9 @@ class TestGraph:
         assert "a" in repr(graph)
 
     def test_collect_persistent_nodes(self):
-        """Test collecting persistent nodes from graph."""
+        """Test collecting stateful nodes from graph."""
 
-        # Create a mock persistent node
+        # Create a mock stateful node
         class MockPersistentNode:
             id = "persistent"
             persistent = True
@@ -353,15 +353,15 @@ class TestGraph:
 
         session = Session(name="test")
         graph = Graph(id="test", session=session)
-        persistent = MockPersistentNode()
-        ephemeral = FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
+        stateful = MockPersistentNode()
+        stateless = FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
 
-        graph.add_step(persistent, step_id="a")
-        graph.add_step(ephemeral, step_id="b")
+        graph.add_step(stateful, step_id="a")
+        graph.add_step(stateless, step_id="b")
 
         persistent_nodes = graph.collect_persistent_nodes()
         assert len(persistent_nodes) == 1
-        assert persistent_nodes[0] is persistent
+        assert persistent_nodes[0] is stateful
 
     @pytest.mark.asyncio
     async def test_interrupt_sets_cancellation_token(self):

@@ -1,4 +1,4 @@
-"""OpenRouterNode - ephemeral node for OpenRouter LLM API calls.
+"""OpenRouterNode - stateless node for OpenRouter LLM API calls.
 
 OpenRouterNode makes HTTP requests to OpenRouter's API and returns structured results.
 Each execution is independent - no state is maintained between calls.
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 @dataclass(repr=False)
 class OpenRouterNode(SingleShotLLMNode):
-    """Ephemeral node for OpenRouter LLM API calls.
+    """Stateless node for OpenRouter LLM API calls.
 
     OpenRouterNode is stateless - each execute() call makes an independent HTTP request.
     Returns structured dict with response content or error (never raises).

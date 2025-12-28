@@ -159,10 +159,10 @@ def _run_cli() -> None:
         of AI CLI tasks.
 
         **Local mode** (default - no server):
-            Creates in-memory session, full Python REPL, ephemeral
+            Creates in-memory session with full Python REPL
 
         **Server mode** (--server):
-            Connects to running server, command-based only, persistent
+            Connects to running server, command-based only
 
         **Examples:**
 

@@ -119,8 +119,8 @@ class Block:
         elif key == "output":
             # Return stdout or stderr (whichever has content)
             if self.raw:
-                stdout = self.raw.get("stdout", "")
-                stderr = self.raw.get("stderr", "")
+                stdout = str(self.raw.get("stdout") or "")
+                stderr = str(self.raw.get("stderr") or "")
                 return stdout if stdout else stderr
             return self.output_text
         elif key == "error":

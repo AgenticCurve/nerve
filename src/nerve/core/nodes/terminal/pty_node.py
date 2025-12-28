@@ -589,7 +589,7 @@ class PTYNode:
     async def start(self) -> None:
         """Start the node (lifecycle method).
 
-        Called by Session.start() for persistent nodes.
+        Called by Session.start() for stateful nodes.
         PTYNode is already started via create(), so this is a no-op.
         """
         pass  # Already started in create()
@@ -597,7 +597,7 @@ class PTYNode:
     async def stop(self) -> None:
         """Stop the node and release resources.
 
-        Called by Session.stop() for persistent nodes.
+        Called by Session.stop() for stateful nodes.
         """
         # Capture pending buffer from previous run/write before closing
         self._capture_pending_buffer_if_needed()

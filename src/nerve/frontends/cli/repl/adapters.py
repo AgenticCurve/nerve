@@ -396,7 +396,7 @@ class RemoteSessionAdapter:
 
             # Handle different response types:
             # - Terminal nodes: dict with "raw" key containing the text
-            # - Ephemeral nodes (BashNode): dict with "stdout"/"stderr" keys
+            # - Stateless nodes (BashNode): dict with "stdout"/"stderr" keys
             # - IdentityNode: dict with "output" key
             if isinstance(response, dict):
                 # Try common output keys in order of preference
@@ -405,8 +405,8 @@ class RemoteSessionAdapter:
                 elif "output" in response:
                     return str(response["output"])
                 elif "stdout" in response:
-                    stdout = response.get("stdout", "")
-                    stderr = response.get("stderr", "")
+                    stdout = str(response.get("stdout") or "")
+                    stderr = str(response.get("stderr") or "")
                     return stdout if stdout else stderr
                 else:
                     # Fallback: stringify the dict

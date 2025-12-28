@@ -1,4 +1,4 @@
-"""GLMNode - ephemeral node for Z.AI GLM API calls.
+"""GLMNode - stateless node for Z.AI GLM API calls.
 
 GLMNode makes HTTP requests to Z.AI's GLM API and returns structured results.
 Each execution is independent - no state is maintained between calls.
@@ -60,7 +60,7 @@ def _load_env_and_get_headers() -> dict[str, str]:
 
 @dataclass(repr=False)
 class GLMNode(SingleShotLLMNode):
-    """Ephemeral node for Z.AI GLM API calls.
+    """Stateless node for Z.AI GLM API calls.
 
     GLMNode is stateless - each execute() call makes an independent HTTP request.
     Returns structured dict with response content or error (never raises).

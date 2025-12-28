@@ -51,9 +51,11 @@ class TestSession:
         # Direct assignment (used by create_node internally)
         session.nodes["test"] = mock_node
 
+        # Session now has 2 nodes: auto-created identity + test
         assert "test" in session
-        assert len(session) == 1
+        assert len(session) == 2  # identity + test
         assert session.get_node("test") is mock_node
+        assert "identity" in session.nodes  # Auto-created
 
     def test_duplicate_node_raises(self):
         """Test that adding duplicate node ID raises."""
@@ -119,7 +121,8 @@ class TestSession:
         session.nodes["node-c"] = mock_node_c
 
         names = session.list_nodes()
-        assert len(names) == 3
+        assert len(names) == 4  # identity + node-a, node-b, node-c
+        assert "identity" in names  # Auto-created
         assert "node-a" in names
         assert "node-b" in names
         assert "node-c" in names
@@ -141,10 +144,10 @@ class TestSession:
 
     @pytest.mark.asyncio
     async def test_stop_persistent_nodes(self):
-        """Test stopping all persistent nodes."""
+        """Test stopping all stateful nodes."""
         session = Session()
 
-        # Create mock persistent nodes
+        # Create mock stateful nodes
         nodes = []
         for i in range(3):
             node = MagicMock()
@@ -154,7 +157,7 @@ class TestSession:
             nodes.append(node)
             session.nodes[f"node-{i}"] = node
 
-        assert len(session) == 3
+        assert len(session) == 4  # identity + 3 test nodes
 
         await session.stop()
 
@@ -163,10 +166,10 @@ class TestSession:
 
     @pytest.mark.asyncio
     async def test_stop_non_persistent_nodes_skipped(self):
-        """Test that non-persistent nodes are not stopped."""
+        """Test that stateless nodes are not stopped."""
         session = Session()
 
-        # Create mock non-persistent node (no stop method)
+        # Create mock stateless node (no stop method)
         mock_node = MagicMock(spec=["id", "execute"])
         mock_node.id = "func-node"
 
@@ -210,17 +213,17 @@ class TestSession:
         """Test __len__ returns node count."""
         session = Session()
 
-        assert len(session) == 0
+        assert len(session) == 1  # Auto-created identity node
 
         mock_node1 = MagicMock()
         mock_node1.id = "node1"
         session.nodes["node1"] = mock_node1
-        assert len(session) == 1
+        assert len(session) == 2  # identity + node1
 
         mock_node2 = MagicMock()
         mock_node2.id = "node2"
         session.nodes["node2"] = mock_node2
-        assert len(session) == 2
+        assert len(session) == 3  # identity + node1 + node2
 
     def test_repr(self):
         """Test __repr__ format."""

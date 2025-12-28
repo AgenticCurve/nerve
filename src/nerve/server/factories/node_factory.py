@@ -190,7 +190,7 @@ class NodeFactory:
                 proxy_url=proxy_url,
             )
         elif backend == "bash":
-            # BashNode is ephemeral - no lifecycle management
+            # BashNode is stateless - no lifecycle management
             # Note: BashNode doesn't support history parameter
             node = BashNode(
                 id=str(node_id),
@@ -199,13 +199,13 @@ class NodeFactory:
                 timeout=bash_timeout or 120.0,
             )
         elif backend == "identity":
-            # IdentityNode is ephemeral - echoes input as output
+            # IdentityNode is stateless - echoes input as output
             node = IdentityNode(
                 id=str(node_id),
                 session=session,
             )
         elif backend == "openrouter":
-            # OpenRouterNode is ephemeral - no lifecycle management
+            # OpenRouterNode is stateless - no lifecycle management
             if not api_key:
                 raise ValueError("api_key is required for openrouter backend")
             if not llm_model:
@@ -222,7 +222,7 @@ class NodeFactory:
                 http_backend=http_backend,
             )
         elif backend == "glm":
-            # GLMNode is ephemeral - no lifecycle management
+            # GLMNode is stateless - no lifecycle management
             if not api_key:
                 raise ValueError("api_key is required for glm backend")
             if not llm_model:
@@ -240,7 +240,7 @@ class NodeFactory:
                 http_backend=http_backend,
             )
         elif backend == "llm-chat":
-            # LLMChatNode is persistent - wraps a single-shot LLM node
+            # LLMChatNode is stateful - wraps a stateless LLM node for multi-turn chat
             if not api_key:
                 raise ValueError("api_key is required for llm-chat backend")
             if not llm_model:

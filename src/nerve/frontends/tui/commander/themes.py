@@ -4,7 +4,6 @@ Themes define colors and styles for all UI elements.
 Switch themes by passing a different theme to Console.
 """
 
-from rich.style import Style
 from rich.theme import Theme
 
 

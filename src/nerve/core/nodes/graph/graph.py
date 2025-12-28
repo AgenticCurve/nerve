@@ -105,7 +105,7 @@ class Graph:
 
     @property
     def persistent(self) -> bool:
-        """Graphs are ephemeral (stateless between executions)."""
+        """Graphs are stateless (no state between executions)."""
         return False
 
     def add_step(
@@ -738,10 +738,10 @@ class Graph:
                 run_logger.close()
 
     def collect_persistent_nodes(self) -> list[Node]:
-        """Recursively find all persistent nodes in this graph.
+        """Recursively find all stateful nodes in this graph.
 
         Returns:
-            List of persistent nodes.
+            List of stateful nodes.
         """
         persistent: list[Node] = []
         for step in self._steps.values():

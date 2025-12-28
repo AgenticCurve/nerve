@@ -63,10 +63,7 @@ class SessionHandler:
             server_name=self.server_name,
         )
 
-        # Auto-create built-in identity node for debugging/testing
-        from nerve.core.nodes.identity import IdentityNode
-
-        IdentityNode(id="identity", session=session)
+        # Identity node is auto-created in Session.__post_init__
 
         self.session_registry.add_session(name, session)
 

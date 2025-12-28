@@ -1,10 +1,10 @@
-"""IdentityNode - ephemeral node that echoes input as output.
+"""IdentityNode - stateless node that echoes input as output.
 
 IdentityNode is the simplest possible node - it returns whatever input it receives.
 Like the Identity Matrix in mathematics: I × x = x
 
 Key features:
-- Stateless and ephemeral (no resources, no lifecycle)
+- Stateless (persistent=False) - no state between calls, no lifecycle management
 - Can be used unlimited times
 - Useful for debugging, testing, and seeing expanded variables in Commander
 - Auto-created in every session as a built-in utility
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class IdentityNode:
-    """Ephemeral node that echoes input back as output.
+    """Stateless node that echoes input back as output.
 
     IdentityNode is the "identity function" for nodes - it simply returns
     its input unchanged. This is useful for:
@@ -68,6 +68,7 @@ class IdentityNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
 
     def __post_init__(self) -> None:
         """Validate and register with session."""
@@ -99,6 +100,15 @@ class IdentityNode:
             Dict with 'output' containing the echoed input.
             Format matches BashNode for consistency.
         """
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "output": "",
+                "input": "",
+                "error": "Node is stopped",
+            }
+
         output = str(context.input) if context.input else ""
         return {
             "success": True,
@@ -115,6 +125,14 @@ class IdentityNode:
         """
         pass
 
+    async def stop(self) -> None:
+        """Stop the node and mark as unusable.
+
+        Sets state to STOPPED. Future execute() calls will return an error.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        self.state = NodeState.STOPPED
+
     def to_info(self) -> NodeInfo:
         """Get node information.
 
@@ -124,7 +142,7 @@ class IdentityNode:
         return NodeInfo(
             id=self.id,
             node_type="identity",
-            state=NodeState.READY,  # Ephemeral nodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata=self.metadata,
         )

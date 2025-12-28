@@ -75,7 +75,7 @@ class Commander:
         transport_type, socket_path = get_server_transport(self.server_name)
 
         if transport_type != "unix":
-            self.console.print(f"[error]Only unix socket servers supported[/]")
+            self.console.print("[error]Only unix socket servers supported[/]")
             self.console.print(f"[dim]Server '{self.server_name}' uses {transport_type}[/]")
             return
 
@@ -183,7 +183,7 @@ class Commander:
             f"[dim]Server: {self.server_name} | Session: {self.session_name} | Nodes: {len(self.nodes)}[/]"
         )
         if self.nodes:
-            self.console.print(f"[dim]Use @<node> <message> to interact. :help for commands.[/]")
+            self.console.print("[dim]Use @<node> <message> to interact. :help for commands.[/]")
         else:
             self.console.print(
                 "[dim]No nodes in session. Create nodes first with: nerve server node create[/]"
@@ -320,7 +320,7 @@ class Commander:
                 input_text=text,
                 output_text=response.strip() if response else "",
                 error=None,
-                raw={"response": response},
+                raw={"stdout": response},
                 duration_ms=duration_ms,
             )
 
@@ -437,7 +437,7 @@ class Commander:
                 raw = block["raw"]
                 if isinstance(raw, dict):
                     return str(raw.get(key, f"<no key: {key}>"))
-                return f"<error: raw is not a dict>"
+                return "<error: raw is not a dict>"
             except (IndexError, KeyError) as e:
                 return f"<error: {e}>"
 
@@ -455,7 +455,7 @@ class Commander:
                 raw = block["raw"]
                 if isinstance(raw, dict):
                     return str(raw.get(key, f"<no key: {key}>"))
-                return f"<error: raw is not a dict>"
+                return "<error: raw is not a dict>"
             except KeyError as e:
                 return f"<error: {e}>"
 
@@ -492,6 +492,35 @@ class Commander:
 
         text = re.sub(last_pattern, replace_last_var, text)
 
+        # Pattern: :::N (bare reference - shorthand for :::N['output'])
+        bare_pattern = r":::(\d+)(?!\[)"  # \d+ not followed by [
+
+        def replace_bare_var(match: re.Match[str]) -> str:
+            block_num = int(match.group(1))
+            try:
+                block = self.timeline[block_num]
+                value = block["output"]
+                return str(value) if not isinstance(value, str) else value
+            except (IndexError, KeyError) as e:
+                return f"<error: {e}>"
+
+        text = re.sub(bare_pattern, replace_bare_var, text)
+
+        # Pattern: :::last (bare reference - shorthand for :::last['output'])
+        bare_last_pattern = r":::last(?!\[)"
+
+        def replace_bare_last_var(match: re.Match[str]) -> str:
+            block = self.timeline.last()
+            if block is None:
+                return "<error: no blocks yet>"
+            try:
+                value = block["output"]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(bare_last_pattern, replace_bare_last_var, text)
+
         return text
 
     def _print_help(self) -> None:
@@ -503,10 +532,12 @@ class Commander:
         self.console.print("  [bold]Ctrl+C[/]         Interrupt running command")
         self.console.print()
         self.console.print("[bold]Block References:[/]")
+        self.console.print("  [bold]:::N[/]                   Output from block N (shorthand)")
         self.console.print("  [bold]:::N['output'][/]         Output (stdout or stderr)")
         self.console.print("  [bold]:::N['input'][/]          Input text")
         self.console.print("  [bold]:::N['raw']['stdout'][/]  Raw stdout")
         self.console.print("  [bold]:::N['raw']['stderr'][/]  Raw stderr")
+        self.console.print("  [bold]:::last[/]                Output from last block (shorthand)")
         self.console.print("  [bold]:::last['output'][/]      Output from last block")
         self.console.print()
         self.console.print("[bold]Colon Commands:[/]")
@@ -681,9 +712,12 @@ class Commander:
         """Cleanup resources."""
         if self._client is not None:
             try:
-                await self._client.close()
-            except Exception:
-                pass  # Ignore close errors
+                await self._client.disconnect()
+            except Exception as e:
+                # Log but don't raise - we're in cleanup
+                import logging
+
+                logging.debug(f"Error during client disconnect in cleanup: {e}")
         self._client = None
         self._adapter = None
 

@@ -1,4 +1,4 @@
-"""BashNode - ephemeral node for running bash commands.
+"""BashNode - stateless node for running bash commands.
 
 BashNode executes bash commands via subprocess and returns JSON results.
 Each execution spawns a fresh subprocess - no state is maintained between calls.
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class BashNode:
-    """Ephemeral node that runs bash commands and returns JSON results.
+    """Stateless node that runs bash commands and returns JSON results.
 
     BashNode is stateless - each execute() call spawns a new subprocess.
     State does not persist between executions (unlike PTYNode/WezTermNode).
@@ -92,6 +92,7 @@ class BashNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _current_proc: asyncio.subprocess.Process | None = field(default=None, init=False, repr=False)
     _proc_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
@@ -139,6 +140,18 @@ class BashNode:
             node's execution.
         """
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": None,
+                "command": str(context.input) if context.input else "",
+                "error": "Node is stopped",
+                "interrupted": False,
+            }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -324,6 +337,14 @@ class BashNode:
                     # Process already terminated - safe to ignore
                     pass
 
+    async def stop(self) -> None:
+        """Stop the node and mark as unusable.
+
+        Sets state to STOPPED. Future execute() calls will return an error.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        self.state = NodeState.STOPPED
+
     def to_info(self) -> NodeInfo:
         """Get node information.
 
@@ -333,7 +354,7 @@ class BashNode:
         return NodeInfo(
             id=self.id,
             node_type="bash",
-            state=NodeState.READY,  # Ephemeral nodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata={
                 "cwd": self.cwd,

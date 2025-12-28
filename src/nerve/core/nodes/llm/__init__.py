@@ -2,15 +2,15 @@
 
 Two types of LLM nodes:
 
-**Single-shot nodes** (stateless, ephemeral):
+**Stateless nodes** (persistent=False):
     SingleShotLLMNode: Abstract base class for stateless LLM API calls
     OpenRouterNode: OpenRouter API (OpenAI-compatible, supports 100+ models)
     GLMNode: Z.AI GLM API (supports thinking mode)
 
-**Chat nodes** (stateful, persistent):
+**Stateful nodes** (persistent=True):
     LLMChatNode: Multi-turn conversations with tool support
 
-Example (single-shot):
+Example (stateless):
     >>> from nerve.core.nodes.llm import OpenRouterNode, GLMNode
     >>> from nerve.core.nodes import ExecutionContext
     >>> from nerve.core.session import Session

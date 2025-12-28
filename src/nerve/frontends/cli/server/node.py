@@ -14,8 +14,8 @@ NODE_TYPE_CHOICES = [
     "PTYNode",
     "WezTermNode",
     "ClaudeWezTermNode",  # Terminal nodes
-    "BashNode",  # Ephemeral bash
-    "IdentityNode",  # Ephemeral identity (echo)
+    "BashNode",  # Stateless bash
+    "IdentityNode",  # Stateless identity (echo)
     "OpenRouterNode",
     "GLMNode",  # Single-shot LLM
     "LLMChatNode",  # Stateful chat
@@ -116,7 +116,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     "node_type",
     type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
-    help="Node type (persistent: PTYNode, WezTermNode, ClaudeWezTermNode; ephemeral: BashNode, IdentityNode, OpenRouterNode)",
+    help="Node type (stateful: PTYNode, WezTermNode, ClaudeWezTermNode, LLMChatNode; stateless: BashNode, IdentityNode, OpenRouterNode, GLMNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
@@ -164,7 +164,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=False,
     help="Include request/response headers in debug logs (for research)",
 )
-# Ephemeral node options (BashNode, OpenRouterNode, GLMNode)
+# Stateless node options (BashNode, OpenRouterNode, GLMNode)
 @click.option(
     "--cwd",
     default=None,
@@ -265,7 +265,7 @@ async def node_create(
     provider_debug_dir: str | None,
     transparent: bool,
     log_headers: bool,
-    # Ephemeral node options
+    # Stateless node options
     cwd: str | None,
     bash_timeout: float | None,
     api_key: str | None,
@@ -339,16 +339,16 @@ async def node_create(
             --transparent \\
             --provider-debug-dir /tmp/proxy-logs
 
-    **Ephemeral nodes (BashNode - runs command once, auto-deletes):**
+    **Stateless nodes (BashNode - runs commands, no state between calls):**
 
         nerve server node create my-bash --server myproject \\
             --type BashNode \\
-            --command "echo hello" \\
             --cwd /tmp
 
         nerve server node send my-bash "ls -la"
+        nerve server node send my-bash "pwd"
 
-    **Ephemeral nodes (OpenRouterNode - LLM API call, auto-deletes):**
+    **Stateless nodes (OpenRouterNode - LLM API calls, no conversation history):**
 
         nerve server node create my-llm --server myproject \\
             --type OpenRouterNode \\
@@ -356,6 +356,7 @@ async def node_create(
             --llm-model anthropic/claude-3-haiku
 
         nerve server node send my-llm "What is 2+2?"
+        nerve server node send my-llm "What is 3+3?"
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -393,12 +394,12 @@ async def node_create(
         if api_format and node_type != "ClaudeWezTermNode":
             error_exit("Provider options require --type ClaudeWezTermNode")
 
-    # Validate ephemeral node options
+    # Validate stateless node options
     if node_type == "BashNode":
         # BashNode doesn't need special validation, uses command and cwd
         pass
     elif node_type in ("OpenRouterNode", "GLMNode"):
-        # Single-shot LLM nodes require api_key and llm_model
+        # Stateless LLM nodes require api_key and llm_model
         if not api_key:
             error_exit(f"--api-key is required for {node_type}")
         if not llm_model:

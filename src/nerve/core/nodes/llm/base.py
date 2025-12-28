@@ -118,6 +118,7 @@ class SingleShotLLMNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _session_holder: aiohttp.ClientSession | None = field(default=None, init=False, repr=False)
     _openai_client: AsyncOpenAI | None = field(default=None, init=False, repr=False)
     _session_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -213,6 +214,21 @@ class SingleShotLLMNode:
             in the result dict.
         """
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "content": None,
+                "tool_calls": None,
+                "model": None,
+                "finish_reason": None,
+                "usage": None,
+                "request": {},
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "retries": 0,
+            }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -601,6 +617,16 @@ class SingleShotLLMNode:
         """
         pass
 
+    async def stop(self) -> None:
+        """Stop the node and release HTTP resources.
+
+        Closes HTTP connections and marks node as unusable.
+        Future execute() calls will return an error.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        await self.close()
+        self.state = NodeState.STOPPED
+
     async def close(self) -> None:
         """Close HTTP session/client (optional cleanup).
 
@@ -624,7 +650,7 @@ class SingleShotLLMNode:
         return NodeInfo(
             id=self.id,
             node_type=self.node_type,
-            state=NodeState.READY,  # Ephemeral nodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata={
                 "model": self.model,
