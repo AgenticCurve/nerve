@@ -178,8 +178,8 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 225] blocks.py
-│       │           ├── [L: 589] commander.py
-│       │           └── [L: 138] themes.py
+│       │           ├── [L: 637] commander.py
+│       │           └── [L: 140] themes.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -293,4 +293,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-63 directories, 231 files, 51,629 total lines
+63 directories, 231 files, 51,679 total lines

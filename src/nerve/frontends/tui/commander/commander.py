@@ -195,6 +195,12 @@ class Commander:
         elif command == "clear":
             self.console.clear()
 
+        elif command == "clean":
+            self._clean_blocks()
+
+        elif command == "refresh":
+            self._refresh_view()
+
         elif command == "theme":
             self._switch_theme(args)
 
@@ -453,9 +459,10 @@ class Commander:
         self.console.print("  [bold]:world python[/]  Enter python world (no >>> needed)")
         self.console.print("  [bold]:back[/]          Exit current world")
         self.console.print("  [bold]:timeline[/]      Show timeline (filtered in world)")
+        self.console.print("  [bold]:refresh[/]       Clear screen and re-render view")
+        self.console.print("  [bold]:clean[/]         Clear all blocks, start from :::1")
         self.console.print("  [bold]:nodes[/]         List available nodes")
         self.console.print("  [bold]:theme name[/]    Switch theme")
-        self.console.print("  [bold]:clear[/]         Clear screen")
         self.console.print("  [bold]:exit[/]          Exit world or commander")
         self.console.print()
 
@@ -575,6 +582,45 @@ class Commander:
         self._current_world = None
         self.console.print(f"[dim]Left world: {old_world}[/]")
         self.console.print()
+
+    def _clean_blocks(self) -> None:
+        """Clear all blocks and reset numbering."""
+        count = len(self.timeline)
+        self.timeline.clear()
+        self.console.clear()
+        self._print_welcome()
+        self.console.print(f"[dim]Cleared {count} blocks. Starting fresh from :::1[/]")
+        self.console.print()
+
+    def _refresh_view(self) -> None:
+        """Clear screen and re-render current view."""
+        self.console.clear()
+
+        # Re-render based on current context
+        if self._current_world:
+            # In a world - show world header and filtered blocks
+            if self._current_world == "python":
+                self.console.print(f"[bold]World: python[/]")
+                blocks = self.timeline.filter_by_type("python")
+            else:
+                node = self.nodes.get(self._current_world)
+                node_type = type(node).__name__ if node else "?"
+                self.console.print(f"[bold]World: @{self._current_world}[/] ({node_type})")
+                blocks = self.timeline.filter_by_node(self._current_world)
+
+            if blocks:
+                self.console.print(f"[dim]History: {len(blocks)} blocks[/]")
+                self.console.print()
+                for i, block in enumerate(blocks):
+                    self.console.print(block.render(self.console, show_separator=(i > 0)))
+            else:
+                self.console.print()
+        else:
+            # Main view - show welcome and all blocks
+            self._print_welcome()
+            if self.timeline.blocks:
+                for i, block in enumerate(self.timeline.blocks):
+                    self.console.print(block.render(self.console, show_separator=(i > 0)))
 
     async def _cleanup(self) -> None:
         """Cleanup resources."""
