@@ -28,6 +28,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from nerve.core.nodes.base import Node, NodeInfo
     from nerve.core.nodes.graph import Graph
+    from nerve.core.nodes.session_logging import SessionLogger
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,30 @@ class Session:
     server_name: str = "default"
     history_enabled: bool = True
     history_base_dir: Path | None = None
+
+    # Logging configuration
+    file_logging: bool = True
+    console_logging: bool = False
+
+    # Session logging (internal)
+    _session_logger: SessionLogger | None = field(default=None, repr=False)
+    _start_time: float | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Initialize session logger after dataclass initialization."""
+        from nerve.core.nodes.session_logging import SessionLogger
+
+        self._session_logger = SessionLogger.create(
+            session_name=self.name,
+            server_name=self.server_name,
+            file_logging=self.file_logging,
+            console_logging=self.console_logging,
+        )
+
+    @property
+    def session_logger(self) -> SessionLogger | None:
+        """Get the session logger for this session."""
+        return self._session_logger
 
     @property
     def id(self) -> str:
@@ -182,20 +208,29 @@ class Session:
     # Lifecycle
     # =========================================================================
 
-    async def delete_node(self, node_id: str) -> bool:
+    async def delete_node(self, node_id: str, reason: str = "deleted") -> bool:
         """Stop and remove a node.
 
         Args:
             node_id: ID of node to delete.
+            reason: Reason for deletion.
 
         Returns:
             True if deleted, False if not found.
         """
         node = self.nodes.pop(node_id, None)
         if node is None:
+            logger.debug("[%s] delete_node: node_id=%s, found=False", self.name, node_id)
             return False
         if hasattr(node, "stop"):
             await node.stop()
+        logger.debug("[%s] delete_node: node_id=%s, found=True", self.name, node_id)
+
+        # Log to session logger
+        if self._session_logger:
+            self._session_logger.log_node_deregistered(node_id, reason=reason)
+            self._session_logger.log_node_deleted(node_id, reason=reason)
+
         return True
 
     def delete_graph(self, graph_id: str) -> bool:
@@ -207,7 +242,14 @@ class Session:
         Returns:
             True if deleted, False if not found.
         """
-        return self.graphs.pop(graph_id, None) is not None
+        deleted = self.graphs.pop(graph_id, None) is not None
+        logger.debug("[%s] delete_graph: graph_id=%s, found=%s", self.name, graph_id, deleted)
+
+        # Log to session logger
+        if deleted and self._session_logger:
+            self._session_logger.log_graph_deregistered(graph_id)
+
+        return deleted
 
     async def start(self) -> None:
         """Start all persistent nodes (including those inside graphs).
@@ -216,17 +258,61 @@ class Session:
         before they can execute. This method starts all persistent nodes
         registered in the session.
         """
-        for node in self._collect_persistent_nodes():
+        self._start_time = time.time()
+        persistent_nodes = self._collect_persistent_nodes()
+        node_ids = [getattr(n, "id", "?") for n in persistent_nodes]
+
+        logger.debug(
+            "[%s] session_start: persistent_nodes=%d, node_ids=%s",
+            self.name,
+            len(persistent_nodes),
+            node_ids,
+        )
+
+        # Log to session logger
+        if self._session_logger:
+            self._session_logger.log_session_start(
+                persistent_nodes=len(persistent_nodes),
+                node_ids=node_ids,
+            )
+
+        for node in persistent_nodes:
             if hasattr(node, "start"):
                 await node.start()
+        logger.debug("[%s] session_started: persistent_nodes=%d", self.name, len(persistent_nodes))
 
     async def stop(self) -> None:
         """Stop all nodes and clear registries."""
+        node_count = len(self.nodes)
+        graph_count = len(self.graphs)
+        duration_s = None
+        if self._start_time:
+            duration_s = time.time() - self._start_time
+
+        logger.debug(
+            "[%s] session_stop: nodes=%d, graphs=%d",
+            self.name,
+            node_count,
+            graph_count,
+        )
         for node in self._collect_persistent_nodes():
             if hasattr(node, "stop"):
                 await node.stop()
         self.nodes.clear()
         self.graphs.clear()
+        logger.debug(
+            "[%s] session_stopped: nodes=%d, graphs=%d", self.name, node_count, graph_count
+        )
+
+        # Log to session logger and close it
+        if self._session_logger:
+            self._session_logger.log_session_stop(
+                nodes=node_count,
+                graphs=graph_count,
+                duration_s=duration_s,
+            )
+            self._session_logger.close()
+            self._session_logger = None
 
     def _collect_persistent_nodes(self) -> list[Node]:
         """Recursively find all persistent nodes.

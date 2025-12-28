@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from datetime import datetime
 from graphlib import TopologicalSorter
 from typing import TYPE_CHECKING, Any
@@ -14,6 +15,13 @@ from nerve.core.nodes.graph.builder import GraphStep
 from nerve.core.nodes.graph.events import StepEvent
 from nerve.core.nodes.graph.step import Step
 from nerve.core.nodes.policies import ErrorPolicy
+from nerve.core.nodes.run_logging import (
+    log_complete,
+    log_error,
+    log_start,
+    log_warning,
+    warn_no_run_logger,
+)
 from nerve.core.nodes.trace import StepTrace
 
 if TYPE_CHECKING:
@@ -80,6 +88,10 @@ class Graph:
 
         # Auto-register with session
         session.graphs[id] = self
+
+        # Log graph registration
+        if session.session_logger:
+            session.session_logger.log_graph_registered(id, steps=0)
 
     @property
     def id(self) -> str:
@@ -372,13 +384,42 @@ class Graph:
         results: dict[str, Any] = {}
         trace = context.trace
 
+        # Setup run logging if not already configured
+        run_logger = context.run_logger
+        owns_run_logger = False
+        if run_logger is None and context.session is not None:
+            session_logger = context.session.session_logger
+            if session_logger is not None:
+                run_logger = session_logger.create_graph_run_logger()
+                owns_run_logger = True
+                context = replace(context, run_logger=run_logger, run_id=run_logger.run_id)
+            else:
+                warn_no_run_logger(f"graph:{self._id}", "no session_logger on session")
+        elif run_logger is None:
+            warn_no_run_logger(f"graph:{self._id}", "no session in context")
+
+        # Get graph-specific logger
+        graph_logger = run_logger.get_logger("graph") if run_logger else None
+
         if trace:
             trace.status = "running"
 
         self._current_context = context
 
+        # Log graph start
+        execution_order = self.execution_order()
+        graph_start_mono = time.monotonic()
+        if graph_logger:
+            log_start(
+                graph_logger,
+                self._id,
+                "graph_start",
+                steps=len(execution_order),
+                run_id=run_logger.run_id if run_logger else None,
+            )
+
         try:
-            for step_id in self.execution_order():
+            for step_id in execution_order:
                 # Check cancellation and budget before each step
                 context.check_cancelled()
                 context.check_budget()
@@ -394,6 +435,18 @@ class Graph:
                 if step.parser:
                     step_context = step_context.with_parser(step.parser)
 
+                # Log step start
+                if graph_logger:
+                    log_start(
+                        graph_logger,
+                        self._id,
+                        "step_start",
+                        step=step_id,
+                        node=node.id,
+                        node_type=self._get_node_type(node),
+                        depends_on=step.depends_on,
+                    )
+
                 # Execute with policy
                 start_time = datetime.now()
                 start_mono = time.monotonic()
@@ -403,11 +456,23 @@ class Graph:
                     self._current_node = node
 
                 try:
-                    result = await self._execute_with_policy(step, node, step_context)
+                    result = await self._execute_with_policy(step, node, step_context, step_id)
                     error = None
                 except Exception as e:
                     result = None
                     error = str(e)
+                    # Log step failure
+                    if graph_logger:
+                        step_duration = time.monotonic() - start_mono
+                        log_error(
+                            graph_logger,
+                            self._id,
+                            "step_failed",
+                            e,
+                            step=step_id,
+                            node=node.id,
+                            duration_s=f"{step_duration:.1f}",
+                        )
                     raise
 
                 finally:
@@ -435,12 +500,45 @@ class Graph:
                     if context.usage:
                         context.usage.add_step()
 
+                # Log step complete (only if no error)
+                if graph_logger and error is None:
+                    step_duration = time.monotonic() - start_mono
+                    log_complete(
+                        graph_logger,
+                        self._id,
+                        "step_complete",
+                        step_duration,
+                        step=step_id,
+                        node=node.id,
+                    )
+
                 results[step_id] = result
+
+            # Log graph complete
+            graph_duration = time.monotonic() - graph_start_mono
+            if graph_logger:
+                log_complete(
+                    graph_logger,
+                    self._id,
+                    "graph_complete",
+                    graph_duration,
+                    steps=len(execution_order),
+                )
 
             if trace:
                 trace.complete()
 
         except Exception as e:
+            # Log graph failure
+            graph_duration = time.monotonic() - graph_start_mono
+            if graph_logger:
+                log_error(
+                    graph_logger,
+                    self._id,
+                    "graph_failed",
+                    e,
+                    duration_s=f"{graph_duration:.1f}",
+                )
             if trace:
                 trace.complete(error=str(e))
             raise
@@ -449,6 +547,9 @@ class Graph:
             self._current_context = None
             async with self._interrupt_lock:
                 self._current_node = None
+            # Cleanup run logger if we created it
+            if owns_run_logger and run_logger:
+                run_logger.close()
 
         return results
 
@@ -493,10 +594,40 @@ class Graph:
             raise ValueError(f"Invalid graph: {errors}")
 
         results: dict[str, Any] = {}
+
+        # Setup run logging if not already configured
+        run_logger = context.run_logger
+        owns_run_logger = False
+        if run_logger is None and context.session is not None:
+            session_logger = context.session.session_logger
+            if session_logger is not None:
+                run_logger = session_logger.create_graph_run_logger()
+                owns_run_logger = True
+                context = replace(context, run_logger=run_logger, run_id=run_logger.run_id)
+            else:
+                warn_no_run_logger(f"graph:{self._id}:stream", "no session_logger on session")
+        elif run_logger is None:
+            warn_no_run_logger(f"graph:{self._id}:stream", "no session in context")
+
+        # Get graph-specific logger
+        graph_logger = run_logger.get_logger("graph") if run_logger else None
+
         self._current_context = context
 
+        # Log graph start
+        execution_order = self.execution_order()
+        graph_start_mono = time.monotonic()
+        if graph_logger:
+            log_start(
+                graph_logger,
+                self._id,
+                "graph_stream_start",
+                steps=len(execution_order),
+                run_id=run_logger.run_id if run_logger else None,
+            )
+
         try:
-            for step_id in self.execution_order():
+            for step_id in execution_order:
                 context.check_cancelled()
                 context.check_budget()
 
@@ -507,6 +638,19 @@ class Graph:
                 step_context = context.with_input(step_input).with_upstream(results)
                 if step.parser:
                     step_context = step_context.with_parser(step.parser)
+
+                # Log step start
+                step_start_mono = time.monotonic()
+                if graph_logger:
+                    log_start(
+                        graph_logger,
+                        self._id,
+                        "step_start",
+                        step=step_id,
+                        node=node.id,
+                        node_type=self._get_node_type(node),
+                        depends_on=step.depends_on,
+                    )
 
                 yield StepEvent("step_start", step_id, node.id)
 
@@ -523,12 +667,37 @@ class Graph:
                             yield StepEvent("step_chunk", step_id, node.id, chunk)
                         result = "".join(chunks) if chunks else None
                     else:
-                        result = await self._execute_with_policy(step, node, step_context)
+                        result = await self._execute_with_policy(step, node, step_context, step_id)
 
                     results[step_id] = result
+
+                    # Log step complete
+                    if graph_logger:
+                        step_duration = time.monotonic() - step_start_mono
+                        log_complete(
+                            graph_logger,
+                            self._id,
+                            "step_complete",
+                            step_duration,
+                            step=step_id,
+                            node=node.id,
+                        )
+
                     yield StepEvent("step_complete", step_id, node.id, result)
 
                 except Exception as e:
+                    # Log step failure
+                    if graph_logger:
+                        step_duration = time.monotonic() - step_start_mono
+                        log_error(
+                            graph_logger,
+                            self._id,
+                            "step_failed",
+                            e,
+                            step=step_id,
+                            node=node.id,
+                            duration_s=f"{step_duration:.1f}",
+                        )
                     yield StepEvent("step_error", step_id, node.id, str(e))
                     raise
 
@@ -536,10 +705,37 @@ class Graph:
                     async with self._interrupt_lock:
                         self._current_node = None
 
+            # Log graph complete
+            graph_duration = time.monotonic() - graph_start_mono
+            if graph_logger:
+                log_complete(
+                    graph_logger,
+                    self._id,
+                    "graph_stream_complete",
+                    graph_duration,
+                    steps=len(execution_order),
+                )
+
+        except Exception as e:
+            # Log graph failure
+            graph_duration = time.monotonic() - graph_start_mono
+            if graph_logger:
+                log_error(
+                    graph_logger,
+                    self._id,
+                    "graph_stream_failed",
+                    e,
+                    duration_s=f"{graph_duration:.1f}",
+                )
+            raise
+
         finally:
             self._current_context = None
             async with self._interrupt_lock:
                 self._current_node = None
+            # Cleanup run logger if we created it
+            if owns_run_logger and run_logger:
+                run_logger.close()
 
     def collect_persistent_nodes(self) -> list[Node]:
         """Recursively find all persistent nodes in this graph.
@@ -615,6 +811,7 @@ class Graph:
         step: Step,
         node: Node,
         context: ExecutionContext,
+        step_id: str | None = None,
     ) -> Any:
         """Execute node with error policy handling.
 
@@ -622,6 +819,7 @@ class Graph:
             step: The step being executed.
             node: The node to execute.
             context: Execution context.
+            step_id: Step identifier for logging.
 
         Returns:
             Execution result.
@@ -630,6 +828,10 @@ class Graph:
             Exception: If policy is "fail" and execution fails.
         """
         policy = step.error_policy or ErrorPolicy()
+
+        # Get logger for retry logging
+        run_logger = context.run_logger
+        graph_logger = run_logger.get_logger("graph") if run_logger else None
 
         for attempt in range(policy.retry_count + 1):
             try:
@@ -644,27 +846,66 @@ class Graph:
             except TimeoutError as e:
                 if policy.should_retry(attempt):
                     delay = policy.get_delay_for_attempt(attempt)
+                    # Log retry attempt
+                    if graph_logger:
+                        log_warning(
+                            graph_logger,
+                            self._id,
+                            "step_retry",
+                            step=step_id,
+                            node=node.id,
+                            attempt=attempt + 1,
+                            max_attempts=policy.retry_count + 1,
+                            delay_ms=int(delay * 1000),
+                            error_type="timeout",
+                            error=str(e),
+                        )
                     await asyncio.sleep(delay)
                     continue
 
                 # Handle timeout based on policy
-                return await self._handle_error(policy, context, e)
+                return await self._handle_error(policy, context, e, graph_logger, step_id, node.id)
 
             except Exception as e:
                 if policy.should_retry(attempt):
                     delay = policy.get_delay_for_attempt(attempt)
+                    # Log retry attempt
+                    if graph_logger:
+                        log_warning(
+                            graph_logger,
+                            self._id,
+                            "step_retry",
+                            step=step_id,
+                            node=node.id,
+                            attempt=attempt + 1,
+                            max_attempts=policy.retry_count + 1,
+                            delay_ms=int(delay * 1000),
+                            error_type=type(e).__name__,
+                            error=str(e),
+                        )
                     await asyncio.sleep(delay)
                     continue
 
-                return await self._handle_error(policy, context, e)
+                return await self._handle_error(policy, context, e, graph_logger, step_id, node.id)
 
         # Should never reach here, but handle it with a generic error
         return await self._handle_error(
-            policy, context, RuntimeError("Execution failed after all retries")
+            policy,
+            context,
+            RuntimeError("Execution failed after all retries"),
+            graph_logger,
+            step_id,
+            node.id,
         )
 
     async def _handle_error(
-        self, policy: ErrorPolicy, context: ExecutionContext, error: BaseException
+        self,
+        policy: ErrorPolicy,
+        context: ExecutionContext,
+        error: BaseException,
+        graph_logger: Any = None,
+        step_id: str | None = None,
+        node_id: str | None = None,
     ) -> Any:
         """Handle error according to policy after retries exhausted.
 
@@ -672,6 +913,9 @@ class Graph:
             policy: The error policy.
             context: Execution context.
             error: The exception that occurred.
+            graph_logger: Logger for graph events.
+            step_id: Step identifier for logging.
+            node_id: Node identifier for logging.
 
         Returns:
             Fallback value or raises exception.
@@ -680,11 +924,64 @@ class Graph:
             raise error
 
         if policy.on_error == "skip":
+            # Log skip action
+            if graph_logger:
+                log_warning(
+                    graph_logger,
+                    self._id,
+                    "step_skipped",
+                    step=step_id,
+                    node=node_id,
+                    error_type=type(error).__name__,
+                    error=str(error),
+                    fallback_value=str(policy.fallback_value)[:100]
+                    if policy.fallback_value
+                    else None,
+                )
             return policy.fallback_value
 
         if policy.on_error == "fallback" and policy.fallback_node:
-            # Execute fallback node asynchronously
-            return await policy.fallback_node.execute(context)
+            # Log fallback execution
+            if graph_logger:
+                log_start(
+                    graph_logger,
+                    self._id,
+                    "step_fallback_start",
+                    step=step_id,
+                    original_node=node_id,
+                    fallback_node=policy.fallback_node.id,
+                    error_type=type(error).__name__,
+                    error=str(error),
+                )
+            start_mono = time.monotonic()
+            try:
+                result = await policy.fallback_node.execute(context)
+                # Log fallback complete
+                if graph_logger:
+                    duration = time.monotonic() - start_mono
+                    log_complete(
+                        graph_logger,
+                        self._id,
+                        "step_fallback_complete",
+                        duration,
+                        step=step_id,
+                        fallback_node=policy.fallback_node.id,
+                    )
+                return result
+            except Exception as fallback_error:
+                # Log fallback failure
+                if graph_logger:
+                    duration = time.monotonic() - start_mono
+                    log_error(
+                        graph_logger,
+                        self._id,
+                        "step_fallback_failed",
+                        fallback_error,
+                        step=step_id,
+                        fallback_node=policy.fallback_node.id,
+                        duration_s=f"{duration:.1f}",
+                    )
+                raise
 
         raise error
 

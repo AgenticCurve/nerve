@@ -35,6 +35,7 @@ import argparse
 import json
 import subprocess
 import sys
+from typing import Any
 
 from nerve.core.parsers import get_parser
 from nerve.core.types import ParsedResponse, ParserType
@@ -62,7 +63,7 @@ def get_wezterm_pane_text(pane_id: str) -> str:
         raise RuntimeError("wezterm CLI not found. Is WezTerm installed?") from err
 
 
-def list_wezterm_panes() -> list[dict]:
+def list_wezterm_panes() -> list[dict[str, Any]]:
     """List all WezTerm panes.
 
     Returns:
@@ -75,13 +76,14 @@ def list_wezterm_panes() -> list[dict]:
             text=True,
         )
         if result.returncode == 0:
-            return json.loads(result.stdout)
+            panes: list[dict[str, Any]] = json.loads(result.stdout)
+            return panes
     except (FileNotFoundError, json.JSONDecodeError):
         pass
     return []
 
 
-def format_pane_list(panes: list[dict]) -> str:
+def format_pane_list(panes: list[dict[str, Any]]) -> str:
     """Format pane list for display.
 
     Args:

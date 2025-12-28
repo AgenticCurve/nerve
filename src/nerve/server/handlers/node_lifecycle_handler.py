@@ -106,6 +106,14 @@ class NodeLifecycleHandler:
                 backend=backend,
             )
 
+        logger.debug(
+            "node_creating: node_id=%s, backend=%s, command=%s, cwd=%s",
+            node_id,
+            backend,
+            command,
+            cwd,
+        )
+
         # Create node via factory
         try:
             node = await self.node_factory.create(
@@ -133,11 +141,25 @@ class NodeLifecycleHandler:
                 # HTTP backend
                 http_backend=http_backend,
             )
-        except Exception:
+        except Exception as e:
             # Cleanup proxy on failure
+            logger.debug(
+                "node_create_failed: node_id=%s, backend=%s, error=%s",
+                node_id,
+                backend,
+                str(e)[:200],
+            )
             if proxy_url is not None:
                 await self.proxy_manager.stop_proxy(str(node_id))
             raise
+
+        logger.debug(
+            "node_created: node_id=%s, backend=%s, persistent=%s, proxy_url=%s",
+            node.id,
+            backend,
+            node.persistent,
+            proxy_url,
+        )
 
         # Emit event
         await self.event_sink.emit(
@@ -282,7 +304,10 @@ class NodeLifecycleHandler:
         # Delete node from session
         deleted = await session.delete_node(str(node_id))
         if not deleted:
+            logger.debug("node_delete_failed: node_id=%s, reason=not_found", node_id)
             raise ValueError(f"Node not found: {node_id}")
+
+        logger.debug("node_deleted: node_id=%s, session=%s", node_id, session.name)
 
         await self.event_sink.emit(
             Event(

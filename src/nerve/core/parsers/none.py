@@ -3,8 +3,12 @@
 Use when you don't need structured parsing of CLI output.
 """
 
+import logging
+
 from nerve.core.parsers.base import Parser
 from nerve.core.types import ParsedResponse, Section
+
+logger = logging.getLogger(__name__)
 
 
 class NoneParser(Parser):
@@ -75,10 +79,18 @@ class NoneParser(Parser):
         Returns:
             ParsedResponse with raw content.
         """
+        is_ready = self.is_ready(content)
+
+        logger.debug(
+            "parse_complete: sections=1, is_ready=%s, raw_len=%d",
+            is_ready,
+            len(content),
+        )
+
         return ParsedResponse(
             raw=content,
             sections=(Section(type="text", content=content),),
             is_complete=True,
-            is_ready=self.is_ready(content),
+            is_ready=is_ready,
             tokens=None,
         )

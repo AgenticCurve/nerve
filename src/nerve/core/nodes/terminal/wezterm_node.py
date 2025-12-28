@@ -6,12 +6,14 @@ This module provides WezTermNode for WezTerm pane-based terminal interactions.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
+from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
 from nerve.core.pty.wezterm_backend import WezTermBackend
@@ -183,6 +185,16 @@ class WezTermNode:
             # NOW register (only after successful async init)
             session.nodes[id] = node
 
+            # Log node registration and start (persistent node)
+            if session.session_logger:
+                session.session_logger.log_node_lifecycle(
+                    id,
+                    "WezTermNode",
+                    persistent=True,
+                    started=True,
+                    command=command_str,
+                )
+
             return node
 
         except Exception:
@@ -292,6 +304,16 @@ class WezTermNode:
 
             # Register with session
             session.nodes[id] = node
+
+            # Log node registration and start (persistent node)
+            if session.session_logger:
+                session.session_logger.log_node_lifecycle(
+                    id,
+                    "WezTermNode",
+                    persistent=True,
+                    started=True,
+                    command=f"attach:{pane_id}",
+                )
 
             return node
 
@@ -406,6 +428,26 @@ class WezTermNode:
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
 
+        # Get logger and exec_id
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
+        start_mono = time.monotonic()
+
+        # Log terminal start
+        log_start(
+            log_ctx.logger,
+            self.id,
+            "terminal_start",
+            exec_id=exec_id,
+            input=input_str[:200] + "..." if len(input_str) > 200 else input_str,
+            parser=str(context.parser or self._default_parser),
+            timeout=context.timeout or self._response_timeout,
+            pane_id=self.pane_id,
+        )
+
         # History: capture timestamp
         ts_start = None
         if self._history_writer and self._history_writer.enabled:
@@ -417,46 +459,84 @@ class WezTermNode:
         is_claude = parser_type == ParserType.CLAUDE
         parser_instance = get_parser(parser_type)
 
-        # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
-        if is_claude:
-            # WezTerm + Claude: Just text + Enter
-            await self.backend.write(input_str)
-            await asyncio.sleep(0.1)
-            await self.backend.write("\r")
-        else:
-            await self.backend.write(input_str)
-            await asyncio.sleep(0.1)
-            await self.backend.write("\n")
+        try:
+            # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
+            if is_claude:
+                # WezTerm + Claude: Just text + Enter
+                await self.backend.write(input_str)
+                await asyncio.sleep(0.1)
+                await self.backend.write("\r")
+            else:
+                await self.backend.write(input_str)
+                await asyncio.sleep(0.1)
+                await self.backend.write("\n")
 
-        self.state = NodeState.BUSY
+            self.state = NodeState.BUSY
 
-        # Wait for response
-        await self._wait_for_ready(timeout=timeout, parser_type=parser_type)
+            # Wait for response
+            await self._wait_for_ready(timeout=timeout, parser_type=parser_type)
 
-        await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)
 
-        buffer = self.backend.buffer
-        result = parser_instance.parse(buffer)
+            buffer = self.backend.buffer
+            result = parser_instance.parse(buffer)
 
-        # History: log send
-        if self._history_writer and self._history_writer.enabled and ts_start is not None:
-            response_data = {
-                "sections": [
-                    {"type": s.type, "content": s.content, "metadata": s.metadata}
-                    for s in result.sections
-                ],
-                "tokens": result.tokens,
-                "is_complete": result.is_complete,
-                "is_ready": result.is_ready,
-            }
-            self._history_writer.log_send(
-                input=input_str,
-                response=response_data,
-                preceding_buffer_seq=None,
-                ts_start=ts_start,
+            # Log terminal complete
+            duration = time.monotonic() - start_mono
+            log_complete(
+                log_ctx.logger,
+                self.id,
+                "terminal_complete",
+                duration,
+                exec_id=exec_id,
+                output_len=len(buffer),
+                sections=len(result.sections),
             )
 
-        return result
+            # History: log send
+            if self._history_writer and self._history_writer.enabled and ts_start is not None:
+                response_data = {
+                    "sections": [
+                        {"type": s.type, "content": s.content, "metadata": s.metadata}
+                        for s in result.sections
+                    ],
+                    "tokens": result.tokens,
+                    "is_complete": result.is_complete,
+                    "is_ready": result.is_ready,
+                }
+                self._history_writer.log_send(
+                    input=input_str,
+                    response=response_data,
+                    preceding_buffer_seq=None,
+                    ts_start=ts_start,
+                )
+
+            return result
+
+        except TimeoutError as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "terminal_timeout",
+                e,
+                exec_id=exec_id,
+                timeout=timeout,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
+
+        except Exception as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "terminal_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
@@ -476,6 +556,26 @@ class WezTermNode:
         input_str = str(context.input) if context.input is not None else ""
         self._last_input = input_str
 
+        # Get logger and exec_id
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
+        start_mono = time.monotonic()
+        chunks_count = 0
+
+        # Log terminal stream start
+        log_start(
+            log_ctx.logger,
+            self.id,
+            "terminal_stream_start",
+            exec_id=exec_id,
+            input=input_str[:200] + "..." if len(input_str) > 200 else input_str,
+            parser=str(context.parser or self._default_parser),
+            pane_id=self.pane_id,
+        )
+
         # History: capture timestamp
         ts_start = None
         if self._history_writer and self._history_writer.enabled:
@@ -485,34 +585,60 @@ class WezTermNode:
         parser_instance = get_parser(parser_type)
         is_claude = parser_type == ParserType.CLAUDE
 
-        # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
-        if is_claude:
-            # WezTerm + Claude: Just text + Enter
-            await self.backend.write(input_str)
-            await asyncio.sleep(0.1)
-            await self.backend.write("\r")
-        else:
-            await self.backend.write(input_str + "\n")
+        try:
+            # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
+            if is_claude:
+                # WezTerm + Claude: Just text + Enter
+                await self.backend.write(input_str)
+                await asyncio.sleep(0.1)
+                await self.backend.write("\r")
+            else:
+                await self.backend.write(input_str + "\n")
 
-        self.state = NodeState.BUSY
+            self.state = NodeState.BUSY
 
-        async for chunk in self.backend.read_stream():
-            yield chunk
+            async for chunk in self.backend.read_stream():
+                chunks_count += 1
+                yield chunk
 
-            if parser_instance.is_ready(self.backend.buffer):
-                self.state = NodeState.READY
-                break
+                if parser_instance.is_ready(self.backend.buffer):
+                    self.state = NodeState.READY
+                    break
 
-        # History: log streaming operation
-        if self._history_writer and self._history_writer.enabled and ts_start is not None:
-            final_buffer = self.read_tail(HISTORY_BUFFER_LINES)
-            self._history_writer.log_send_stream(
-                input=input_str,
-                final_buffer=final_buffer,
-                parser=parser_type.value,
-                preceding_buffer_seq=None,
-                ts_start=ts_start,
+            # Log terminal stream complete
+            duration = time.monotonic() - start_mono
+            log_complete(
+                log_ctx.logger,
+                self.id,
+                "terminal_stream_complete",
+                duration,
+                exec_id=exec_id,
+                chunks=chunks_count,
             )
+
+            # History: log streaming operation
+            if self._history_writer and self._history_writer.enabled and ts_start is not None:
+                final_buffer = self.read_tail(HISTORY_BUFFER_LINES)
+                self._history_writer.log_send_stream(
+                    input=input_str,
+                    final_buffer=final_buffer,
+                    parser=parser_type.value,
+                    preceding_buffer_seq=None,
+                    ts_start=ts_start,
+                )
+
+        except Exception as e:
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "terminal_stream_error",
+                e,
+                exec_id=exec_id,
+                chunks=chunks_count,
+                duration_s=f"{duration:.1f}",
+            )
+            raise
 
     async def send(
         self,
@@ -629,6 +755,10 @@ class WezTermNode:
 
         await self.backend.stop()
         self.state = NodeState.STOPPED
+
+        # Log node stopped (persistent node)
+        if self.session and self.session.session_logger:
+            self.session.session_logger.log_node_stopped(self.id, reason="stopped")
 
     async def reset(self) -> None:
         """Reset state while keeping resources running.

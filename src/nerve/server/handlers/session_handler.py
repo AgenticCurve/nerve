@@ -8,11 +8,14 @@ Note: There is no SWITCH_SESSION command in the current API.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from nerve.core.session import Session
 from nerve.server.protocols import Event, EventType
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nerve.server.protocols import EventSink
@@ -61,6 +64,13 @@ class SessionHandler:
         )
         self.session_registry.add_session(name, session)
 
+        logger.debug(
+            "session_created: name=%s, description=%s, tags=%s",
+            name,
+            description[:50] if description else "",
+            tags,
+        )
+
         await self.event_sink.emit(
             Event(
                 type=EventType.SESSION_CREATED,
@@ -88,9 +98,17 @@ class SessionHandler:
 
         session = self.session_registry.remove_session(session_id)
         if session is None:
+            logger.debug("session_delete_failed: session_id=%s, reason=not_found", session_id)
             raise ValueError(f"Session not found: {session_id}")
 
+        node_count = len(session.nodes)
         await session.stop()
+
+        logger.debug(
+            "session_deleted: session_id=%s, nodes_stopped=%d",
+            session_id,
+            node_count,
+        )
 
         await self.event_sink.emit(
             Event(

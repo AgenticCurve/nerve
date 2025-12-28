@@ -12,10 +12,13 @@ Output Structure:
 
 from __future__ import annotations
 
+import logging
 import re
 
 from nerve.core.parsers.base import Parser
 from nerve.core.types import ParsedResponse, Section
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeParser(Parser):
@@ -73,12 +76,27 @@ class ClaudeParser(Parser):
         raw = self._extract_response(content)
         sections = self._parse_sections(raw)
         tokens = self._extract_tokens(content)
+        is_ready = self.is_ready(content)
+
+        # Count section types for logging
+        section_counts: dict[str, int] = {}
+        for s in sections:
+            section_counts[s.type] = section_counts.get(s.type, 0) + 1
+
+        logger.debug(
+            "parse_complete: sections=%d, types=%s, tokens=%s, is_ready=%s, raw_len=%d",
+            len(sections),
+            section_counts,
+            tokens,
+            is_ready,
+            len(raw),
+        )
 
         return ParsedResponse(
             raw=raw,
             sections=tuple(sections),
             is_complete=True,
-            is_ready=self.is_ready(content),
+            is_ready=is_ready,
             tokens=tokens,
         )
 

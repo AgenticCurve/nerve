@@ -51,6 +51,15 @@ Example (Graph execution):
 """
 
 # Nodes
+# Logging
+from nerve.core.logging_config import (
+    JsonFormatter,
+    LogConfig,
+    add_file_handler,
+    configure_logging,
+    get_logger,
+    set_level,
+)
 from nerve.core.nodes import (
     Budget,
     BudgetExceededError,
@@ -175,4 +184,11 @@ __all__ = [
     "GeminiParser",
     "NoneParser",
     "get_parser",
+    # Logging
+    "configure_logging",
+    "get_logger",
+    "set_level",
+    "add_file_handler",
+    "LogConfig",
+    "JsonFormatter",
 ]

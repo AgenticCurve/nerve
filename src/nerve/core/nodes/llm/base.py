@@ -23,6 +23,7 @@ Key features:
 from __future__ import annotations
 
 import asyncio
+import time
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -31,6 +32,7 @@ import aiohttp
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
+from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.gateway.tracing import RequestTracer
 
 if TYPE_CHECKING:
@@ -167,6 +169,12 @@ class SingleShotLLMNode:
         # Auto-register with session
         self.session.nodes[self.id] = self
 
+        # Log node registration
+        if self.session.session_logger:
+            self.session.session_logger.log_node_lifecycle(
+                self.id, type(self).__name__, persistent=self.persistent
+            )
+
         # Initialize request tracer for logging
         # Build nested path: {debug_dir}/{server_name}/{session_name}/{node_id}/
         tracer_dir = None
@@ -204,6 +212,12 @@ class SingleShotLLMNode:
             This method never raises exceptions - all errors are returned
             in the result dict.
         """
+        from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Get logger and exec_id (fallback to context.exec_id for consistency)
+        log_ctx = get_execution_logger(self.id, context, self.session)
+        exec_id = log_ctx.exec_id or context.exec_id
+
         # Initialize result structure
         result: dict[str, Any] = {
             "success": False,
@@ -218,6 +232,7 @@ class SingleShotLLMNode:
         }
 
         trace_id: str | None = None
+        start_mono = time.monotonic()
 
         try:
             # Parse input into messages and extra params
@@ -246,6 +261,17 @@ class SingleShotLLMNode:
                 "messages": _truncate_messages(messages),
             }
 
+            # Log API request start
+            log_start(
+                log_ctx.logger,
+                self.id,
+                "llm_request",
+                exec_id=exec_id,
+                model=self.model,
+                messages=len(messages),
+                trace_id=trace_id,
+            )
+
             # Execute with retry
             response_data, retries = await self._execute_with_retry(request_body)
             result["retries"] = retries
@@ -271,6 +297,20 @@ class SingleShotLLMNode:
 
             result["success"] = True
 
+            # Log successful completion
+            duration = time.monotonic() - start_mono
+            total_tokens = result["usage"]["total_tokens"] if result["usage"] else 0
+            log_complete(
+                log_ctx.logger,
+                self.id,
+                "llm_complete",
+                duration,
+                exec_id=exec_id,
+                tokens=total_tokens,
+                retries=retries,
+                finish_reason=result["finish_reason"],
+            )
+
         except _UpstreamError as e:
             result["error"] = e.message
             result["error_type"] = e.error_type
@@ -286,6 +326,18 @@ class SingleShotLLMNode:
                         "retries": e.retries,
                     },
                 )
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "llm_upstream_error",
+                e.message,
+                exec_id=exec_id,
+                error_type=e.error_type,
+                status_code=e.status_code,
+                retries=e.retries,
+                duration_s=f"{duration:.1f}",
+            )
 
         except aiohttp.ClientError as e:
             result["error"] = f"Network error: {e}"
@@ -299,6 +351,15 @@ class SingleShotLLMNode:
                         "message": str(e),
                     },
                 )
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "llm_network_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
 
         except TimeoutError:
             result["error"] = f"Request timed out after {self.timeout}s"
@@ -312,6 +373,16 @@ class SingleShotLLMNode:
                         "timeout": self.timeout,
                     },
                 )
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "llm_timeout",
+                f"Request timed out after {self.timeout}s",
+                exec_id=exec_id,
+                timeout=self.timeout,
+                duration_s=f"{duration:.1f}",
+            )
 
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
@@ -326,6 +397,15 @@ class SingleShotLLMNode:
                         "message": str(e),
                     },
                 )
+            duration = time.monotonic() - start_mono
+            log_error(
+                log_ctx.logger,
+                self.id,
+                "llm_internal_error",
+                e,
+                exec_id=exec_id,
+                duration_s=f"{duration:.1f}",
+            )
 
         return result
 

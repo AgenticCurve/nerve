@@ -8,8 +8,12 @@ This is a stub that needs to be filled in based on Gemini CLI behavior.
 
 from __future__ import annotations
 
+import logging
+
 from nerve.core.parsers.base import Parser
 from nerve.core.types import ParsedResponse, Section
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiParser(Parser):
@@ -64,12 +68,20 @@ class GeminiParser(Parser):
         """
         raw = self._extract_response(content)
         sections = self._parse_sections(raw)
+        is_ready = self.is_ready(content)
+
+        logger.debug(
+            "parse_complete: sections=%d, is_ready=%s, raw_len=%d",
+            len(sections),
+            is_ready,
+            len(raw),
+        )
 
         return ParsedResponse(
             raw=raw,
             sections=tuple(sections),
             is_complete=True,
-            is_ready=self.is_ready(content),
+            is_ready=is_ready,
             tokens=None,  # TODO: Extract if Gemini provides token count
         )
 

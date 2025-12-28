@@ -12,12 +12,16 @@ ExecutionContext carries all state needed during node execution:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nerve.core.nodes.budget import Budget, ResourceUsage
     from nerve.core.nodes.cancellation import CancellationToken
+    from nerve.core.nodes.run_logging import RunLogger
     from nerve.core.nodes.trace import ExecutionTrace
     from nerve.core.session.session import Session
     from nerve.core.types import ParserType
@@ -40,6 +44,10 @@ class ExecutionContext:
         usage: Resource usage tracking (optional).
         cancellation: Token for cooperative cancellation (optional).
         trace: Execution trace for observability (optional).
+        run_id: Unique identifier for the current execution run (graph execution).
+        run_logger: Logger scoped to the current run for file-based logging.
+        exec_id: Unique identifier for direct node execution (outside graph).
+        correlation_id: ID for correlating related operations (e.g., parallel steps).
 
     Example:
         >>> context = ExecutionContext(session=session, input="hello")
@@ -61,6 +69,16 @@ class ExecutionContext:
     usage: ResourceUsage | None = None
     cancellation: CancellationToken | None = None
     trace: ExecutionTrace | None = None
+
+    # Run logging (initialized by Graph.execute if not provided)
+    run_id: str | None = None
+    run_logger: RunLogger | None = None
+
+    # Direct execution ID (for node execution outside graph)
+    exec_id: str | None = None
+
+    # Correlation ID for tracking related operations (e.g., parallel steps)
+    correlation_id: str | None = None
 
     def with_input(self, input: Any) -> ExecutionContext:
         """Create new context with different input.
@@ -95,6 +113,20 @@ class ExecutionContext:
         """
         return replace(self, parser=parser)
 
+    def with_correlation_id(self, correlation_id: str) -> ExecutionContext:
+        """Create new context with correlation ID for tracking related operations.
+
+        Use this when executing parallel steps or related operations that
+        should be correlated in logs.
+
+        Args:
+            correlation_id: Unique ID to correlate related operations.
+
+        Returns:
+            New ExecutionContext with correlation_id set.
+        """
+        return replace(self, correlation_id=correlation_id)
+
     def check_cancelled(self) -> None:
         """Raise CancelledError if cancellation was requested.
 
@@ -105,6 +137,11 @@ class ExecutionContext:
             CancelledError: If cancellation was requested.
         """
         if self.cancellation:
+            if self.cancellation.is_cancelled:
+                logger.debug(
+                    "cancellation_triggered: run_id=%s",
+                    self.run_id,
+                )
             self.cancellation.check()
 
     def check_budget(self) -> None:
@@ -119,6 +156,15 @@ class ExecutionContext:
         if self.budget and self.usage:
             exceeded, reason = self.usage.exceeds(self.budget)
             if exceeded:
+                logger.debug(
+                    "budget_exceeded: run_id=%s, reason=%s, tokens=%d/%s, cost=%.4f/%s",
+                    self.run_id,
+                    reason,
+                    self.usage.tokens_used,
+                    self.budget.max_tokens,
+                    self.usage.cost_dollars,
+                    self.budget.max_cost_dollars,
+                )
                 # Import here to avoid circular dependency
                 from nerve.core.nodes.budget import BudgetExceededError
 
@@ -141,6 +187,14 @@ class ExecutionContext:
 
         # Create child usage that propagates to parent
         child_usage = ResourceUsage(_parent_usage=self.usage)
+
+        logger.debug(
+            "sub_budget_created: run_id=%s, max_tokens=%s, max_cost=%s, has_parent=%s",
+            self.run_id,
+            sub_budget.max_tokens,
+            sub_budget.max_cost_dollars,
+            self.usage is not None,
+        )
 
         return replace(
             self,
