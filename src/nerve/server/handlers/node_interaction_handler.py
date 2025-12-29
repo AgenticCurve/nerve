@@ -196,7 +196,8 @@ class NodeInteractionHandler:
             type(response).__name__,
         )
 
-        return {"response": response_data}
+        # Include node_id in response for client-side validation
+        return {"response": response_data, "node_id": node_id}
 
     async def send_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         """Send interrupt signal to node.

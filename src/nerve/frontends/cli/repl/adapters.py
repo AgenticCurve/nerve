@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Graph
+
+logger = logging.getLogger(__name__)
 
 
 class SessionAdapter(Protocol):
@@ -207,6 +210,13 @@ class LocalSessionAdapter:
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
+        # Defensive: Log node details for debugging concurrent execution
+        pane_id = getattr(node, "pane_id", "N/A")
+        logger.debug(
+            f"execute_on_node: node_id={node_id}, pane_id={pane_id}, "
+            f"type={type(node).__name__}, input_len={len(text)}"
+        )
+
         ctx = ExecutionContext(session=self.session, input=text)
 
         # Use execute_when_ready() for ClaudeWezTermNode to prevent concurrent execution
@@ -216,7 +226,16 @@ class LocalSessionAdapter:
             result = await node.execute(ctx)
 
         # All nodes now return dicts with success/error/error_type fields
-        assert isinstance(result, dict)
+        if not isinstance(result, dict):
+            raise TypeError(
+                f"Node {node_id} returned {type(result).__name__} instead of dict. "
+                f"All nodes must return dict with success/error/error_type fields."
+            )
+
+        # Defensive: Add node_id to result for verification
+        result["_executed_on_node_id"] = node_id
+        result["_executed_on_pane_id"] = pane_id
+
         return result
 
     async def stop(self) -> None:
@@ -409,6 +428,21 @@ class RemoteSessionAdapter:
         if result.success:
             data = result.data or {}
             response = data.get("response", {})
+
+            # CRITICAL: Validate response came from the requested node
+            # This prevents request/response correlation bugs in the transport layer
+            returned_node_id = data.get("node_id")
+            if returned_node_id and returned_node_id != node_id:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Response mismatch! Requested execution on '{node_id}' "
+                        f"but got response from '{returned_node_id}'. "
+                        f"This indicates a bug in request/response correlation."
+                    ),
+                    "error_type": "internal_error",
+                }
+
             # The response should already be a dict from the node
             if isinstance(response, dict):
                 return response

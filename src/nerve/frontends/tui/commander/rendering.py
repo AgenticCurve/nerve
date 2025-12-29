@@ -164,6 +164,10 @@ def print_block(console: Console, block: Block) -> None:
     # This properly coordinates with prompt_toolkit's input line
     print(output, end="", file=sys.stdout, flush=True)
 
+    # Clear async flag after first render (one-time indicator)
+    if block.status == "completed" and block.was_async:
+        block.was_async = False
+
 
 def switch_theme(console: Console, theme_name: str) -> tuple[Console, str]:
     """Switch to a different theme.
