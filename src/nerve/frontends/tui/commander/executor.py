@@ -104,6 +104,7 @@ class CommandExecutor:
         except TimeoutError:
             # Slow path: show pending and queue for background completion
             block.status = "pending"
+            block.was_async = True  # Mark as async for visual indicator on completion
             self.timeline.render_last(self.console)
 
             # Queue the ongoing task for the executor to monitor

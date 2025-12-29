@@ -179,12 +179,12 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 272] blocks.py
+│       │           ├── [L: 277] blocks.py
 │       │           ├── [L: 394] commander.py
 │       │           ├── [L: 174] commands.py
-│       │           ├── [L: 290] executor.py
+│       │           ├── [L: 291] executor.py
 │       │           ├── [L: 345] loop.py
-│       │           ├── [L: 346] rendering.py
+│       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
 │       │           └── [L: 413] variables.py
 │       ├── gateway/
@@ -300,4 +300,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 237 files, 53,853 total lines
+64 directories, 237 files, 53,863 total lines

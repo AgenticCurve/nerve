@@ -40,6 +40,8 @@ class Block:
 
     # Execution status: "pending", "running", "completed", "error"
     status: str = "completed"
+    # Track if this block was executed asynchronously (exceeded threshold)
+    was_async: bool = False
 
     def render(self, console: Console, show_separator: bool = True) -> RenderableType:
         """Render this block as borderless text.
@@ -115,11 +117,14 @@ class Block:
         else:
             header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")
 
-        # Status indicator for pending/running
+        # Status indicator for pending/running/async-completed
         if self.status == "pending":
             header.append("⏳ ", style="pending")
         elif self.status == "running":
             header.append("⚡ ", style="warning")
+        elif self.status == "completed" and self.was_async:
+            # Show ⚡ for blocks that completed asynchronously
+            header.append("⚡ ", style="success")
 
         # Timestamp and duration
         time_str = self.timestamp.strftime("%H:%M:%S")
