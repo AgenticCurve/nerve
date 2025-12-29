@@ -186,7 +186,7 @@
 │       │           ├── [L: 356] loop.py
 │       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
-│       │           └── [L: 504] variables.py
+│       │           └── [L: 507] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -278,7 +278,7 @@
     │   │   └── [L: 206] test_client.py
     │   └── tui/
     │       ├── [L:   1] __init__.py
-    │       ├── [L: 346] test_commander_dependencies.py
+    │       ├── [L: 602] test_commander_dependencies.py
     │       └── [L: 395] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
@@ -304,4 +304,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-65 directories, 240 files, 54,803 total lines
+65 directories, 240 files, 55,062 total lines

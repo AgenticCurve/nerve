@@ -459,46 +459,49 @@ def extract_block_dependencies(
 
     # Pattern 4 & 5: Node references (:::nodename, :::nodename[N])
     # Resolve to actual block numbers at extraction time
-    if nodes_by_type:
-        # Pattern 4a: :::nodename[N] - specific indexed block from node
-        # Must check this BEFORE bare nodename to avoid partial matches
-        for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]", text):
-            node_ref = match.group(1)
-            if node_ref == "last":
-                continue  # Already handled by pattern 3
+    # Works even without nodes_by_type by using node_ref directly as node_id
 
-            idx = int(match.group(2))
+    # Pattern 4a: :::nodename[N] - specific indexed block from node
+    # Must check this BEFORE bare nodename to avoid partial matches
+    for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]", text):
+        node_ref = match.group(1)
+        if node_ref == "last":
+            continue  # Already handled by pattern 3
 
-            # Resolve node_ref to actual node_id
-            node_id = nodes_by_type.get(node_ref, node_ref)
+        idx = int(match.group(2))
 
-            # Find all blocks for this node
-            node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+        # Resolve node_ref to actual node_id
+        # If nodes_by_type provided, try to resolve, otherwise use node_ref as-is
+        node_id = nodes_by_type.get(node_ref, node_ref) if nodes_by_type else node_ref
 
-            # Get the specific indexed block (supports negative indexing)
-            if node_blocks:
-                try:
-                    target_block = node_blocks[idx]
-                    dependencies.add(target_block.number)
-                except IndexError:
-                    pass  # Out of bounds - will error during expansion
+        # Find all blocks for this node
+        node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
 
-        # Pattern 4b: :::nodename - last block from node
-        # Negative lookahead: don't match if followed by [NUMBER] (handled by pattern 4a)
-        # But DO match if followed by ['key'] (keyed access like :::claude['output'])
-        for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)(?!\[-?\d+\])", text):
-            node_ref = match.group(1)
-            if node_ref == "last":
-                continue  # Already handled by pattern 3
+        # Get the specific indexed block (supports negative indexing)
+        if node_blocks:
+            try:
+                target_block = node_blocks[idx]
+                dependencies.add(target_block.number)
+            except IndexError:
+                pass  # Out of bounds - will error during expansion
 
-            # Resolve node_ref to actual node_id
-            node_id = nodes_by_type.get(node_ref, node_ref)
+    # Pattern 4b: :::nodename - last block from node
+    # Negative lookahead: don't match if followed by [NUMBER] (handled by pattern 4a)
+    # But DO match if followed by ['key'] (keyed access like :::claude['output'])
+    for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)(?!\[-?\d+\])", text):
+        node_ref = match.group(1)
+        if node_ref == "last":
+            continue  # Already handled by pattern 3
 
-            # Find all blocks for this node
-            node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+        # Resolve node_ref to actual node_id
+        # If nodes_by_type provided, try to resolve, otherwise use node_ref as-is
+        node_id = nodes_by_type.get(node_ref, node_ref) if nodes_by_type else node_ref
 
-            # Get the last block from this node
-            if node_blocks:
-                dependencies.add(node_blocks[-1].number)
+        # Find all blocks for this node
+        node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+
+        # Get the last block from this node
+        if node_blocks:
+            dependencies.add(node_blocks[-1].number)
 
     return dependencies
