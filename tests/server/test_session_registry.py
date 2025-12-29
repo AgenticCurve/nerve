@@ -163,14 +163,15 @@ class TestSessionRegistry:
         assert registry.default_session is session2
 
     def test_get_session_with_empty_session(self, registry: SessionRegistry) -> None:
-        """get_session works with empty sessions (no nodes/graphs).
+        """get_session works with minimal sessions (only auto-created nodes).
 
         This tests the fix for the Session.__bool__ bug where empty sessions
         evaluated to False.
         """
         empty_session = Session(name="empty", server_name="test")
-        # Session has no nodes or graphs, so bool(empty_session) would be False
-        assert len(empty_session.nodes) == 0
+        # Session has auto-created identity node, but no user-created nodes
+        assert len(empty_session.nodes) == 1  # Auto-created identity node
+        assert "identity" in empty_session.nodes
         assert len(empty_session.graphs) == 0
 
         registry.add_session("empty", empty_session)

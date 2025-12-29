@@ -79,7 +79,7 @@ class NodeLifecycleHandler:
         ready_timeout = params.get("ready_timeout", 60.0)
         provider_dict = params.get("provider")
 
-        # Ephemeral node options
+        # Stateless node options
         bash_timeout = params.get("bash_timeout")
         api_key = params.get("api_key")
         llm_model = params.get("llm_model")
@@ -87,10 +87,10 @@ class NodeLifecycleHandler:
         llm_timeout = params.get("llm_timeout")
         llm_debug_dir = params.get("llm_debug_dir")
         llm_thinking = params.get("llm_thinking", False)
-        # LLMChatNode options
+        # StatefulLLMNode options
         llm_provider = params.get("llm_provider")
         llm_system = params.get("llm_system")
-        # Tool calling options (LLMChatNode only)
+        # Tool calling options (StatefulLLMNode only)
         tool_node_ids = params.get("tool_node_ids")
         tool_choice = params.get("tool_choice")
         parallel_tool_calls = params.get("parallel_tool_calls")
@@ -131,7 +131,7 @@ class NodeLifecycleHandler:
                 response_timeout=response_timeout,
                 ready_timeout=ready_timeout,
                 proxy_url=proxy_url,
-                # Ephemeral node options
+                # Stateless node options
                 bash_timeout=bash_timeout,
                 api_key=api_key,
                 llm_model=llm_model,
@@ -139,7 +139,7 @@ class NodeLifecycleHandler:
                 llm_timeout=llm_timeout,
                 llm_debug_dir=llm_debug_dir,
                 llm_thinking=llm_thinking,
-                # LLMChatNode options
+                # StatefulLLMNode options
                 llm_provider=llm_provider,
                 llm_system=llm_system,
                 # Tool calling options
@@ -185,9 +185,9 @@ class NodeLifecycleHandler:
             )
         )
 
-        # Only start monitoring for persistent nodes with state (PTYNode, WezTermNode, etc.)
-        # Ephemeral nodes (BashNode, OpenRouterNode) and stateless persistent nodes
-        # (LLMChatNode) don't need lifecycle monitoring
+        # Only start monitoring for stateful nodes with state (PTYNode, WezTermNode, etc.)
+        # Stateless nodes (BashNode, OpenRouterNode) and StatefulLLMNode
+        # don't need lifecycle monitoring
         if node.persistent and hasattr(node, "state"):
             # Start monitoring (store task to prevent GC and enable cancellation)
             task = asyncio.create_task(self._monitor_node(node))

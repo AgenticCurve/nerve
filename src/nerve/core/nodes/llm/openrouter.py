@@ -1,4 +1,4 @@
-"""OpenRouterNode - ephemeral node for OpenRouter LLM API calls.
+"""OpenRouterNode - stateless node for OpenRouter LLM API calls.
 
 OpenRouterNode makes HTTP requests to OpenRouter's API and returns structured results.
 Each execution is independent - no state is maintained between calls.
@@ -17,15 +17,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
-from nerve.core.nodes.llm.base import SingleShotLLMNode
+from nerve.core.nodes.llm.base import StatelessLLMNode
 
 if TYPE_CHECKING:
     pass
 
 
 @dataclass(repr=False)
-class OpenRouterNode(SingleShotLLMNode):
-    """Ephemeral node for OpenRouter LLM API calls.
+class OpenRouterNode(StatelessLLMNode):
+    """Stateless node for OpenRouter LLM API calls.
 
     OpenRouterNode is stateless - each execute() call makes an independent HTTP request.
     Returns structured dict with response content or error (never raises).

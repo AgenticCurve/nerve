@@ -95,9 +95,10 @@ NODE_TYPE_TO_BACKEND: dict[str, str] = {
     "WezTermNode": "wezterm",
     "ClaudeWezTermNode": "claude-wezterm",
     "BashNode": "bash",
+    "IdentityNode": "identity",
     "OpenRouterNode": "openrouter",
     "GLMNode": "glm",
-    "LLMChatNode": "llm-chat",
+    "StatefulLLMNode": "llm-chat",
 }
 
 

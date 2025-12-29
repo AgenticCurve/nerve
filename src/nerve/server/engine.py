@@ -227,6 +227,8 @@ def build_nerve_engine(
     session_registry.add_session("default", default_session)
     session_registry.set_default("default")
 
+    # Identity node is auto-created in Session.__post_init__
+
     # Shared dependencies
     proxy_manager = ProxyManager()
     validation = ValidationHelpers()

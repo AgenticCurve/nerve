@@ -1,8 +1,8 @@
-"""Tests for LLMChatNode."""
+"""Tests for StatefulLLMNode."""
 
 import pytest
 
-from nerve.core.nodes.llm import LLMChatNode, OpenRouterNode
+from nerve.core.nodes.llm import OpenRouterNode, StatefulLLMNode
 from nerve.core.session.session import Session
 
 
@@ -12,8 +12,8 @@ def session() -> Session:
     return Session(name="test-session")
 
 
-class TestLLMChatNodeStop:
-    """Tests for LLMChatNode.stop() method."""
+class TestStatefulLLMNodeStop:
+    """Tests for StatefulLLMNode.stop() method."""
 
     async def test_stop_removes_inner_node_from_session(self, session: Session) -> None:
         """stop() should remove the inner LLM node from session.nodes."""
@@ -26,7 +26,7 @@ class TestLLMChatNodeStop:
         )
 
         # Create chat node wrapping the inner LLM
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -52,7 +52,7 @@ class TestLLMChatNodeStop:
             api_key="test-key",
             model="test-model",
         )
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -73,7 +73,7 @@ class TestLLMChatNodeStop:
             api_key="test-key",
             model="test-model",
         )
-        LLMChatNode(
+        StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -91,8 +91,8 @@ class TestLLMChatNodeStop:
         assert "chat-llm" not in session.nodes
 
 
-class TestLLMChatNodeBasic:
-    """Basic tests for LLMChatNode."""
+class TestStatefulLLMNodeBasic:
+    """Basic tests for StatefulLLMNode."""
 
     async def test_registers_with_session(self, session: Session) -> None:
         """Chat node should register with session on creation."""
@@ -102,7 +102,7 @@ class TestLLMChatNodeBasic:
             api_key="test-key",
             model="test-model",
         )
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -119,7 +119,7 @@ class TestLLMChatNodeBasic:
             api_key="test-key",
             model="test-model",
         )
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -136,7 +136,7 @@ class TestLLMChatNodeBasic:
             api_key="test-key",
             model="test-model",
         )
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,
@@ -162,7 +162,7 @@ class TestLLMChatNodeBasic:
             api_key="test-key",
             model="test-model",
         )
-        chat_node = LLMChatNode(
+        chat_node = StatefulLLMNode(
             id="chat",
             session=session,
             llm=inner_llm,

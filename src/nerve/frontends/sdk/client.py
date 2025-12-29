@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from nerve.core.types import ParsedResponse
     from nerve.server.protocols import CommandResult, Event
 
 
@@ -28,7 +27,7 @@ class RemoteNode:
         parser: str = "none",
         stream: bool = False,
         timeout: float | None = None,
-    ) -> ParsedResponse:
+    ) -> dict[str, Any]:
         """Send input and get response.
 
         Args:
@@ -38,9 +37,8 @@ class RemoteNode:
             timeout: Override node's response_timeout for this execution (optional).
 
         Returns:
-            Parsed response.
+            Response dict with success/error/output fields.
         """
-        from nerve.core.types import ParsedResponse
         from nerve.server.protocols import Command, CommandType
 
         params: dict[str, Any] = {
@@ -62,14 +60,8 @@ class RemoteNode:
         if not result.success:
             raise RuntimeError(result.error)
 
-        # Convert to ParsedResponse
-        data = result.data or {}
-        return ParsedResponse(
-            raw=data.get("response", ""),
-            sections=(),
-            is_complete=True,
-            is_ready=True,
-        )
+        # Return response dict directly
+        return result.data or {}
 
     async def send_stream(self, text: str, parser: str = "none") -> AsyncIterator[str]:
         """Send input and stream output chunks.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Feature test for LLMChatNode tool calling with OpenRouter.
+"""Feature test for StatefulLLMNode tool calling with OpenRouter.
 
 Tests all tool calling features:
 - BashNode as tool
@@ -31,7 +31,7 @@ else:
     print(f"Warning: {env_local} not found")
 
 from nerve.core.nodes import BashNode, ExecutionContext, tools_from_nodes
-from nerve.core.nodes.llm import LLMChatNode, OpenRouterNode
+from nerve.core.nodes.llm import OpenRouterNode, StatefulLLMNode
 from nerve.core.nodes.terminal import ClaudeWezTermNode
 from nerve.core.session import Session
 
@@ -61,7 +61,7 @@ async def test_bash_tool():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -109,7 +109,7 @@ async def test_claude_tool():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -161,7 +161,7 @@ async def test_multiple_tools():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -210,7 +210,7 @@ async def test_tool_choice_none():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -251,7 +251,7 @@ async def test_tool_choice_force():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -294,7 +294,7 @@ async def test_parallel_tool_calls_false():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,
@@ -333,7 +333,7 @@ async def test_tool_choice_auto():
         http_backend=get_http_backend(),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="agent",
         session=session,
         llm=llm,

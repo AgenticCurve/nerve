@@ -62,6 +62,9 @@ class SessionHandler:
             tags=tags,
             server_name=self.server_name,
         )
+
+        # Identity node is auto-created in Session.__post_init__
+
         self.session_registry.add_session(name, session)
 
         logger.debug(

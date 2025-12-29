@@ -1,6 +1,6 @@
-"""Node-as-Tool adapter - expose tool-capable nodes to LLMChatNode.
+"""Node-as-Tool adapter - expose tool-capable nodes to StatefulLLMNode.
 
-This module provides utilities to expose nodes as tools that LLMChatNode
+This module provides utilities to expose nodes as tools that StatefulLLMNode
 can use. Nodes opt-in to being tools by implementing the ToolCapable protocol.
 
 A node becomes tool-capable by defining four methods:
@@ -16,7 +16,7 @@ Example:
     >>> # Only tool-capable nodes are included
     >>> tools, executor = tools_from_nodes([bash, terminal])
     >>>
-    >>> agent = LLMChatNode(
+    >>> agent = StatefulLLMNode(
     ...     id="agent",
     ...     session=session,
     ...     llm=llm,
@@ -48,7 +48,7 @@ class ToolCapable(Protocol):
     """Protocol for nodes that can be used as tools.
 
     Nodes implement this protocol to opt-in to being available as tools
-    for LLMChatNode. The protocol requires four methods that define how
+    for StatefulLLMNode. The protocol requires four methods that define how
     the node presents itself and handles tool interactions.
 
     Example implementation:
@@ -157,7 +157,7 @@ def node_to_tool_definition(node: ToolCapable) -> ToolDefinition:
         node: A node that implements ToolCapable.
 
     Returns:
-        ToolDefinition ready for use with LLMChatNode.
+        ToolDefinition ready for use with StatefulLLMNode.
     """
     from nerve.core.nodes.llm.chat import ToolDefinition
 
@@ -229,7 +229,7 @@ def tools_from_nodes(
         >>> # Only bash is tool-capable, llm is skipped
         >>> tools, executor = tools_from_nodes([bash, llm])
         >>>
-        >>> agent = LLMChatNode(
+        >>> agent = StatefulLLMNode(
         ...     id="agent",
         ...     session=session,
         ...     llm=main_llm,

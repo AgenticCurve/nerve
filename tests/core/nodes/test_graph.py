@@ -192,7 +192,9 @@ class TestGraph:
             step_id="a",
         )
         graph.add_step(
-            FunctionNode(id="fn2", session=session, fn=lambda ctx: f"got_{ctx.upstream['a']}"),
+            FunctionNode(
+                id="fn2", session=session, fn=lambda ctx: f"got_{ctx.upstream['a']['output']}"
+            ),
             step_id="b",
             depends_on=["a"],
         )
@@ -200,8 +202,8 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"] == "result_a"
-        assert results["b"] == "got_result_a"
+        assert results["a"]["output"] == "result_a"
+        assert results["b"]["output"] == "got_result_a"
 
     @pytest.mark.asyncio
     async def test_execute_with_static_input(self):
@@ -218,7 +220,7 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"] == "HELLO"
+        assert results["a"]["output"] == "HELLO"
 
     @pytest.mark.asyncio
     async def test_execute_with_input_fn(self):
@@ -234,14 +236,14 @@ class TestGraph:
             FunctionNode(id="fn2", session=session, fn=lambda ctx: ctx.input),
             step_id="b",
             depends_on=["a"],
-            input_fn=lambda u: u["a"]["data"].upper(),
+            input_fn=lambda u: u["a"]["output"]["data"].upper(),
         )
 
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"] == {"data": "value"}
-        assert results["b"] == "VALUE"
+        assert results["a"]["output"] == {"data": "value"}
+        assert results["b"]["output"] == "VALUE"
 
     @pytest.mark.asyncio
     async def test_execute_with_node_ref(self):
@@ -255,7 +257,7 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"] == "from_session"
+        assert results["a"]["output"] == "from_session"
 
     @pytest.mark.asyncio
     async def test_nested_graphs(self):
@@ -275,7 +277,7 @@ class TestGraph:
             FunctionNode(
                 id="outer-fn",
                 session=session2,
-                fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']}",
+                fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']['output']}",
             ),
             step_id="after",
             depends_on=["nested"],
@@ -284,8 +286,8 @@ class TestGraph:
         context = ExecutionContext(session=session2)
         results = await outer.execute(context)
 
-        assert results["nested"]["inner_step"] == "inner_result"
-        assert results["after"] == "got_inner_result"
+        assert results["nested"]["inner_step"]["output"] == "inner_result"
+        assert results["after"]["output"] == "got_inner_result"
 
     @pytest.mark.asyncio
     async def test_execute_stream(self):
@@ -341,9 +343,9 @@ class TestGraph:
         assert "a" in repr(graph)
 
     def test_collect_persistent_nodes(self):
-        """Test collecting persistent nodes from graph."""
+        """Test collecting stateful nodes from graph."""
 
-        # Create a mock persistent node
+        # Create a mock stateful node
         class MockPersistentNode:
             id = "persistent"
             persistent = True
@@ -353,15 +355,15 @@ class TestGraph:
 
         session = Session(name="test")
         graph = Graph(id="test", session=session)
-        persistent = MockPersistentNode()
-        ephemeral = FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
+        stateful = MockPersistentNode()
+        stateless = FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
 
-        graph.add_step(persistent, step_id="a")
-        graph.add_step(ephemeral, step_id="b")
+        graph.add_step(stateful, step_id="a")
+        graph.add_step(stateless, step_id="b")
 
         persistent_nodes = graph.collect_persistent_nodes()
         assert len(persistent_nodes) == 1
-        assert persistent_nodes[0] is persistent
+        assert persistent_nodes[0] is stateful
 
     @pytest.mark.asyncio
     async def test_interrupt_sets_cancellation_token(self):

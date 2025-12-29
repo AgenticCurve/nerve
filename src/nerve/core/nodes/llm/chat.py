@@ -1,6 +1,6 @@
-"""LLMChatNode - stateful conversation node with tool support.
+"""StatefulLLMNode - stateful conversation node with tool support.
 
-LLMChatNode wraps a SingleShotLLMNode (OpenRouterNode, GLMNode, etc.) and adds:
+StatefulLLMNode wraps a StatelessLLMNode (OpenRouterNode, GLMNode, etc.) and adds:
 - Conversation history (messages array persists across execute() calls)
 - System prompt support
 - Tool definitions and automatic tool call handling
@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
-from nerve.core.nodes.llm.base import SingleShotLLMNode
+from nerve.core.nodes.llm.base import StatelessLLMNode
 from nerve.core.nodes.run_logging import log_complete, log_error, log_start, log_warning
 
 if TYPE_CHECKING:
@@ -77,10 +77,10 @@ ToolExecutor = Callable[[str, dict[str, Any]], Awaitable[str]]
 
 
 @dataclass
-class LLMChatNode:
+class StatefulLLMNode:
     """Stateful conversation node built on top of stateless LLM node.
 
-    LLMChatNode maintains conversation state across execute() calls,
+    StatefulLLMNode maintains conversation state across execute() calls,
     enabling multi-turn conversations and tool use.
 
     Features:
@@ -88,7 +88,7 @@ class LLMChatNode:
     - System prompt support
     - Tool definitions and automatic tool call loops
     - Conversation persistence (save/load)
-    - Works with any SingleShotLLMNode (OpenRouterNode, GLMNode, etc.)
+    - Works with any StatelessLLMNode (OpenRouterNode, GLMNode, etc.)
 
     Args:
         id: Unique identifier for this node.
@@ -118,7 +118,7 @@ class LLMChatNode:
         ... )
         >>>
         >>> # Wrap in chat node
-        >>> chat = LLMChatNode(
+        >>> chat = StatefulLLMNode(
         ...     id="chat",
         ...     session=session,
         ...     llm=llm,
@@ -136,7 +136,7 @@ class LLMChatNode:
     # Required fields
     id: str
     session: Session
-    llm: SingleShotLLMNode
+    llm: StatelessLLMNode
 
     # Conversation configuration
     system: str | None = None
@@ -172,7 +172,7 @@ class LLMChatNode:
         # Log node registration
         if self.session.session_logger:
             self.session.session_logger.log_node_lifecycle(
-                self.id, "LLMChatNode", persistent=self.persistent
+                self.id, "StatefulLLMNode", persistent=self.persistent
             )
 
     async def execute(self, context: ExecutionContext) -> dict[str, Any]:
@@ -183,13 +183,17 @@ class LLMChatNode:
                 (user message) or can be None to continue after tool calls.
 
         Returns:
-            Result dict with:
-            - success (bool): Whether the request succeeded
-            - content (str | None): Assistant's response
-            - tool_calls (list | None): Any tool calls made
-            - usage (dict | None): Token usage
-            - messages_count (int): Total messages in conversation
-            - error (str | None): Error message if failed
+            Dict with fields:
+            - success: bool - True if conversation turn succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (see base.py for types)
+            - input: str - The user input for this turn
+            - output: str - Primary output: content if available, error message, or "[Tool calls: ...]"
+            - content: str | None - Assistant's text response
+            - tool_calls: list[dict] | None - Tool calls from final turn
+            - usage: dict - Cumulative token usage {prompt_tokens, completion_tokens, total_tokens}
+            - messages_count: int - Total messages in conversation history
+            - tool_rounds: int - Number of tool execution rounds
         """
         # Get logger and exec_id
         from nerve.core.nodes.session_logging import get_execution_logger
@@ -199,11 +203,15 @@ class LLMChatNode:
 
         result: dict[str, Any] = {
             "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input is not None else "",
+            "output": None,
             "content": None,
             "tool_calls": None,
             "usage": None,
             "messages_count": 0,
-            "error": None,
+            "tool_rounds": 0,
         }
 
         start_mono = time.monotonic()
@@ -246,7 +254,12 @@ class LLMChatNode:
 
                 if not llm_result["success"]:
                     result["error"] = llm_result.get("error")
+                    result["error_type"] = llm_result.get("error_type", "internal_error")
                     result["messages_count"] = len(self.messages)
+                    # tool_rounds = rounds where we executed tools (current round failed before tool execution)
+                    result["tool_rounds"] = max(0, rounds - 1)
+                    result["usage"] = total_usage
+                    result["output"] = result["error"]  # Set output for consistency with schema
                     duration = time.monotonic() - start_mono
                     log_error(
                         log_ctx.logger,
@@ -284,6 +297,17 @@ class LLMChatNode:
                     result["tool_calls"] = tool_calls
                     result["usage"] = total_usage
                     result["messages_count"] = len(self.messages)
+                    # tool_rounds = rounds where we executed tools (current round gave final answer)
+                    result["tool_rounds"] = max(0, rounds - 1) if tool_calls else 0
+
+                    # Set output field
+                    if content:
+                        result["output"] = content
+                    elif tool_calls:
+                        tool_names = [tc.get("function", {}).get("name", "?") for tc in tool_calls]
+                        result["output"] = f"[Tool calls: {', '.join(tool_names)}]"
+                    else:
+                        result["output"] = ""
 
                     duration = time.monotonic() - start_mono
                     log_complete(
@@ -382,8 +406,13 @@ class LLMChatNode:
 
             # Max rounds reached - include context about last tools
             result["error"] = f"Max tool rounds ({self.max_tool_rounds}) reached"
+            result["error_type"] = "internal_error"
             result["messages_count"] = len(self.messages)
+            # tool_rounds = rounds where we executed tools (we executed in all rounds including current)
+            result["tool_rounds"] = rounds
             result["usage"] = total_usage
+            result["tool_calls"] = tool_calls
+            result["output"] = result["error"]  # Set output for consistency with schema
             duration = time.monotonic() - start_mono
             # Get last tool names for context
             last_tool_names = (
@@ -403,6 +432,7 @@ class LLMChatNode:
 
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
+            result["error_type"] = "internal_error"
             result["messages_count"] = len(self.messages)
             duration = time.monotonic() - start_mono
             log_error(
@@ -557,4 +587,6 @@ class LLMChatNode:
         )
 
     def __repr__(self) -> str:
-        return f"LLMChatNode(id={self.id!r}, llm={self.llm.id!r}, messages={len(self.messages)})"
+        return (
+            f"StatefulLLMNode(id={self.id!r}, llm={self.llm.id!r}, messages={len(self.messages)})"
+        )

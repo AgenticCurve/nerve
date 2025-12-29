@@ -41,36 +41,6 @@ class NodeInteractionHandler:
     session_registry: SessionRegistry
     server_name: str
 
-    async def _auto_delete_if_ephemeral(self, node: object, session: object) -> bool:
-        """Auto-delete ephemeral nodes after execution.
-
-        Args:
-            node: The node that was executed.
-            session: The session containing the node.
-
-        Returns:
-            True if the node was deleted, False otherwise.
-        """
-        # Check if node is ephemeral (persistent == False)
-        if getattr(node, "persistent", True):
-            return False
-
-        node_id = getattr(node, "id", None)
-        if not node_id:
-            return False
-
-        # Delete from session
-        deleted: bool = await session.delete_node(node_id)  # type: ignore[attr-defined]
-        if deleted:
-            # Emit NODE_DELETED event
-            await self.event_sink.emit(
-                Event(
-                    type=EventType.NODE_DELETED,
-                    node_id=node_id,
-                )
-            )
-        return deleted
-
     async def run_command(self, params: dict[str, Any]) -> dict[str, Any]:
         """Run a command in a node (fire and forget).
 
@@ -169,11 +139,11 @@ class NodeInteractionHandler:
             response = await node.execute(context)
 
         # Handle response based on type:
-        # - Ephemeral nodes (BashNode, OpenRouterNode) return dict
+        # - Stateless nodes (BashNode, OpenRouterNode) return dict
         # - Terminal nodes return ParsedResponse
         response_data: dict[str, Any]
         if isinstance(response, dict):
-            # Ephemeral node - response is already a dict
+            # Stateless node - response is already a dict
             response_data = response
 
             # Emit OUTPUT_PARSED event with dict data
@@ -210,9 +180,6 @@ class NodeInteractionHandler:
                 node_id=node_id,
             )
         )
-
-        # Auto-delete ephemeral nodes after execution
-        await self._auto_delete_if_ephemeral(node, session)
 
         duration = time.monotonic() - start_time
         logger.debug(

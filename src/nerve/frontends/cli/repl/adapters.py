@@ -56,8 +56,15 @@ class SessionAdapter(Protocol):
         """Delete a node."""
         ...
 
-    async def execute_on_node(self, node_id: str, text: str) -> str:
-        """Execute input on a node and return response."""
+    async def execute_on_node(self, node_id: str, text: str) -> dict[str, Any]:
+        """Execute input on a node and return response dict.
+
+        Returns dict with keys:
+            success (bool): True if execution succeeded
+            error (str | None): Error message if failed
+            error_type (str | None): Error type if failed
+            ... node-specific output fields (raw, stdout, content, output, etc.)
+        """
         ...
 
     async def stop(self) -> None:
@@ -191,7 +198,7 @@ class LocalSessionAdapter:
         result: bool = await self.session.delete_node(node_id)
         return result
 
-    async def execute_on_node(self, node_id: str, text: str) -> str:
+    async def execute_on_node(self, node_id: str, text: str) -> dict[str, Any]:
         """Execute on a node (for send command)."""
         from nerve.core.nodes.context import ExecutionContext
 
@@ -201,7 +208,9 @@ class LocalSessionAdapter:
 
         ctx = ExecutionContext(session=self.session, input=text)
         result = await node.execute(ctx)
-        return result.raw if hasattr(result, "raw") else str(result)
+        # All nodes now return dicts with success/error/error_type fields
+        assert isinstance(result, dict)
+        return result
 
     async def stop(self) -> None:
         await self.session.stop()
@@ -380,7 +389,7 @@ class RemoteSessionAdapter:
         )
         return bool(result.success)
 
-    async def execute_on_node(self, node_id: str, text: str) -> str:
+    async def execute_on_node(self, node_id: str, text: str) -> dict[str, Any]:
         """Execute on a server node."""
         from nerve.server.protocols import Command, CommandType
 
@@ -392,9 +401,24 @@ class RemoteSessionAdapter:
         )
         if result.success:
             data = result.data or {}
-            return str(data.get("response", ""))
+            response = data.get("response", {})
+            # The response should already be a dict from the node
+            if isinstance(response, dict):
+                return response
+            else:
+                # Unexpected format - wrap in error dict
+                return {
+                    "success": False,
+                    "error": f"Unexpected response type: {type(response).__name__}",
+                    "error_type": "internal_error",
+                }
         else:
-            raise ValueError(result.error)
+            # Server command failed
+            return {
+                "success": False,
+                "error": result.error or "Unknown server error",
+                "error_type": "api_error",
+            }
 
     async def stop(self) -> None:
         """Disconnect from server."""

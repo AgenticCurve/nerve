@@ -1,13 +1,13 @@
-"""SingleShotLLMNode - abstract base class for stateless LLM API nodes.
+"""StatelessLLMNode - abstract base class for stateless LLM API nodes.
 
 This module provides the common implementation for LLM nodes that use
 OpenAI-compatible chat completion APIs. Each execute() call is independent -
 no conversation state is maintained between calls.
 
-Provider-specific nodes (OpenRouterNode, GLMNode) inherit from SingleShotLLMNode
+Provider-specific nodes (OpenRouterNode, GLMNode) inherit from StatelessLLMNode
 and only need to specify their defaults and any custom headers.
 
-For multi-turn conversations with tool support, use LLMChatNode instead.
+For multi-turn conversations with tool support, use StatefulLLMNode instead.
 
 Key features:
 - Stateless: each execute() is independent
@@ -79,11 +79,11 @@ def _truncate_messages(
 
 
 @dataclass
-class SingleShotLLMNode:
+class StatelessLLMNode:
     """Abstract base class for stateless OpenAI-compatible LLM API nodes.
 
     Each execute() call is independent - no conversation state is maintained.
-    For multi-turn conversations, use LLMChatNode which wraps this.
+    For multi-turn conversations, use StatefulLLMNode which wraps this.
 
     Subclasses should:
     1. Set the `node_type` class variable
@@ -118,6 +118,7 @@ class SingleShotLLMNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _session_holder: aiohttp.ClientSession | None = field(default=None, init=False, repr=False)
     _openai_client: AsyncOpenAI | None = field(default=None, init=False, repr=False)
     _session_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
@@ -197,22 +198,42 @@ class SingleShotLLMNode:
                 - dict: Full request with "messages" key and optional params
 
         Returns:
-            JSON dict with fields:
-            - success (bool): Whether request succeeded
-            - content (str | None): Response content
-            - model (str | None): Model that generated response
-            - finish_reason (str | None): Why generation stopped
-            - usage (dict | None): Token usage counts
-            - request (dict): Echo of request info (truncated)
-            - error (str | None): Error message if failed
-            - error_type (str | None): Error classification
-            - retries (int): Number of retries attempted
+            Dict with fields:
+            - success: bool - True if LLM request succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (rate_limit_error, api_error, etc.)
+            - input: str - The input provided to the node
+            - output: str - Primary output: content if available, "[Tool calls: ...]" format, or ""
+            - content: str | None - Text response from LLM
+            - tool_calls: list[dict] | None - Tool calls requested by LLM
+            - model: str | None - Model that generated response
+            - finish_reason: str | None - Why generation stopped ("stop", "length", "tool_calls")
+            - usage: dict | None - Token usage stats {prompt_tokens, completion_tokens, total_tokens}
+            - request: dict - Request params (truncated for logging)
+            - retries: int - Number of retries attempted
 
         Note:
             This method never raises exceptions - all errors are returned
             in the result dict.
         """
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+                "content": None,
+                "tool_calls": None,
+                "model": None,
+                "finish_reason": None,
+                "usage": None,
+                "request": {},
+                "retries": 0,
+            }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -221,14 +242,16 @@ class SingleShotLLMNode:
         # Initialize result structure
         result: dict[str, Any] = {
             "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input else "",
+            "output": None,
             "content": None,
             "tool_calls": None,  # For tool use
             "model": None,
             "finish_reason": None,
             "usage": None,
             "request": {},
-            "error": None,
-            "error_type": None,
             "retries": 0,
         }
 
@@ -298,6 +321,15 @@ class SingleShotLLMNode:
                 }
 
             result["success"] = True
+
+            # Set output field
+            if result["content"]:
+                result["output"] = result["content"]
+            elif result["tool_calls"]:
+                tool_names = [tc["function"]["name"] for tc in result["tool_calls"]]
+                result["output"] = f"[Tool calls: {', '.join(tool_names)}]"
+            else:
+                result["output"] = ""
 
             # Log successful completion
             duration = time.monotonic() - start_mono
@@ -601,6 +633,16 @@ class SingleShotLLMNode:
         """
         pass
 
+    async def stop(self) -> None:
+        """Stop the node and release HTTP resources.
+
+        Closes HTTP connections and marks node as unusable.
+        Future execute() calls will return an error.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        await self.close()
+        self.state = NodeState.STOPPED
+
     async def close(self) -> None:
         """Close HTTP session/client (optional cleanup).
 
@@ -624,7 +666,7 @@ class SingleShotLLMNode:
         return NodeInfo(
             id=self.id,
             node_type=self.node_type,
-            state=NodeState.READY,  # Ephemeral nodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata={
                 "model": self.model,

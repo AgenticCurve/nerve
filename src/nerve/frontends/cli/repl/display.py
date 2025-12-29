@@ -18,7 +18,7 @@ Nerve REPL - Interactive Python environment for AI CLI orchestration
 
 Pre-loaded:
   session     - Session named 'default' (ready to use)
-  PTYNode, WezTermNode, ClaudeWezTermNode, BashNode, OpenRouterNode
+  PTYNode, WezTermNode, ClaudeWezTermNode, BashNode, IdentityNode, OpenRouterNode
   FunctionNode, Graph, ExecutionContext, ParserType
 
 Python Examples:

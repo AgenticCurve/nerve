@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Feature test for LLMChatNode with GLM provider (multi-turn conversations).
+"""Feature test for StatefulLLMNode with GLM provider (multi-turn conversations).
 
 Run with: uv run python features/glm/glm_chat_node.py
 """
@@ -20,7 +20,7 @@ else:
     print(f"Warning: {env_local} not found")
 
 from nerve.core.nodes.context import ExecutionContext
-from nerve.core.nodes.llm import GLMNode, LLMChatNode
+from nerve.core.nodes.llm import GLMNode, StatefulLLMNode
 from nerve.core.session import Session
 
 
@@ -40,7 +40,7 @@ async def test_multi_turn_conversation():
     )
 
     # Wrap in chat node
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="glm-chat",
         session=session,
         llm=llm,
@@ -81,7 +81,7 @@ async def test_system_prompt():
         http_backend=os.getenv("GLM_HTTP_BACKEND", "openai"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="glm-chat-2",
         session=session,
         llm=llm,
@@ -119,7 +119,7 @@ async def test_conversation_clear():
         http_backend=os.getenv("GLM_HTTP_BACKEND", "openai"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="glm-chat-3",
         session=session,
         llm=llm,
@@ -164,7 +164,7 @@ async def test_usage_accumulation():
         http_backend=os.getenv("GLM_HTTP_BACKEND", "openai"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="glm-chat-4",
         session=session,
         llm=llm,
@@ -185,7 +185,7 @@ async def test_usage_accumulation():
 
 async def main():
     print("=" * 60)
-    print("LLMChatNode (GLM) Feature Tests")
+    print("StatefulLLMNode (GLM) Feature Tests")
     print("=" * 60 + "\n")
 
     # Check for API key
@@ -200,7 +200,7 @@ async def main():
         await test_usage_accumulation()
 
         print("=" * 60)
-        print("✅ All LLMChatNode (GLM) tests PASSED")
+        print("✅ All StatefulLLMNode (GLM) tests PASSED")
         print("=" * 60)
     except AssertionError as e:
         print(f"FAILED: {e}")

@@ -69,7 +69,7 @@ class TestSessionLifecycle:
 
     @pytest.mark.asyncio
     async def test_stop_stops_all_nodes(self):
-        """Session.stop() stops all persistent nodes."""
+        """Session.stop() stops all stateful nodes."""
         session = Session()
 
         nodes = []

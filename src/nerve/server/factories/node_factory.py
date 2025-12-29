@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Node
-    from nerve.core.nodes.llm.base import SingleShotLLMNode
+    from nerve.core.nodes.llm.base import StatelessLLMNode
     from nerve.core.session import Session
 
 # HTTP backend type
@@ -43,6 +43,7 @@ class NodeFactory:
         "wezterm",
         "claude-wezterm",
         "bash",
+        "identity",
         "openrouter",
         "glm",
         "llm-chat",
@@ -85,7 +86,7 @@ class NodeFactory:
         """Create a node of the specified backend type.
 
         Args:
-            backend: Node backend type ("pty", "wezterm", "claude-wezterm", "bash", "openrouter", "glm", "llm-chat").
+            backend: Node backend type ("pty", "wezterm", "claude-wezterm", "bash", "identity", "openrouter", "glm", "llm-chat").
             session: Session to register node with.
             node_id: Node identifier.
             command: Command to run (e.g., "claude" or ["claude", "--flag"]).
@@ -117,7 +118,8 @@ class NodeFactory:
         """
         # Deferred imports to avoid circular dependencies and for testability
         from nerve.core.nodes.bash import BashNode
-        from nerve.core.nodes.llm import GLMNode, LLMChatNode, OpenRouterNode
+        from nerve.core.nodes.identity import IdentityNode
+        from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
             PTYNode,
@@ -129,9 +131,10 @@ class NodeFactory:
             | WezTermNode
             | ClaudeWezTermNode
             | BashNode
+            | IdentityNode
             | OpenRouterNode
             | GLMNode
-            | LLMChatNode
+            | StatefulLLMNode
         )
 
         if backend == "pty":
@@ -187,7 +190,7 @@ class NodeFactory:
                 proxy_url=proxy_url,
             )
         elif backend == "bash":
-            # BashNode is ephemeral - no lifecycle management
+            # BashNode is stateless - no lifecycle management
             # Note: BashNode doesn't support history parameter
             node = BashNode(
                 id=str(node_id),
@@ -195,8 +198,14 @@ class NodeFactory:
                 cwd=cwd,
                 timeout=bash_timeout or 120.0,
             )
+        elif backend == "identity":
+            # IdentityNode is stateless - echoes input as output
+            node = IdentityNode(
+                id=str(node_id),
+                session=session,
+            )
         elif backend == "openrouter":
-            # OpenRouterNode is ephemeral - no lifecycle management
+            # OpenRouterNode is stateless - no lifecycle management
             if not api_key:
                 raise ValueError("api_key is required for openrouter backend")
             if not llm_model:
@@ -213,7 +222,7 @@ class NodeFactory:
                 http_backend=http_backend,
             )
         elif backend == "glm":
-            # GLMNode is ephemeral - no lifecycle management
+            # GLMNode is stateless - no lifecycle management
             if not api_key:
                 raise ValueError("api_key is required for glm backend")
             if not llm_model:
@@ -231,7 +240,7 @@ class NodeFactory:
                 http_backend=http_backend,
             )
         elif backend == "llm-chat":
-            # LLMChatNode is persistent - wraps a single-shot LLM node
+            # LLMChatNode is stateful - wraps a stateless LLM node for multi-turn chat
             if not api_key:
                 raise ValueError("api_key is required for llm-chat backend")
             if not llm_model:
@@ -244,7 +253,7 @@ class NodeFactory:
             # Create underlying LLM node based on provider
             # Use a unique ID for the inner node
             inner_id = f"{node_id}-llm"
-            inner_llm: SingleShotLLMNode
+            inner_llm: StatelessLLMNode
             if llm_provider == "openrouter":
                 inner_llm = OpenRouterNode(
                     id=inner_id,
@@ -297,7 +306,7 @@ class NodeFactory:
                 tools, tool_executor = tools_from_nodes(tool_nodes)
 
             # Create chat node wrapping the LLM
-            node = LLMChatNode(
+            node = StatefulLLMNode(
                 id=str(node_id),
                 session=session,
                 llm=inner_llm,

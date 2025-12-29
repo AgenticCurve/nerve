@@ -17,7 +17,7 @@ from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
 from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.core.nodes.terminal.wezterm_node import WezTermNode
-from nerve.core.types import ParsedResponse, ParserType
+from nerve.core.types import ParserType
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
@@ -256,7 +256,7 @@ class ClaudeWezTermNode:
                 buffer_content = self._inner.read_tail(HISTORY_BUFFER_LINES)
                 self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
-    async def execute(self, context: ExecutionContext) -> ParsedResponse:
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute by sending input and waiting for response.
 
         Uses Claude parser by default.
@@ -265,7 +265,18 @@ class ClaudeWezTermNode:
             context: Execution context with input string.
 
         Returns:
-            Parsed response.
+            Dict with fields:
+            - success: bool - True if terminal responded successfully
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - input: str - The input sent to terminal
+            - output: str - Last text section content (Claude-specific, filters thinking)
+            - raw: str - Raw terminal output
+            - sections: list[dict] - Parsed sections from Claude parser
+            - is_ready: bool - Terminal is ready for new input
+            - is_complete: bool - Response is complete
+            - tokens: int | None - Token count from Claude parser
+            - parser: str - Parser type used (typically "CLAUDE")
         """
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -306,6 +317,12 @@ class ClaudeWezTermNode:
             # Delegate to inner
             result = await self._inner.execute(exec_context)
 
+            # Override output with Claude-specific logic: extract last text section
+            # This filters out thinking blocks and returns only the final text response
+            sections = result.get("sections", [])
+            text_sections = [s for s in sections if s.get("type") == "text"]
+            result["output"] = text_sections[-1]["content"] if text_sections else ""
+
             # Log terminal complete
             duration = time.monotonic() - start_mono
             log_complete(
@@ -315,19 +332,17 @@ class ClaudeWezTermNode:
                 duration,
                 exec_id=exec_id,
                 output_len=len(self._inner.buffer),
-                sections=len(result.sections),
+                sections=len(result.get("sections", [])),
             )
 
             # History: log send
             if self._history_writer and self._history_writer.enabled and ts_start is not None:
+                # Result is now a dict, sections are already in dict format
                 response_data = {
-                    "sections": [
-                        {"type": s.type, "content": s.content, "metadata": s.metadata}
-                        for s in result.sections
-                    ],
-                    "tokens": result.tokens,
-                    "is_complete": result.is_complete,
-                    "is_ready": result.is_ready,
+                    "sections": result.get("sections", []),
+                    "tokens": result.get("tokens"),
+                    "is_complete": result.get("is_complete", False),
+                    "is_ready": result.get("is_ready", False),
                 }
                 self._history_writer.log_send(
                     input=self._last_input,
@@ -439,7 +454,7 @@ class ClaudeWezTermNode:
         text: str,
         parser: ParserType | None = None,
         timeout: float | None = None,
-    ) -> ParsedResponse:
+    ) -> dict[str, Any]:
         """Convenience method to send input and get response.
 
         Args:
@@ -448,7 +463,7 @@ class ClaudeWezTermNode:
             timeout: Response timeout (defaults to node's default).
 
         Returns:
-            Parsed response.
+            Response dict with success/error/error_type and terminal fields.
         """
         from nerve.core.nodes.context import ExecutionContext
 
@@ -617,19 +632,21 @@ class ClaudeWezTermNode:
         message = args.get("message", "")
         return str(message) if message else ""
 
-    def tool_result(self, result: ParsedResponse) -> str:
+    def tool_result(self, result: dict[str, Any]) -> str:
         """Convert execute() result to string for LLM.
 
         Args:
-            result: ParsedResponse from execute().
+            result: Response dict from execute().
 
         Returns:
             Claude's response text (last text section only).
         """
         # Get only the last text section (most recent/final response)
-        text_sections = [s for s in result.sections if s.type == "text"]
+        sections = result.get("sections", [])
+        text_sections = [s for s in sections if s.get("type") == "text"]
         if text_sections:
-            return text_sections[-1].content
+            content = text_sections[-1].get("content", "")
+            return str(content) if content else ""
         return "(no response)"
 
     def __repr__(self) -> str:

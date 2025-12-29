@@ -122,7 +122,13 @@ class TestPTYNode:
 
             result = await node.execute(context)
 
-            assert isinstance(result, ParsedResponse)
+            # Nodes now return dicts instead of ParsedResponse
+            assert isinstance(result, dict)
+            assert result["success"] is True
+            assert result["raw"] == "HELLO"
+            assert len(result["sections"]) == 1
+            assert result["is_ready"] is True
+            assert result["is_complete"] is True
             mock_backend.write.assert_called()
             await node.stop()
 
@@ -368,7 +374,13 @@ class TestWezTermNode:
 
             result = await node.execute(context)
 
-            assert isinstance(result, ParsedResponse)
+            # Nodes now return dicts instead of ParsedResponse
+            assert isinstance(result, dict)
+            assert result["success"] is True
+            assert result["raw"] == "HELLO"
+            assert len(result["sections"]) == 1
+            assert result["is_ready"] is True
+            assert result["is_complete"] is True
             mock_backend.write.assert_called()
             await node.stop()
 
@@ -696,7 +708,13 @@ class TestClaudeWezTermNode:
 
             result = await node.execute(context)
 
-            assert isinstance(result, ParsedResponse)
+            # Nodes now return dicts instead of ParsedResponse
+            assert isinstance(result, dict)
+            assert result["success"] is True
+            assert result["raw"] == "Hello World"
+            assert len(result["sections"]) == 1
+            assert result["is_ready"] is True
+            assert result["is_complete"] is True
             await node.stop()
 
     @pytest.mark.asyncio

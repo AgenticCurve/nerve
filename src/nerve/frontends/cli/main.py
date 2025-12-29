@@ -159,10 +159,10 @@ def _run_cli() -> None:
         of AI CLI tasks.
 
         **Local mode** (default - no server):
-            Creates in-memory session, full Python REPL, ephemeral
+            Creates in-memory session with full Python REPL
 
         **Server mode** (--server):
-            Connects to running server, command-based only, persistent
+            Connects to running server, command-based only
 
         **Examples:**
 
@@ -186,6 +186,69 @@ def _run_cli() -> None:
                 print("Use --server to specify which server to connect to")
                 sys.exit(1)
             asyncio.run(run_interactive(server_name=server_name, session_name=session_name))
+
+    @cli.command()
+    @click.option(
+        "--server",
+        "-s",
+        "server_name",
+        default="local",
+        help="Server to connect to (default: local)",
+    )
+    @click.option(
+        "--session",
+        "session_name",
+        default="default",
+        help="Session to use (default: default)",
+    )
+    @click.option(
+        "--theme",
+        "-t",
+        default="default",
+        type=click.Choice(["default", "nord", "dracula", "mono"]),
+        help="Color theme (default: default)",
+    )
+    @click.option(
+        "--bottom-gutter",
+        "-g",
+        default=3,
+        type=int,
+        help="Lines of space between prompt and screen bottom (default: 3)",
+    )
+    def commander(server_name: str, session_name: str, theme: str, bottom_gutter: int) -> None:
+        """Interactive command center for nodes.
+
+        A block-based timeline interface for interacting with nodes.
+        Each interaction is displayed as a discrete block with input/output.
+
+        **Commands:**
+
+            @node message     Send message to a node
+            >>> code          Execute Python code
+            Ctrl+C            Interrupt running command
+            :nodes            List available nodes
+            :timeline         Show session timeline
+            :world node       Show node's history/state
+            :theme name       Switch theme
+            :exit             Exit
+
+        **Examples:**
+
+            nerve commander                    # Default theme
+            nerve commander --theme nord       # Nord color scheme
+            nerve commander -t dracula         # Dracula theme
+            nerve commander -g 5               # More bottom padding
+        """
+        from nerve.frontends.tui.commander import run_commander
+
+        asyncio.run(
+            run_commander(
+                server_name=server_name,
+                session_name=session_name,
+                theme=theme,
+                bottom_gutter=bottom_gutter,
+            )
+        )
 
     cli()
 

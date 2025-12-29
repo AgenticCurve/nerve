@@ -9,7 +9,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.history import HISTORY_BUFFER_LINES, HistoryWriter
@@ -17,7 +17,7 @@ from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
 from nerve.core.pty.pty_backend import PTYBackend
-from nerve.core.types import ParsedResponse, ParserType
+from nerve.core.types import ParserType
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
@@ -235,21 +235,45 @@ class PTYNode:
                 buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
                 self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
-    async def execute(self, context: ExecutionContext) -> ParsedResponse:
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute by sending input and waiting for response.
 
         Args:
             context: Execution context with input string.
 
         Returns:
-            Parsed response.
-
-        Raises:
-            TimeoutError: If response times out.
-            RuntimeError: If node is stopped.
+            Dict with fields:
+            - success: bool - True if terminal responded successfully
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - input: str - The input sent to terminal
+            - output: str - Raw terminal output (generic behavior)
+            - raw: str - Raw terminal output
+            - sections: list[dict] - Parsed sections (if parser enabled)
+            - is_ready: bool - Terminal is ready for new input
+            - is_complete: bool - Response is complete
+            - tokens: int | None - Token count (if available from parser)
+            - parser: str - Parser type used ("CLAUDE", "NONE", etc.)
         """
+        # Initialize result dict
+        result: dict[str, Any] = {
+            "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input is not None else "",
+            "output": None,
+            "raw": "",
+            "sections": [],
+            "is_ready": False,
+            "is_complete": False,
+            "tokens": None,
+            "parser": str(context.parser or self._default_parser),
+        }
+
         if self.state == NodeState.STOPPED:
-            raise RuntimeError("Node is stopped")
+            result["error"] = "Node is stopped"
+            result["error_type"] = "node_stopped"
+            return result
 
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -318,7 +342,24 @@ class PTYNode:
 
             # Parse only the NEW output
             new_output = self.backend.buffer[buffer_start:]
-            result = parser_instance.parse(new_output)
+            parsed_response = parser_instance.parse(new_output)
+
+            # Convert ParsedResponse to dict format
+            result["success"] = True
+            result["error"] = None
+            result["error_type"] = None
+            result["raw"] = parsed_response.raw
+            result["sections"] = [
+                {"type": s.type, "content": s.content, "metadata": s.metadata}
+                for s in parsed_response.sections
+            ]
+            result["is_ready"] = parsed_response.is_ready
+            result["is_complete"] = parsed_response.is_complete
+            result["tokens"] = parsed_response.tokens
+
+            # Set output to raw (generic terminal behavior)
+            # Specialized nodes (like ClaudeWezTermNode) can override this
+            result["output"] = parsed_response.raw
 
             # Log terminal complete
             duration = time.monotonic() - start_mono
@@ -329,19 +370,16 @@ class PTYNode:
                 duration,
                 exec_id=exec_id,
                 output_len=len(new_output),
-                sections=len(result.sections),
+                sections=len(parsed_response.sections),
             )
 
             # History: log send
             if self._history_writer and self._history_writer.enabled and ts_start is not None:
                 response_data = {
-                    "sections": [
-                        {"type": s.type, "content": s.content, "metadata": s.metadata}
-                        for s in result.sections
-                    ],
-                    "tokens": result.tokens,
-                    "is_complete": result.is_complete,
-                    "is_ready": result.is_ready,
+                    "sections": result["sections"],
+                    "tokens": result["tokens"],
+                    "is_complete": result["is_complete"],
+                    "is_ready": result["is_ready"],
                 }
                 self._history_writer.log_send(
                     input=input_str,
@@ -354,6 +392,13 @@ class PTYNode:
 
         except TimeoutError as e:
             duration = time.monotonic() - start_mono
+            result["error"] = str(e)
+            result["error_type"] = "timeout"
+            result["raw"] = (
+                self.backend.buffer[buffer_start:]
+                if buffer_start < len(self.backend.buffer)
+                else ""
+            )
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -363,10 +408,17 @@ class PTYNode:
                 timeout=timeout,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return result
 
         except Exception as e:
             duration = time.monotonic() - start_mono
+            result["error"] = f"{type(e).__name__}: {e}"
+            result["error_type"] = "internal_error"
+            result["raw"] = (
+                self.backend.buffer[buffer_start:]
+                if buffer_start < len(self.backend.buffer)
+                else ""
+            )
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -375,7 +427,7 @@ class PTYNode:
                 exec_id=exec_id,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return result
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
@@ -384,10 +436,11 @@ class PTYNode:
             context: Execution context with input string.
 
         Yields:
-            Output chunks as they arrive.
+            Output chunks as they arrive. On error, yields error message and returns.
         """
         if self.state == NodeState.STOPPED:
-            raise RuntimeError("Node is stopped")
+            yield "Error: Node is stopped"
+            return
 
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -471,6 +524,7 @@ class PTYNode:
 
         except Exception as e:
             duration = time.monotonic() - start_mono
+            error_msg = f"Error: {type(e).__name__}: {e}"
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -480,14 +534,15 @@ class PTYNode:
                 chunks=chunks_count,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            yield error_msg
+            return
 
     async def send(
         self,
         text: str,
         parser: ParserType | None = None,
         timeout: float | None = None,
-    ) -> ParsedResponse:
+    ) -> dict[str, Any]:
         """Convenience method to send input and get response.
 
         Args:
@@ -496,7 +551,7 @@ class PTYNode:
             timeout: Response timeout (defaults to node's default).
 
         Returns:
-            Parsed response.
+            Response dict with success/error/error_type and terminal fields.
         """
         from nerve.core.nodes.context import ExecutionContext
 
@@ -589,7 +644,7 @@ class PTYNode:
     async def start(self) -> None:
         """Start the node (lifecycle method).
 
-        Called by Session.start() for persistent nodes.
+        Called by Session.start() for stateful nodes.
         PTYNode is already started via create(), so this is a no-op.
         """
         pass  # Already started in create()
@@ -597,7 +652,7 @@ class PTYNode:
     async def stop(self) -> None:
         """Stop the node and release resources.
 
-        Called by Session.stop() for persistent nodes.
+        Called by Session.stop() for stateful nodes.
         """
         # Capture pending buffer from previous run/write before closing
         self._capture_pending_buffer_if_needed()

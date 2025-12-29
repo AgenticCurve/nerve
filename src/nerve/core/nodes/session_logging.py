@@ -370,8 +370,8 @@ class SessionLogger:
         """Log session start event.
 
         Args:
-            persistent_nodes: Number of persistent nodes.
-            node_ids: List of persistent node IDs.
+            persistent_nodes: Number of stateful nodes.
+            node_ids: List of stateful node IDs.
         """
         logger = self.get_session_logger()
         log_start(

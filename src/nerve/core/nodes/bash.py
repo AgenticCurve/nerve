@@ -1,4 +1,4 @@
-"""BashNode - ephemeral node for running bash commands.
+"""BashNode - stateless node for running bash commands.
 
 BashNode executes bash commands via subprocess and returns JSON results.
 Each execution spawns a fresh subprocess - no state is maintained between calls.
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class BashNode:
-    """Ephemeral node that runs bash commands and returns JSON results.
+    """Stateless node that runs bash commands and returns JSON results.
 
     BashNode is stateless - each execute() call spawns a new subprocess.
     State does not persist between executions (unlike PTYNode/WezTermNode).
@@ -92,6 +92,7 @@ class BashNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _current_proc: asyncio.subprocess.Process | None = field(default=None, init=False, repr=False)
     _proc_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
@@ -123,35 +124,55 @@ class BashNode:
                      Optional context.timeout overrides node timeout.
 
         Returns:
-            JSON dict with fields:
-            - success (bool): Whether command succeeded (exit code 0)
-            - stdout (str): Standard output
-            - stderr (str): Standard error
-            - exit_code (int | None): Process exit code (None if error before execution)
-            - command (str): The command that was run
-            - error (str | None): Error message if failed
-            - interrupted (bool): Whether execution was interrupted (Ctrl+C)
+            Dict with fields:
+            - success: bool - True if exit_code==0 AND stderr is empty
+            - error: str | None - None on success, stderr if present, exit message otherwise
+            - error_type: str | None - "process_error", "timeout", "interrupted", etc.
+            - input: str - The command input
+            - output: str - Always stdout (primary output)
+            - stdout: str - Standard output from command
+            - stderr: str - Standard error from command
+            - exit_code: int | None - Process exit code (None if not started)
+            - command: str - The command that was executed
+            - interrupted: bool - Whether execution was interrupted (Ctrl+C)
 
         Note:
             This method never raises exceptions - all errors are returned in
-            the result dict. CancellationToken is checked by graphs between
-            steps, not here. Use interrupt() to stop execution during this
+            the result dict. Use interrupt() to stop execution during this
             node's execution.
         """
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+                "stdout": "",
+                "stderr": "",
+                "exit_code": None,
+                "command": str(context.input) if context.input else "",
+                "interrupted": False,
+            }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
         log_ctx = get_execution_logger(self.id, context, self.session)
         exec_id = log_ctx.exec_id or context.exec_id
 
         # Initialize result structure
-        result = {
+        result: dict[str, Any] = {
             "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input else "",
+            "output": None,
             "stdout": "",
             "stderr": "",
             "exit_code": None,
             "command": "",
-            "error": None,
             "interrupted": False,
         }
 
@@ -164,6 +185,7 @@ class BashNode:
 
             if not command:
                 result["error"] = "No command provided in context.input"
+                result["error_type"] = "invalid_request_error"
                 return result
 
             # Log command start
@@ -209,14 +231,19 @@ class BashNode:
                 result["stderr"] = stderr_bytes.decode("utf-8", errors="replace")
                 result["exit_code"] = proc.returncode
 
-                # Handle exit code
+                # Set output field (always stdout)
+                result["output"] = result["stdout"]
+
+                # Handle exit code and set error field
                 if proc.returncode is None:
                     # Should not happen after communicate(), but handle explicitly
-                    result["error"] = "Process ended without exit code"
+                    result["error_type"] = "internal_error"
+                    result["error"] = "Process terminated unexpectedly"
                 elif proc.returncode in (-2, 130):
                     # Interrupted (SIGINT exit codes)
                     result["interrupted"] = True
-                    result["error"] = "Command interrupted (Ctrl+C)"
+                    result["error_type"] = "interrupted"
+                    result["error"] = result["stderr"] if result["stderr"] else "Interrupted"
                     duration = time.monotonic() - start_mono
                     log_warning(
                         log_ctx.logger,
@@ -226,8 +253,11 @@ class BashNode:
                         exit_code=proc.returncode,
                         duration_s=f"{duration:.1f}",
                     )
-                elif proc.returncode == 0:
+                elif proc.returncode == 0 and result["stderr"] == "":
+                    # Success: exit code 0 AND no stderr
                     result["success"] = True
+                    result["error"] = None  # No error on success
+                    result["error_type"] = None
                     duration = time.monotonic() - start_mono
                     log_complete(
                         log_ctx.logger,
@@ -238,9 +268,15 @@ class BashNode:
                         exit_code=0,
                     )
                 else:
-                    error_msg = f"Command exited with code {proc.returncode}"
-                    result["error"] = error_msg
+                    # Failure: non-zero exit code OR stderr present
+                    result["error_type"] = "process_error"
+                    result["error"] = (
+                        result["stderr"]
+                        if result["stderr"]
+                        else f"Command exited with code {proc.returncode}"
+                    )
                     duration = time.monotonic() - start_mono
+                    error_msg = result["error"]
                     log_error(
                         log_ctx.logger,
                         self.id,
@@ -257,6 +293,7 @@ class BashNode:
                 await proc.wait()
                 error_msg = f"Command timed out after {timeout}s"
                 result["error"] = error_msg
+                result["error_type"] = "timeout"
                 duration = time.monotonic() - start_mono
                 log_error(
                     log_ctx.logger,
@@ -276,6 +313,7 @@ class BashNode:
         except Exception as e:
             # Catch any other exceptions (file not found, permission denied, etc.)
             result["error"] = f"{type(e).__name__}: {str(e)}"
+            result["error_type"] = "internal_error"
             duration = time.monotonic() - start_mono
             log_error(
                 log_ctx.logger,
@@ -324,6 +362,14 @@ class BashNode:
                     # Process already terminated - safe to ignore
                     pass
 
+    async def stop(self) -> None:
+        """Stop the node and mark as unusable.
+
+        Sets state to STOPPED. Future execute() calls will return an error.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        self.state = NodeState.STOPPED
+
     def to_info(self) -> NodeInfo:
         """Get node information.
 
@@ -333,7 +379,7 @@ class BashNode:
         return NodeInfo(
             id=self.id,
             node_type="bash",
-            state=NodeState.READY,  # Ephemeral nodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata={
                 "cwd": self.cwd,

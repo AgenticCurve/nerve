@@ -42,12 +42,14 @@ async def main():
     )
     response = await node.execute(context)
 
-    print(f"Response ({len(response.sections)} sections):")
-    for section in response.sections:
-        print(f"  [{section.type}] {section.content[:200]}")
+    # Response is now a dict with success/error/output fields
+    sections = response["sections"]
+    print(f"Response ({len(sections)} sections):")
+    for section in sections:
+        print(f"  [{section['type']}] {section['content'][:200]}")
 
-    if response.tokens:
-        print(f"\nTokens used: {response.tokens}")
+    if response.get("tokens"):
+        print(f"\nTokens used: {response['tokens']}")
 
     # Clean up
     await node.stop()

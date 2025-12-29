@@ -1,12 +1,32 @@
 """Node abstraction - unified interface for executable units of work.
 
 A Node represents any executable unit:
-- FunctionNode: Wraps sync/async callables (ephemeral)
-- PTYNode: PTY-based terminal (persistent)
-- WezTermNode: WezTerm pane attachment (persistent)
+- FunctionNode: Wraps sync/async callables (stateless)
+- PTYNode: PTY-based terminal (stateful)
+- WezTermNode: WezTerm pane attachment (stateful)
 - Graph: Contains steps with nodes (can be nested)
 
-Persistent nodes maintain state across executions; ephemeral nodes are stateless.
+Stateful nodes maintain state across executions; stateless nodes do not.
+All nodes persist in the session until explicitly deleted.
+
+## Standard Error Types (all nodes)
+
+All node execute() methods return dicts with standardized error_type values:
+
+| error_type                | Description                       |
+|---------------------------|-----------------------------------|
+| "node_stopped"            | Node is in STOPPED state          |
+| "timeout"                 | Execution exceeded timeout        |
+| "interrupted"             | Execution was interrupted (Ctrl+C)|
+| "invalid_request_error"   | Invalid input/parameters          |
+| "authentication_error"    | API authentication failed         |
+| "permission_error"        | Permission denied                 |
+| "rate_limit_error"        | API rate limit exceeded           |
+| "api_error"               | Upstream API error (5xx)          |
+| "network_error"           | Network connectivity issue        |
+| "process_error"           | Process execution failed          |
+| "internal_error"          | Unexpected internal error         |
+| None                      | No error (success)                |
 """
 
 from __future__ import annotations
@@ -96,15 +116,18 @@ class Node(Protocol):
     def persistent(self) -> bool:
         """Whether this node maintains state across executions.
 
-        Persistent nodes:
-        - Maintain state between execute() calls
-        - Must implement start() and stop()
-        - Examples: PTYNode, WezTermNode
+        Stateful nodes (persistent=True):
+        - Maintain state between execute() calls (e.g., terminal buffer, conversation history)
+        - Must implement start() and stop() lifecycle methods
+        - Examples: PTYNode, WezTermNode, StatefulLLMNode
 
-        Ephemeral nodes:
-        - Stateless, can be executed multiple times independently
+        Stateless nodes (persistent=False):
+        - No state between execute() calls - each execution is independent
         - No lifecycle management needed
-        - Examples: FunctionNode, Graph
+        - Examples: FunctionNode, BashNode, IdentityNode, OpenRouterNode
+
+        Note: All nodes persist in the session until explicitly deleted.
+        The 'persistent' flag only indicates whether state is maintained between calls.
         """
         ...
 
@@ -122,11 +145,11 @@ class Node(Protocol):
     async def interrupt(self) -> None:
         """Request interruption of current execution.
 
-        For ephemeral nodes (persistent=False):
+        For stateless nodes (persistent=False):
             Best-effort cancellation. May cancel the current async task.
             No guarantee for sync operations.
 
-        For persistent nodes (persistent=True):
+        For stateful nodes (persistent=True):
             Should stop the current operation (e.g., send Ctrl+C to process).
             Resources remain allocated; use stop() to release them.
 
@@ -139,19 +162,21 @@ class Node(Protocol):
 
 
 class PersistentNode(Node, Protocol):
-    """Protocol extension for nodes that maintain state.
+    """Protocol extension for stateful nodes that maintain state.
 
-    Persistent nodes have additional lifecycle methods for
-    initialization and cleanup. They should be started before
-    use and stopped when no longer needed.
+    Stateful nodes (persistent=True) have additional lifecycle methods for
+    initialization and cleanup. They should be started before use and
+    stopped when no longer needed.
 
-    The Session manages lifecycle of registered persistent nodes.
+    Examples: PTYNode, WezTermNode, StatefulLLMNode
+
+    The Session manages lifecycle of registered stateful nodes.
     """
 
     async def start(self) -> None:
         """Initialize resources.
 
-        Called by Session.start() for all registered persistent nodes.
+        Called by Session.start() for all registered stateful nodes.
         After this call, the node should be in READY state.
         """
         ...
@@ -159,7 +184,7 @@ class PersistentNode(Node, Protocol):
     async def stop(self) -> None:
         """Release resources.
 
-        Called by Session.stop() for all registered persistent nodes.
+        Called by Session.stop() for all registered stateful nodes.
         After this call, the node should be in STOPPED state.
         """
         ...
@@ -167,10 +192,10 @@ class PersistentNode(Node, Protocol):
 
 @dataclass
 class FunctionNode:
-    """Wraps a sync or async callable as an ephemeral node.
+    """Wraps a sync or async callable as a stateless node.
 
-    FunctionNodes are stateless - they can be called multiple times
-    with different inputs and produce independent results.
+    FunctionNodes are stateless (persistent=False) - they can be called
+    multiple times with different inputs and produce independent results.
 
     The wrapped function receives an ExecutionContext and should return
     a result. Both sync and async functions are supported.
@@ -207,6 +232,7 @@ class FunctionNode:
 
     # Internal fields (not in __init__)
     persistent: bool = field(default=False, init=False)
+    state: NodeState = field(default=NodeState.READY, init=False)
     _current_task: asyncio.Task[Any] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -229,7 +255,7 @@ class FunctionNode:
                 self.id, "FunctionNode", persistent=self.persistent
             )
 
-    async def execute(self, context: ExecutionContext) -> Any:
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute the wrapped function.
 
         Handles both sync and async functions automatically.
@@ -238,10 +264,25 @@ class FunctionNode:
             context: Execution context with input and upstream results.
 
         Returns:
-            The function's return value.
+            Dict with fields:
+            - success: bool - True if function succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (see base.py for types)
+            - input: str - The input provided to the function
+            - output: Any - The return value from the function (can be any type)
         """
         from nerve.core.nodes.run_logging import log_complete, log_error, log_start
         from nerve.core.nodes.session_logging import get_execution_logger
+
+        # Check if node is stopped
+        if self.state == NodeState.STOPPED:
+            return {
+                "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+            }
 
         # Get logger and exec_id
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -262,7 +303,13 @@ class FunctionNode:
             duration = time.monotonic() - start_mono
             log_complete(log_ctx.logger, self.id, "function_complete", duration, exec_id=exec_id)
 
-            return result
+            return {
+                "success": True,
+                "error": None,
+                "error_type": None,
+                "input": str(context.input) if context.input else "",
+                "output": result,
+            }
         except Exception as e:
             duration = time.monotonic() - start_mono
             log_error(
@@ -273,7 +320,13 @@ class FunctionNode:
                 exec_id=exec_id,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return {
+                "success": False,
+                "error": f"{type(e).__name__}: {e}",
+                "error_type": "internal_error",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+            }
         finally:
             self._current_task = None
 
@@ -287,6 +340,14 @@ class FunctionNode:
         if self._current_task is not None:
             self._current_task.cancel()
 
+    async def stop(self) -> None:
+        """Stop the node and mark as unusable.
+
+        Sets state to STOPPED. Future execute() calls will raise RuntimeError.
+        Does not unregister from session (that's Session.delete_node's job).
+        """
+        self.state = NodeState.STOPPED
+
     def to_info(self) -> NodeInfo:
         """Get node information.
 
@@ -296,7 +357,7 @@ class FunctionNode:
         return NodeInfo(
             id=self.id,
             node_type="function",
-            state=NodeState.READY,  # FunctionNodes are always ready
+            state=self.state,
             persistent=self.persistent,
             metadata=self.metadata,
         )
