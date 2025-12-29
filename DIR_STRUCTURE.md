@@ -153,7 +153,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 531] adapters.py
+│       │   │   │   ├── [L: 566] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -180,13 +180,13 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 272] blocks.py
-│       │           ├── [L: 378] commander.py
+│       │           ├── [L: 393] commander.py
 │       │           ├── [L: 174] commands.py
-│       │           ├── [L: 241] executor.py
+│       │           ├── [L: 288] executor.py
 │       │           ├── [L: 345] loop.py
 │       │           ├── [L: 346] rendering.py
 │       │           ├── [L: 146] themes.py
-│       │           └── [L: 381] variables.py
+│       │           └── [L: 413] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -213,7 +213,7 @@
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
-│       │   │   ├── [L: 336] node_interaction_handler.py
+│       │   │   ├── [L: 337] node_interaction_handler.py
 │       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
@@ -225,11 +225,11 @@
 │       │   └── [L:  94] validation.py
 │       └── transport/
 │           ├── [L:  52] __init__.py
-│           ├── [L: 372] http.py
+│           ├── [L: 380] http.py
 │           ├── [L: 125] in_process.py
 │           ├── [L:  67] protocol.py
-│           ├── [L: 346] tcp_socket.py
-│           └── [L: 353] unix_socket.py
+│           ├── [L: 385] tcp_socket.py
+│           └── [L: 392] unix_socket.py
 └── tests/
     ├── [L:   1] __init__.py
     ├── cli/
@@ -300,4 +300,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 237 files, 53,581 total lines
+64 directories, 237 files, 53,797 total lines

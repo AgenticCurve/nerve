@@ -9,8 +9,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -210,6 +211,7 @@ class UnixSocketClient:
     _reader: asyncio.StreamReader | None = None
     _writer: asyncio.StreamWriter | None = None
     _event_queue: asyncio.Queue[Any] = field(default_factory=asyncio.Queue)
+    _pending_requests: dict[str, asyncio.Future[Any]] = field(default_factory=dict)
     _connected: bool = False
     _reader_task: asyncio.Task[Any] | None = None
     _last_error: Exception | None = field(default=None, repr=False)
@@ -245,9 +247,15 @@ class UnixSocketClient:
     async def send_command(self, command: Command, timeout: float = 300.0) -> CommandResult:
         """Send a command and wait for result.
 
+        Uses request_id to match responses to requests, enabling concurrent
+        command execution without mixing up responses.
+
+        Auto-generates a UUID for request_id if not provided, ensuring each
+        request has a unique identifier for proper correlation.
+
         Args:
             command: The command to send.
-            timeout: Timeout in seconds (default 60s).
+            timeout: Timeout in seconds (default 300s).
 
         Returns:
             Command result from the server.
@@ -256,37 +264,41 @@ class UnixSocketClient:
             RuntimeError: If not connected.
             TimeoutError: If response not received within timeout.
         """
-        from nerve.server.protocols import CommandResult
 
         if not self._writer or not self._connected:
             raise RuntimeError("Not connected")
 
-        message = {
-            "type": "command",
-            "command_type": command.type.name,
-            "params": command.params,
-            "request_id": command.request_id,
-        }
+        # Auto-generate request_id if not provided (Command is frozen/immutable)
+        if command.request_id is None:
+            command = replace(command, request_id=str(uuid.uuid4()))
 
-        self._writer.write((json.dumps(message) + "\n").encode())
-        await self._writer.drain()
+        # Extract request_id (guaranteed to be str after the above check)
+        request_id = command.request_id
+        assert request_id is not None  # Type narrowing for mypy
 
-        # Wait for result (from queue, put there by reader) with timeout
+        # Create a future for this specific request
+        future: asyncio.Future[CommandResult] = asyncio.Future()
+        self._pending_requests[request_id] = future
+
         try:
-            while True:
-                response = await asyncio.wait_for(
-                    self._event_queue.get(),
-                    timeout=timeout,
-                )
-                if isinstance(response, dict) and response.get("type") == "result":
-                    return CommandResult(
-                        success=response["success"],
-                        data=response.get("data"),
-                        error=response.get("error"),
-                        request_id=response.get("request_id"),
-                    )
+            message = {
+                "type": "command",
+                "command_type": command.type.name,
+                "params": command.params,
+                "request_id": request_id,
+            }
+
+            self._writer.write((json.dumps(message) + "\n").encode())
+            await self._writer.drain()
+
+            # Wait for THIS request's response (matched by request_id in _read_loop)
+            return await asyncio.wait_for(future, timeout=timeout)
+
         except TimeoutError:
             raise TimeoutError(f"Command timed out after {timeout}s") from None
+        finally:
+            # Clean up pending request
+            self._pending_requests.pop(request_id, None)
 
     async def events(self) -> AsyncIterator[Event]:
         """Subscribe to events."""
@@ -305,9 +317,14 @@ class UnixSocketClient:
     async def _read_loop(self) -> None:
         """Background loop to read from socket.
 
-        Reads JSON messages from the socket and puts them in the event queue.
+        Routes messages based on type:
+        - "result" messages: Matched to pending requests by request_id
+        - "event" messages: Put in event queue for events() iterator
+
         Errors are logged and tracked in _last_error and _error_count.
         """
+        from nerve.server.protocols import CommandResult
+
         if not self._reader:
             return
 
@@ -320,7 +337,29 @@ class UnixSocketClient:
 
                 try:
                     message = json.loads(line.decode())
-                    await self._event_queue.put(message)
+
+                    # Route command results to their specific futures
+                    if isinstance(message, dict) and message.get("type") == "result":
+                        request_id = message.get("request_id")
+                        if request_id and request_id in self._pending_requests:
+                            future = self._pending_requests[request_id]
+                            if not future.done():
+                                result = CommandResult(
+                                    success=message["success"],
+                                    data=message.get("data"),
+                                    error=message.get("error"),
+                                    request_id=request_id,
+                                )
+                                future.set_result(result)
+                        else:
+                            logger.warning(
+                                "Received response for unknown request_id: %s",
+                                request_id,
+                            )
+                    else:
+                        # Events and other messages go to the event queue
+                        await self._event_queue.put(message)
+
                 except json.JSONDecodeError as e:
                     self._error_count += 1
                     self._last_error = e

@@ -35,13 +35,17 @@ class VariableExpander:
         expanded = expander.expand("Previous output: :::-1")
     """
 
-    def __init__(self, timeline: Timeline) -> None:
+    def __init__(self, timeline: Timeline, nodes_by_type: dict[str, str] | None = None) -> None:
         """Initialize expander with a timeline.
 
         Args:
             timeline: The timeline containing blocks to reference.
+            nodes_by_type: Optional mapping from node type/name to node ID.
+                E.g., {"claude": "1", "bash": "2"} - maps user-facing names
+                to internal node IDs used in blocks.
         """
         self.timeline = timeline
+        self.nodes_by_type = nodes_by_type or {}
 
     def expand(self, text: str) -> str:
         """Expand all variable references in text.
@@ -89,13 +93,38 @@ class VariableExpander:
         except IndexError:
             return None
 
-    def _get_node_blocks(self, node_id: str) -> list[Block]:
-        """Get all blocks for a specific node."""
+    def _resolve_node_id(self, node_ref: str) -> str:
+        """Resolve node reference (type/name) to actual node ID.
+
+        Args:
+            node_ref: Either a numeric node ID or a node type/name like "claude".
+
+        Returns:
+            The actual node ID to use for filtering blocks.
+        """
+        # If it's already a valid node ID (exists in nodes_by_type values), return as-is
+        if node_ref in self.nodes_by_type.values():
+            return node_ref
+        # Otherwise, try to resolve from type/name to ID
+        return self.nodes_by_type.get(node_ref, node_ref)
+
+    def _get_node_blocks(self, node_ref: str) -> list[Block]:
+        """Get all blocks for a specific node.
+
+        Args:
+            node_ref: Node reference (ID or type/name like "claude").
+        """
+        node_id = self._resolve_node_id(node_ref)
         return [b for b in self.timeline.blocks if b.node_id == node_id]
 
-    def _get_node_block_by_index(self, node_id: str, idx: int) -> Block | None:
-        """Get block by index within a node's blocks (supports negative indexing)."""
-        node_blocks = self._get_node_blocks(node_id)
+    def _get_node_block_by_index(self, node_ref: str, idx: int) -> Block | None:
+        """Get block by index within a node's blocks (supports negative indexing).
+
+        Args:
+            node_ref: Node reference (ID or type/name like "claude").
+            idx: Index within the node's blocks (supports negative indexing).
+        """
+        node_blocks = self._get_node_blocks(node_ref)
         if not node_blocks:
             return None
         try:
@@ -368,14 +397,17 @@ class VariableExpander:
         return re.sub(pattern, replace, text)
 
 
-def expand_variables(timeline: Timeline, text: str) -> str:
+def expand_variables(
+    timeline: Timeline, text: str, nodes_by_type: dict[str, str] | None = None
+) -> str:
     """Convenience function to expand variables in text.
 
     Args:
         timeline: The timeline containing blocks to reference.
         text: Text with variable references.
+        nodes_by_type: Optional mapping from node type/name to node ID.
 
     Returns:
         Text with variables expanded to their values.
     """
-    return VariableExpander(timeline).expand(text)
+    return VariableExpander(timeline, nodes_by_type).expand(text)

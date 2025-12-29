@@ -201,6 +201,21 @@ class Commander:
         except Exception as e:
             self.console.print(f"[warning]Failed to fetch nodes: {e}[/]")
 
+    def _get_nodes_by_type(self) -> dict[str, str]:
+        """Build reverse mapping from node type to node ID.
+
+        Returns:
+            Dictionary mapping node_type/name -> node_id.
+            E.g., {"claude": "1", "bash": "2"}
+        """
+        # Build reverse mapping: node_type -> node_id
+        # If multiple nodes have the same type, only keep the first one
+        result: dict[str, str] = {}
+        for node_id, node_type in self.nodes.items():
+            if node_type not in result:
+                result[node_type] = node_id
+        return result
+
     async def _send_interrupt(self, node_id: str) -> None:
         """Send interrupt signal to a node via server."""
         if self._client is None:
@@ -279,7 +294,7 @@ class Commander:
         block_type = get_block_type(node_type)
 
         # Expand variables BEFORE adding block to timeline
-        expanded_text = expand_variables(self.timeline, text)
+        expanded_text = expand_variables(self.timeline, text, self._get_nodes_by_type())
 
         # Create block (input_text stores RAW text)
         block = Block(

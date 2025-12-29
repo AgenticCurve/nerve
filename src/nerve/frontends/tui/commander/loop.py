@@ -262,7 +262,7 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
 
     # Expand variables BEFORE adding block to timeline
     # This ensures :::-1 references the previous block, not the current one
-    expanded_prompt = expand_variables(commander.timeline, prompt)
+    expanded_prompt = expand_variables(commander.timeline, prompt, commander._get_nodes_by_type())
 
     # Create and add block (input_text stores RAW prompt)
     block = Block(

@@ -112,32 +112,56 @@ class CommandExecutor:
     async def _background_executor(self) -> None:
         """Background task that processes commands from the queue.
 
-        Waits for ongoing tasks that exceeded the async threshold,
-        then renders the completed block.
+        Spawns concurrent monitoring tasks for each command, allowing
+        multiple nodes to execute in parallel without blocking each other.
         """
+        monitoring_tasks: set[asyncio.Task[None]] = set()
+
         while True:
             try:
                 # Wait for next item (block, task)
                 block, task = await self._command_queue.get()
 
-                try:
-                    # Ongoing task - wait for it to complete
-                    # The task is already running and will update the block
-                    block.status = "running"
-                    await task
+                # Spawn a monitoring task for this command (allows concurrent execution)
+                monitor = asyncio.create_task(self._monitor_task(block, task))
+                monitoring_tasks.add(monitor)
 
-                except Exception as e:
-                    # Handle unexpected errors
-                    block.status = "error"
-                    block.error = f"{type(e).__name__}: {e}"
-
-                # Render the completed block
-                print_block(self.console, block)
+                # Clean up completed monitoring tasks
+                monitoring_tasks = {t for t in monitoring_tasks if not t.done()}
 
                 self._command_queue.task_done()
 
             except asyncio.CancelledError:
+                # Cancel all monitoring tasks
+                for t in monitoring_tasks:
+                    t.cancel()
                 break
+
+    async def _monitor_task(self, block: Block, task: asyncio.Task[None]) -> None:
+        """Monitor a single command task and render when complete.
+
+        Args:
+            block: The block to update and render.
+            task: The already-running execution task.
+        """
+        start_time = time.monotonic()
+
+        try:
+            # Ongoing task - wait for it to complete
+            # The task is already running and will update the block
+            block.status = "running"
+            await task
+
+        except Exception as e:
+            # Handle unexpected errors
+            block.status = "error"
+            block.error = f"{type(e).__name__}: {e}"
+            # Ensure duration is set even for unexpected exceptions
+            if block.duration_ms is None:
+                block.duration_ms = (time.monotonic() - start_time) * 1000
+
+        # Render the completed block
+        print_block(self.console, block)
 
 
 def get_block_type(node_type: str) -> str:
@@ -191,18 +215,41 @@ async def execute_node_command(
 
     duration_ms = (time.monotonic() - start_time) * 1000
 
+    # DEFENSIVE: Verify block.node_id hasn't changed (concurrent modification check)
+    if block.node_id != node_id:
+        block.status = "error"
+        block.error = f"Block node_id changed during execution: {node_id} -> {block.node_id}"
+        block.duration_ms = duration_ms
+        return
+
+    # DEFENSIVE: Verify result came from the correct node (if metadata available)
+    executed_on = result.get("_executed_on_node_id")
+    if executed_on and executed_on != node_id:
+        block.status = "error"
+        block.error = (
+            f"Result mismatch! Expected from '{node_id}' but got from '{executed_on}'. "
+            f"This indicates a serious bug in concurrent execution."
+        )
+        block.duration_ms = duration_ms
+        return
+
     # Update block with results
     if result.get("success"):
         block.status = "completed"
         block.output_text = str(result.get("output", "")).strip()
         block.raw = result
         block.error = None
+        # Add metadata for debugging: which node produced this result
+        block.metadata["executed_node_id"] = node_id
+        block.metadata["executed_pane_id"] = result.get("_executed_on_pane_id", "unknown")
     else:
         block.status = "error"
         error_msg = result.get("error", "Unknown error")
         error_type = result.get("error_type", "unknown")
         block.error = f"[{error_type}] {error_msg}"
         block.raw = result
+        block.metadata["executed_node_id"] = node_id
+        block.metadata["executed_pane_id"] = result.get("_executed_on_pane_id", "unknown")
 
     block.duration_ms = duration_ms
 

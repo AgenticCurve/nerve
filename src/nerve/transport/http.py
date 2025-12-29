@@ -8,8 +8,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -271,9 +272,12 @@ class HTTPClient:
     async def send_command(self, command: Command, timeout: float = 300.0) -> CommandResult:
         """Send a command to the server.
 
+        Auto-generates a UUID for request_id if not provided, ensuring each
+        request has a unique identifier for logging and debugging.
+
         Args:
             command: The command to send.
-            timeout: Timeout in seconds (default: 60s).
+            timeout: Timeout in seconds (default: 300s).
 
         Returns:
             CommandResult from the server.
@@ -288,6 +292,10 @@ class HTTPClient:
 
         if not self._session or not self._connected:
             raise RuntimeError("Not connected")
+
+        # Auto-generate request_id if not provided (Command is frozen/immutable)
+        if command.request_id is None:
+            command = replace(command, request_id=str(uuid.uuid4()))
 
         try:
             async with self._session.post(
