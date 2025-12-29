@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Graph
+
+logger = logging.getLogger(__name__)
 
 
 class SessionAdapter(Protocol):
@@ -200,12 +203,8 @@ class LocalSessionAdapter:
 
     async def execute_on_node(self, node_id: str, text: str) -> dict[str, Any]:
         """Execute on a node (for send command)."""
-        import logging
-
         from nerve.core.nodes.context import ExecutionContext
         from nerve.core.nodes.terminal.claude_wezterm_node import ClaudeWezTermNode
-
-        logger = logging.getLogger(__name__)
 
         node = self.session.get_node(node_id)
         if not node:

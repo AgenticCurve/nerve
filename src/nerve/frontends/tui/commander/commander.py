@@ -13,6 +13,7 @@ This module is the main orchestrator, delegating to specialized modules:
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -38,6 +39,8 @@ from nerve.frontends.tui.commander.variables import expand_variables
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
     from nerve.transport import UnixSocketClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -363,9 +366,7 @@ class Commander:
             try:
                 await self._client.disconnect()
             except Exception as e:
-                import logging
-
-                logging.debug(f"Error during client disconnect in cleanup: {e}")
+                logger.debug(f"Error during client disconnect in cleanup: {e}")
         self._client = None
         self._adapter = None
 
