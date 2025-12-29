@@ -1,6 +1,5 @@
 ./
 ├── docs/
-│   └── [L: 758] NODE_OUTPUT_SCHEMA.md
 ├── docs_for_agents/
 │   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
@@ -92,8 +91,8 @@
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
-│       │   │   ├── [L: 342] base.py
-│       │   │   ├── [L: 452] bash.py
+│       │   │   ├── [L: 366] base.py
+│       │   │   ├── [L: 454] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -104,11 +103,11 @@
 │       │   │   │   ├── [L:1009] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
-│       │   │   ├── [L: 153] identity.py
+│       │   │   ├── [L: 157] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 696] base.py
-│       │   │   │   ├── [L: 588] chat.py
+│       │   │   │   ├── [L: 699] base.py
+│       │   │   │   ├── [L: 592] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -116,9 +115,9 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 644] claude_wezterm_node.py
-│       │   │   │   ├── [L: 762] pty_node.py
-│       │   │   │   └── [L: 855] wezterm_node.py
+│       │   │   │   ├── [L: 655] claude_wezterm_node.py
+│       │   │   │   ├── [L: 772] pty_node.py
+│       │   │   │   └── [L: 865] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
@@ -296,4 +295,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 233 files, 53,709 total lines
+64 directories, 232 files, 53,019 total lines

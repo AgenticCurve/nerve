@@ -417,8 +417,18 @@ class WezTermNode:
             context: Execution context with input string.
 
         Returns:
-            Dict with base fields (success, error, error_type) and terminal-specific
-            fields (raw, sections, is_ready, is_complete, tokens, parser).
+            Dict with fields:
+            - success: bool - True if terminal responded successfully
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - input: str - The input sent to terminal
+            - output: str - Raw terminal output (generic behavior)
+            - raw: str - Raw terminal output
+            - sections: list[dict] - Parsed sections (if parser enabled)
+            - is_ready: bool - Terminal is ready for new input
+            - is_complete: bool - Response is complete
+            - tokens: int | None - Token count (if available from parser)
+            - parser: str - Parser type used ("CLAUDE", "NONE", etc.)
         """
         # Initialize result dict
         result: dict[str, Any] = {

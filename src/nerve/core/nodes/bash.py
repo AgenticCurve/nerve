@@ -124,19 +124,21 @@ class BashNode:
                      Optional context.timeout overrides node timeout.
 
         Returns:
-            JSON dict with fields:
-            - success (bool): Whether command succeeded (exit code 0)
-            - stdout (str): Standard output
-            - stderr (str): Standard error
-            - exit_code (int | None): Process exit code (None if error before execution)
-            - command (str): The command that was run
-            - error (str | None): Error message if failed
-            - interrupted (bool): Whether execution was interrupted (Ctrl+C)
+            Dict with fields:
+            - success: bool - True if exit_code==0 AND stderr is empty
+            - error: str | None - None on success, stderr if present, exit message otherwise
+            - error_type: str | None - "process_error", "timeout", "interrupted", etc.
+            - input: str - The command input
+            - output: str - Always stdout (primary output)
+            - stdout: str - Standard output from command
+            - stderr: str - Standard error from command
+            - exit_code: int | None - Process exit code (None if not started)
+            - command: str - The command that was executed
+            - interrupted: bool - Whether execution was interrupted (Ctrl+C)
 
         Note:
             This method never raises exceptions - all errors are returned in
-            the result dict. CancellationToken is checked by graphs between
-            steps, not here. Use interrupt() to stop execution during this
+            the result dict. Use interrupt() to stop execution during this
             node's execution.
         """
         from nerve.core.nodes.session_logging import get_execution_logger

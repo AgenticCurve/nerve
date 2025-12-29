@@ -8,6 +8,25 @@ A Node represents any executable unit:
 
 Stateful nodes maintain state across executions; stateless nodes do not.
 All nodes persist in the session until explicitly deleted.
+
+## Standard Error Types (all nodes)
+
+All node execute() methods return dicts with standardized error_type values:
+
+| error_type                | Description                       |
+|---------------------------|-----------------------------------|
+| "node_stopped"            | Node is in STOPPED state          |
+| "timeout"                 | Execution exceeded timeout        |
+| "interrupted"             | Execution was interrupted (Ctrl+C)|
+| "invalid_request_error"   | Invalid input/parameters          |
+| "authentication_error"    | API authentication failed         |
+| "permission_error"        | Permission denied                 |
+| "rate_limit_error"        | API rate limit exceeded           |
+| "api_error"               | Upstream API error (5xx)          |
+| "network_error"           | Network connectivity issue        |
+| "process_error"           | Process execution failed          |
+| "internal_error"          | Unexpected internal error         |
+| None                      | No error (success)                |
 """
 
 from __future__ import annotations
@@ -245,7 +264,12 @@ class FunctionNode:
             context: Execution context with input and upstream results.
 
         Returns:
-            Dict with success/error/error_type/input/output fields.
+            Dict with fields:
+            - success: bool - True if function succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (see base.py for types)
+            - input: str - The input provided to the function
+            - output: Any - The return value from the function (can be any type)
         """
         from nerve.core.nodes.run_logging import log_complete, log_error, log_start
         from nerve.core.nodes.session_logging import get_execution_logger

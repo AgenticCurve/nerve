@@ -265,7 +265,18 @@ class ClaudeWezTermNode:
             context: Execution context with input string.
 
         Returns:
-            Response dict with success/error/error_type and terminal fields.
+            Dict with fields:
+            - success: bool - True if terminal responded successfully
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - input: str - The input sent to terminal
+            - output: str - Last text section content (Claude-specific, filters thinking)
+            - raw: str - Raw terminal output
+            - sections: list[dict] - Parsed sections from Claude parser
+            - is_ready: bool - Terminal is ready for new input
+            - is_complete: bool - Response is complete
+            - tokens: int | None - Token count from Claude parser
+            - parser: str - Parser type used (typically "CLAUDE")
         """
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()

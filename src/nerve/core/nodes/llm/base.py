@@ -198,16 +198,19 @@ class StatelessLLMNode:
                 - dict: Full request with "messages" key and optional params
 
         Returns:
-            JSON dict with fields:
-            - success (bool): Whether request succeeded
-            - content (str | None): Response content
-            - model (str | None): Model that generated response
-            - finish_reason (str | None): Why generation stopped
-            - usage (dict | None): Token usage counts
-            - request (dict): Echo of request info (truncated)
-            - error (str | None): Error message if failed
-            - error_type (str | None): Error classification
-            - retries (int): Number of retries attempted
+            Dict with fields:
+            - success: bool - True if LLM request succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (rate_limit_error, api_error, etc.)
+            - input: str - The input provided to the node
+            - output: str - Primary output: content if available, "[Tool calls: ...]" format, or ""
+            - content: str | None - Text response from LLM
+            - tool_calls: list[dict] | None - Tool calls requested by LLM
+            - model: str | None - Model that generated response
+            - finish_reason: str | None - Why generation stopped ("stop", "length", "tool_calls")
+            - usage: dict | None - Token usage stats {prompt_tokens, completion_tokens, total_tokens}
+            - request: dict - Request params (truncated for logging)
+            - retries: int - Number of retries attempted
 
         Note:
             This method never raises exceptions - all errors are returned

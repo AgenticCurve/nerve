@@ -183,13 +183,17 @@ class StatefulLLMNode:
                 (user message) or can be None to continue after tool calls.
 
         Returns:
-            Result dict with:
-            - success (bool): Whether the request succeeded
-            - content (str | None): Assistant's response
-            - tool_calls (list | None): Any tool calls made
-            - usage (dict | None): Token usage
-            - messages_count (int): Total messages in conversation
-            - error (str | None): Error message if failed
+            Dict with fields:
+            - success: bool - True if conversation turn succeeded
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - Error category (see base.py for types)
+            - input: str - The user input for this turn
+            - output: str - Primary output: content if available, error message, or "[Tool calls: ...]"
+            - content: str | None - Assistant's text response
+            - tool_calls: list[dict] | None - Tool calls from final turn
+            - usage: dict - Cumulative token usage {prompt_tokens, completion_tokens, total_tokens}
+            - messages_count: int - Total messages in conversation history
+            - tool_rounds: int - Number of tool execution rounds
         """
         # Get logger and exec_id
         from nerve.core.nodes.session_logging import get_execution_logger

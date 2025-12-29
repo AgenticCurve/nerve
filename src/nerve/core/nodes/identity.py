@@ -97,8 +97,12 @@ class IdentityNode:
             context: Execution context with input to echo.
 
         Returns:
-            Dict with 'output' containing the echoed input.
-            Format matches BashNode for consistency.
+            Dict with fields:
+            - success: bool - Always True (unless node is stopped)
+            - error: str | None - Error message if node is stopped, None otherwise
+            - error_type: str | None - "node_stopped" or None
+            - input: str - The input provided
+            - output: str - The echoed output (same as input)
         """
         # Check if node is stopped
         if self.state == NodeState.STOPPED:
