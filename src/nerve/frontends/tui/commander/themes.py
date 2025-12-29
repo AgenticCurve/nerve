@@ -27,6 +27,8 @@ def create_theme(
     prompt: str = "bold green",
     success: str = "bold green",
     warning: str = "bold yellow",
+    # Pending blocks (subdued appearance)
+    pending: str = "bright_black",
 ) -> Theme:
     """Create a theme with the given styles.
 
@@ -53,6 +55,8 @@ def create_theme(
             "prompt": prompt,
             "success": success,
             "warning": warning,
+            # Pending blocks
+            "pending": pending,
         }
     )
 
@@ -80,6 +84,7 @@ NORD_THEME = create_theme(
     prompt="#88C0D0",
     success="#A3BE8C",
     warning="#EBCB8B",
+    pending="#4C566A",  # Nord's comment color
 )
 
 # Dracula-inspired theme
@@ -98,6 +103,7 @@ DRACULA_THEME = create_theme(
     prompt="#50FA7B",
     success="#50FA7B",
     warning="#FFB86C",
+    pending="#6272A4",  # Dracula's comment color
 )
 
 # Minimal monochrome theme
@@ -116,6 +122,7 @@ MONO_THEME = create_theme(
     prompt="bold",
     success="bold",
     warning="bold yellow",
+    pending="bright_black",
 )
 
 # Theme registry for easy lookup

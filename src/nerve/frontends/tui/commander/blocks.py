@@ -38,6 +38,9 @@ class Block:
     duration_ms: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Execution status: "pending", "running", "completed", "error"
+    status: str = "completed"
+
     def render(self, console: Console, show_separator: bool = True) -> RenderableType:
         """Render this block as borderless text.
 
@@ -50,9 +53,12 @@ class Block:
         """
         parts: list[RenderableType] = []
 
+        # Pending blocks use theme's "pending" style throughout
+        is_pending = self.status == "pending"
+
         # Separator line (light dashed)
         if show_separator:
-            parts.append(Text("─" * 60, style="dim"))
+            parts.append(Text("─" * 60, style="pending" if is_pending else "dim"))
 
         # Header line: [003] @bash (12:34:56, 42ms)
         header = self._build_header()
@@ -61,17 +67,17 @@ class Block:
         # Input line
         if self.input_text:
             input_line = Text()
-            input_line.append("› ", style="dim")
-            input_line.append(self.input_text, style="input")
+            input_line.append("› ", style="pending" if is_pending else "dim")
+            input_line.append(self.input_text, style="pending" if is_pending else "input")
             parts.append(input_line)
 
-        # Output (if any)
-        if self.output_text:
+        # Output (if any) - not shown for pending blocks
+        if self.output_text and not is_pending:
             for line in self.output_text.split("\n"):
                 parts.append(Text(line, style="output"))
 
-        # Error (if any)
-        if self.error:
+        # Error (if any) - not shown for pending blocks
+        if self.error and not is_pending:
             error_line = Text()
             error_line.append("ERROR: ", style="bold red")
             error_line.append(self.error, style="error")
@@ -86,21 +92,35 @@ class Block:
         """Build the header line with block number, node, and timing."""
         header = Text()
 
+        # Pending blocks use theme's "pending" style throughout
+        is_pending = self.status == "pending"
+
         # Block number :::1
-        header.append(f":::{self.number} ", style="dim")
+        header.append(f":::{self.number} ", style="pending" if is_pending else "dim")
 
         # Node/type indicator
         if self.block_type == "python":
-            header.append(">>> ", style="node.python")
+            header.append(">>> ", style="pending" if is_pending else "node.python")
         elif self.node_id:
-            style = f"node.{self.block_type}" if self.block_type in ("bash", "llm") else "bold"
+            if is_pending:
+                style = "pending"
+            else:
+                style = f"node.{self.block_type}" if self.block_type in ("bash", "llm") else "bold"
             header.append(f"@{self.node_id} ", style=style)
         else:
-            header.append(f"{self.block_type} ", style="bold")
+            header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")
+
+        # Status indicator for pending/running
+        if self.status == "pending":
+            header.append("⏳ ", style="pending")
+        elif self.status == "running":
+            header.append("⚡ ", style="warning")
 
         # Timestamp and duration
         time_str = self.timestamp.strftime("%H:%M:%S")
-        if self.duration_ms is not None:
+        if self.status in ("pending", "running"):
+            header.append(f"({time_str})", style="pending" if is_pending else "timestamp")
+        elif self.duration_ms is not None:
             if self.duration_ms < 1000:
                 duration_str = f"{self.duration_ms:.0f}ms"
             else:
@@ -172,6 +192,26 @@ class Timeline:
         """Add a block to the timeline, assigning it a number."""
         block.number = self._next_number
         self._next_number += 1
+        self.blocks.append(block)
+
+    def reserve_number(self) -> int:
+        """Reserve the next block number without adding a block yet.
+
+        Returns:
+            The reserved block number.
+        """
+        number = self._next_number
+        self._next_number += 1
+        return number
+
+    def add_with_number(self, block: Block, number: int) -> None:
+        """Add a block with a pre-assigned number (from reserve_number).
+
+        Args:
+            block: The block to add.
+            number: The pre-reserved block number.
+        """
+        block.number = number
         self.blocks.append(block)
 
     def render_last(self, console: Console) -> None:

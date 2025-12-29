@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich.console import Console
 
@@ -41,6 +42,7 @@ class Commander:
     session_name: str = "default"
     theme_name: str = "default"
     bottom_gutter: int = 3  # Lines of space between prompt and screen bottom
+    async_threshold_ms: float = 200  # Show pending if execution exceeds this
 
     # State (initialized in __post_init__ or run)
     console: Console = field(init=False)
@@ -57,10 +59,19 @@ class Commander:
     _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
 
+    # Command queue for non-blocking execution
+    # Queue items: (block, command_type, task)
+    # - block: The block to update when task completes
+    # - command_type: "node_task" or "python_task"
+    # - task: asyncio.Task that's already running
+    _command_queue: asyncio.Queue[tuple[Block, str, Any]] = field(init=False)
+    _executor_task: asyncio.Task[None] | None = field(default=None, init=False)
+
     def __post_init__(self) -> None:
         """Initialize console and prompt session."""
         theme = get_theme(self.theme_name)
-        self.console = Console(theme=theme)
+        # force_terminal=True ensures ANSI codes work with patch_stdout()
+        self.console = Console(theme=theme, force_terminal=True)
         # Create bottom toolbar with empty lines for gutter space
         # Use empty style to make it invisible (no background color)
         toolbar = "\n" * self.bottom_gutter if self.bottom_gutter > 0 else None
@@ -74,6 +85,8 @@ class Commander:
             bottom_toolbar=toolbar,
             style=prompt_style,
         )
+        # Initialize command queue for tasks that exceed the async threshold
+        self._command_queue = asyncio.Queue()
 
     async def run(self) -> None:
         """Run the commander REPL loop."""
@@ -117,6 +130,9 @@ class Commander:
         # Print welcome
         self._print_welcome()
 
+        # Start background executor for non-blocking command processing
+        self._executor_task = asyncio.create_task(self._command_executor())
+
         # Setup SIGINT handler to interrupt active node
         original_handler = signal.getsignal(signal.SIGINT)
 
@@ -130,28 +146,31 @@ class Commander:
         signal.signal(signal.SIGINT, sigint_handler)
 
         try:
-            # Main loop
-            while self._running:
-                try:
-                    # Dynamic prompt based on current world
-                    if self._current_world:
-                        prompt = f"{self._current_world}❯ "
-                    else:
-                        prompt = "❯ "
+            # Main loop - wrap in patch_stdout to coordinate background prints
+            # with prompt_toolkit's input line management
+            # raw=True preserves ANSI escape sequences in output
+            with patch_stdout(raw=True):
+                while self._running:
+                    try:
+                        # Dynamic prompt based on current world
+                        if self._current_world:
+                            prompt = f"{self._current_world}❯ "
+                        else:
+                            prompt = "❯ "
 
-                    user_input = await self._prompt_session.prompt_async(prompt)
+                        user_input = await self._prompt_session.prompt_async(prompt)
 
-                    if not user_input.strip():
+                        if not user_input.strip():
+                            continue
+
+                        await self._handle_input(user_input.strip())
+
+                    except KeyboardInterrupt:
+                        # Ctrl-C at prompt - just print newline and continue
+                        self.console.print()
                         continue
-
-                    await self._handle_input(user_input.strip())
-
-                except KeyboardInterrupt:
-                    # Ctrl-C at prompt - just print newline and continue
-                    self.console.print()
-                    continue
-                except EOFError:
-                    break
+                    except EOFError:
+                        break
         finally:
             # Restore original signal handler
             signal.signal(signal.SIGINT, original_handler)
@@ -285,7 +304,11 @@ class Commander:
             self.console.print(f"[warning]Unknown command: {command}[/]")
 
     async def _handle_node_message(self, message: str) -> None:
-        """Handle @node_name message syntax."""
+        """Handle @node_name message syntax with threshold-based async.
+
+        Fast operations (< async_threshold_ms) execute synchronously.
+        Slow operations show pending state and execute in background.
+        """
         if self._adapter is None:
             self.console.print("[error]Not connected to server[/]")
             return
@@ -302,9 +325,6 @@ class Commander:
             self.console.print(f"[warning]No message provided for @{node_id}[/]")
             return
 
-        # Expand variables like :::1['output']
-        text = self._expand_variables(text)
-
         if node_id not in self.nodes:
             # Try to sync nodes in case new ones were added
             await self._sync_nodes()
@@ -318,55 +338,46 @@ class Commander:
         node_type = self.nodes[node_id]
         block_type = self._get_block_type_from_str(node_type)
 
-        # Track active node for interrupt support
-        self._active_node_id = node_id
-
-        # Execute via server and time it
-        start_time = time.monotonic()
-        result = await self._adapter.execute_on_node(node_id, text)
-        duration_ms = (time.monotonic() - start_time) * 1000
-        self._active_node_id = None
-
-        # Handle result dict (all nodes now return dicts with success/error/error_type)
-        if result.get("success"):
-            # Success - all nodes now have standard "output" field
-            output_text = result.get("output", "")
-
-            # Store complete result as raw_data for detailed block references
-            raw_data = result
-
-            # Convert output to string (might be dict, list, etc. from FunctionNode)
-            output_str = str(output_text) if output_text else ""
-
-            block = Block(
-                block_type=block_type,
-                node_id=node_id,
-                input_text=text,
-                output_text=output_str.strip(),
-                error=None,
-                raw=raw_data,
-                duration_ms=duration_ms,
-            )
-        else:
-            # Error - use error field
-            error_msg = result.get("error", "Unknown error")
-            error_type = result.get("error_type", "unknown")
-
-            block = Block(
-                block_type=block_type,
-                node_id=node_id,
-                input_text=text,
-                output_text="",
-                error=f"[{error_type}] {error_msg}",
-                raw=result,
-                duration_ms=duration_ms,
-            )
-
+        # Create block with assigned number (don't render yet)
+        block = Block(
+            block_type=block_type,
+            node_id=node_id,
+            input_text=text,
+            status="running",
+        )
         self.timeline.add(block)
-        self.timeline.render_last(self.console)
+
+        # Try to execute within threshold - if fast, show result directly
+        start_time = time.monotonic()
+        threshold_seconds = self.async_threshold_ms / 1000
+
+        try:
+            # Create execution task
+            exec_task = asyncio.create_task(self._execute_node_command(block, text, start_time))
+
+            # Wait with timeout
+            await asyncio.wait_for(
+                asyncio.shield(exec_task),  # shield so we can continue if timeout
+                timeout=threshold_seconds,
+            )
+
+            # Fast path: completed within threshold, render result
+            self.timeline.render_last(self.console)
+
+        except TimeoutError:
+            # Slow path: show pending and queue for background completion
+            block.status = "pending"
+            self.timeline.render_last(self.console)
+
+            # Queue the ongoing task for the executor to monitor
+            await self._command_queue.put((block, "node_task", exec_task))
 
     async def _handle_python(self, code: str) -> None:
-        """Handle Python code execution via server."""
+        """Handle Python code execution with threshold-based async.
+
+        Fast operations (< async_threshold_ms) execute synchronously.
+        Slow operations show pending state and execute in background.
+        """
         if not code:
             self.console.print("[dim]Enter Python code after >>>[/]")
             return
@@ -375,42 +386,39 @@ class Commander:
             self.console.print("[error]Not connected to server[/]")
             return
 
+        # Create block with assigned number (don't render yet)
+        block = Block(
+            block_type="python",
+            node_id=None,
+            input_text=code,
+            status="running",
+        )
+        self.timeline.add(block)
+
+        # Try to execute within threshold - if fast, show result directly
         start_time = time.monotonic()
+        threshold_seconds = self.async_threshold_ms / 1000
+
         try:
-            # execute_python returns (output, error) tuple
-            # namespace is ignored in remote mode but required by interface
-            output, error = await self._adapter.execute_python(code, {})
-            duration_ms = (time.monotonic() - start_time) * 1000
+            # Create execution task
+            exec_task = asyncio.create_task(self._execute_python_command(block, code, start_time))
 
-            if error:
-                block = Block(
-                    block_type="python",
-                    node_id=None,
-                    input_text=code,
-                    error=error,
-                    duration_ms=duration_ms,
-                )
-            else:
-                block = Block(
-                    block_type="python",
-                    node_id=None,
-                    input_text=code,
-                    output_text=output.strip() if output else "",
-                    duration_ms=duration_ms,
-                )
-
-        except Exception as e:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            block = Block(
-                block_type="python",
-                node_id=None,
-                input_text=code,
-                error=f"{type(e).__name__}: {e}",
-                duration_ms=duration_ms,
+            # Wait with timeout
+            await asyncio.wait_for(
+                asyncio.shield(exec_task),
+                timeout=threshold_seconds,
             )
 
-        self.timeline.add(block)
-        self.timeline.render_last(self.console)
+            # Fast path: completed within threshold, render result
+            self.timeline.render_last(self.console)
+
+        except TimeoutError:
+            # Slow path: show pending and queue for background completion
+            block.status = "pending"
+            self.timeline.render_last(self.console)
+
+            # Queue the ongoing task for the executor to monitor
+            await self._command_queue.put((block, "python_task", exec_task))
 
     def _get_block_type_from_str(self, node_type: str) -> str:
         """Determine block type from node type string.
@@ -623,7 +631,7 @@ class Commander:
             return
 
         theme = get_theme(theme_name)
-        self.console = Console(theme=theme)
+        self.console = Console(theme=theme, force_terminal=True)
         self.theme_name = theme_name
         self.console.print(f"[success]Switched to theme: {theme_name}[/]")
 
@@ -731,8 +739,149 @@ class Commander:
                 for i, block in enumerate(self.timeline.blocks):
                     self.console.print(block.render(self.console, show_separator=(i > 0)))
 
+    async def _command_executor(self) -> None:
+        """Background task that processes commands from the queue.
+
+        Waits for ongoing tasks (node_task, python_task) that exceeded the
+        async threshold, then renders the completed block.
+        """
+        while True:
+            try:
+                # Wait for next item (block, command_type, task)
+                block, _, task = await self._command_queue.get()
+
+                try:
+                    # Ongoing task - wait for it to complete
+                    # The task is already running and will update the block
+                    block.status = "running"
+                    await task
+
+                except Exception as e:
+                    # Handle unexpected errors
+                    block.status = "error"
+                    block.error = f"{type(e).__name__}: {e}"
+
+                # Render the completed block using print() which goes through patch_stdout
+                self._print_block(block)
+
+                self._command_queue.task_done()
+
+            except asyncio.CancelledError:
+                break
+
+    def _print_block(self, block: Block) -> None:
+        """Print a block ensuring output goes through patch_stdout.
+
+        Uses Rich's capture to render to string, then print() to output.
+        This ensures coordination with prompt_toolkit when printing from
+        background tasks.
+        """
+        import sys
+
+        # Render block to string using Rich
+        with self.console.capture() as capture:
+            self.console.print(block.render(self.console, show_separator=True))
+        output = capture.get()
+
+        # Use print() which goes through patch_stdout's proxy
+        # This properly coordinates with prompt_toolkit's input line
+        print(output, end="", file=sys.stdout, flush=True)
+
+    async def _execute_node_command(self, block: Block, raw_input: str, start_time: float) -> None:
+        """Execute a node command and update the block with results.
+
+        Args:
+            block: The block to update with results.
+            raw_input: The raw input text (variables not yet expanded).
+            start_time: When execution started (for duration calculation).
+        """
+        if self._adapter is None:
+            block.status = "error"
+            block.error = "Not connected to server"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        node_id = block.node_id
+        if not node_id:
+            block.status = "error"
+            block.error = "No node ID"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        # Expand variables NOW (at execution time, when earlier blocks are complete)
+        text = self._expand_variables(raw_input)
+
+        # Track active node for interrupt support
+        self._active_node_id = node_id
+
+        try:
+            result = await self._adapter.execute_on_node(node_id, text)
+        finally:
+            self._active_node_id = None
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+
+        # Update block with results
+        if result.get("success"):
+            block.status = "completed"
+            block.output_text = str(result.get("output", "")).strip()
+            block.raw = result
+            block.error = None
+        else:
+            block.status = "error"
+            error_msg = result.get("error", "Unknown error")
+            error_type = result.get("error_type", "unknown")
+            block.error = f"[{error_type}] {error_msg}"
+            block.raw = result
+
+        block.duration_ms = duration_ms
+
+    async def _execute_python_command(
+        self, block: Block, raw_input: str, start_time: float
+    ) -> None:
+        """Execute a Python command and update the block with results.
+
+        Args:
+            block: The block to update with results.
+            raw_input: The Python code to execute.
+            start_time: When execution started (for duration calculation).
+        """
+        if self._adapter is None:
+            block.status = "error"
+            block.error = "Not connected to server"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        try:
+            output, error = await self._adapter.execute_python(raw_input, {})
+        except Exception as e:
+            block.status = "error"
+            block.error = f"{type(e).__name__}: {e}"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+
+        if error:
+            block.status = "error"
+            block.error = error
+        else:
+            block.status = "completed"
+            block.output_text = output.strip() if output else ""
+
+        block.duration_ms = duration_ms
+
     async def _cleanup(self) -> None:
         """Cleanup resources."""
+        # Cancel background executor
+        if self._executor_task is not None:
+            self._executor_task.cancel()
+            try:
+                await self._executor_task
+            except asyncio.CancelledError:
+                pass
+            self._executor_task = None
+
         if self._client is not None:
             try:
                 await self._client.disconnect()
