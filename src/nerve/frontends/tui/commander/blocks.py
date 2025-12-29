@@ -56,9 +56,10 @@ class Block:
         # Pending blocks use theme's "pending" style throughout
         is_pending = self.status == "pending"
 
-        # Separator line (light dashed)
+        # Separator line (light dashed, matches terminal width)
         if show_separator:
-            parts.append(Text("─" * 60, style="pending" if is_pending else "dim"))
+            width = console.width or 80
+            parts.append(Text("─" * width, style="pending" if is_pending else "dim"))
 
         # Header line: [003] @bash (12:34:56, 42ms)
         header = self._build_header()
@@ -70,6 +71,10 @@ class Block:
             input_line.append("› ", style="pending" if is_pending else "dim")
             input_line.append(self.input_text, style="pending" if is_pending else "input")
             parts.append(input_line)
+
+        # Blank line between input and output for visual separation
+        if self.input_text and (self.output_text or self.error) and not is_pending:
+            parts.append(Text(""))
 
         # Output (if any) - not shown for pending blocks
         if self.output_text and not is_pending:

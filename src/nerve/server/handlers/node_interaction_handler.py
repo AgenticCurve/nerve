@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes import ExecutionContext
 from nerve.core.nodes.history import HistoryReader
+from nerve.core.nodes.terminal.claude_wezterm_node import ClaudeWezTermNode
 from nerve.core.parsers import get_parser
 from nerve.core.types import ParserType
 from nerve.server.protocols import Event, EventType
@@ -111,6 +112,7 @@ class NodeInteractionHandler:
             timeout=timeout,
         )
 
+        response: ParsedResponse | dict[str, Any]
         if stream:
             # Stream output chunks as events
             stream_context = ExecutionContext(
@@ -136,7 +138,12 @@ class NodeInteractionHandler:
             # Wait for complete response using ExecutionContext (immutable pattern)
             if parser_type is not None:
                 context = context.with_parser(parser_type)
-            response = await node.execute(context)
+
+            # Use execute_when_ready() for ClaudeWezTermNode to prevent concurrent execution
+            if isinstance(node, ClaudeWezTermNode):
+                response = await node.execute_when_ready(context)
+            else:
+                response = await node.execute(context)
 
         # Handle response based on type:
         # - Stateless nodes (BashNode, OpenRouterNode) return dict
