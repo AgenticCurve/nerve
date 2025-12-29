@@ -624,3 +624,59 @@ class TestDependencyPatternPrecedence:
         deps = extract_block_dependencies("review :::last", timeline, nodes_by_type)
         # Should match last keyword (block 1), not node named "last" (block 0)
         assert deps == {1}
+
+    def test_node_reference_always_uses_last_block_at_extraction_time(self) -> None:
+        """:::nodename always resolves to LAST block from that node at time of extraction.
+
+        This test verifies the conversation scenario:
+        Block 0: @pallav "hi"
+        Block 1: @martin "hi"
+        Block 2: @pallav ":::martin" → should depend on block 1 (last martin)
+        Block 3: @martin ":::pallav" → should depend on block 2 (last pallav, NOT block 0)
+        Block 4: @pallav ":::martin" → should depend on block 3 (last martin, NOT block 1)
+        Block 5: @martin ":::pallav" → should depend on block 4 (last pallav, NOT block 0 or 2)
+        """
+        timeline = Timeline()
+        nodes_by_type = {"pallav": "pallav", "martin": "martin"}
+
+        # Block 0: @pallav "hi"
+        timeline.add(Block(block_type="llm", node_id="pallav", input_text="hi"))
+
+        # Block 1: @martin "hi"
+        timeline.add(Block(block_type="llm", node_id="martin", input_text="hi"))
+
+        # Block 2: @pallav ":::martin" → should depend on {1}
+        deps = extract_block_dependencies("this is what he said :::martin", timeline, nodes_by_type)
+        assert deps == {1}, f"Block 2 should depend on block 1 (only martin), got {deps}"
+        timeline.add(
+            Block(block_type="llm", node_id="pallav", input_text=":::martin", depends_on=deps)
+        )
+
+        # Block 3: @martin ":::pallav" → should depend on {2} (LAST pallav, not 0!)
+        deps = extract_block_dependencies("this is he replied :::pallav", timeline, nodes_by_type)
+        assert deps == {2}, f"Block 3 should depend on block 2 (LAST pallav), got {deps}"
+        timeline.add(
+            Block(block_type="llm", node_id="martin", input_text=":::pallav", depends_on=deps)
+        )
+
+        # Block 4: @pallav ":::martin" → should depend on {3} (LAST martin, not 1!)
+        deps = extract_block_dependencies("okay and now he says :::martin", timeline, nodes_by_type)
+        assert deps == {3}, f"Block 4 should depend on block 3 (LAST martin), got {deps}"
+        timeline.add(
+            Block(block_type="llm", node_id="pallav", input_text=":::martin", depends_on=deps)
+        )
+
+        # Block 5: @martin ":::pallav" → should depend on {4} (LAST pallav, not 0 or 2!)
+        deps = extract_block_dependencies("and finally he says :::pallav", timeline, nodes_by_type)
+        assert deps == {4}, f"Block 5 should depend on block 4 (LAST pallav), got {deps}"
+        timeline.add(
+            Block(block_type="llm", node_id="martin", input_text=":::pallav", depends_on=deps)
+        )
+
+        # Verify the complete dependency chain
+        assert timeline.blocks[0].depends_on == set()  # Block 0: no deps
+        assert timeline.blocks[1].depends_on == set()  # Block 1: no deps
+        assert timeline.blocks[2].depends_on == {1}  # Block 2: last martin (1)
+        assert timeline.blocks[3].depends_on == {2}  # Block 3: last pallav (2)
+        assert timeline.blocks[4].depends_on == {3}  # Block 4: last martin (3)
+        assert timeline.blocks[5].depends_on == {4}  # Block 5: last pallav (4)
