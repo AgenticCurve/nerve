@@ -131,6 +131,27 @@ class UnixSocketServer:
         client_addr = writer.get_extra_info("peername") or "unknown"
         logger.debug("Client connected: %s", client_addr)
 
+        # Lock to prevent concurrent writes from interleaving
+        write_lock = asyncio.Lock()
+        # Track active handler tasks for cleanup
+        handler_tasks: set[asyncio.Task[None]] = set()
+
+        async def handle_and_respond(message: dict[str, Any]) -> None:
+            """Handle a message and write response (runs concurrently)."""
+            try:
+                response = await self._handle_message(message)
+            except Exception as e:
+                logger.error("Error handling message: %s", e, exc_info=True)
+                response = {"type": "error", "error": str(e)}
+
+            # Write response with lock to prevent interleaving
+            async with write_lock:
+                try:
+                    writer.write((json.dumps(response) + "\n").encode())
+                    await writer.drain()
+                except Exception as e:
+                    logger.warning("Error writing response to %s: %s", client_addr, e)
+
         try:
             while self._running:
                 line = await reader.readline()
@@ -140,14 +161,17 @@ class UnixSocketServer:
 
                 try:
                     message = json.loads(line.decode())
-                    response = await self._handle_message(message)
-                    writer.write((json.dumps(response) + "\n").encode())
-                    await writer.drain()
+                    # Spawn concurrent handler task instead of awaiting
+                    task = asyncio.create_task(handle_and_respond(message))
+                    handler_tasks.add(task)
+                    # Clean up completed tasks
+                    handler_tasks = {t for t in handler_tasks if not t.done()}
                 except json.JSONDecodeError as e:
                     logger.warning("Invalid JSON from client %s: %s", client_addr, e)
                     error = {"type": "error", "error": "Invalid JSON"}
-                    writer.write((json.dumps(error) + "\n").encode())
-                    await writer.drain()
+                    async with write_lock:
+                        writer.write((json.dumps(error) + "\n").encode())
+                        await writer.drain()
 
         except asyncio.CancelledError:
             logger.debug("Client handler cancelled: %s", client_addr)
@@ -157,6 +181,9 @@ class UnixSocketServer:
         except Exception as e:
             logger.error("Error handling client %s: %s", client_addr, e, exc_info=True)
         finally:
+            # Cancel all active handler tasks
+            for task in handler_tasks:
+                task.cancel()
             if writer in self._clients:
                 self._clients.remove(writer)
             writer.close()

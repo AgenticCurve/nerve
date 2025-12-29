@@ -182,7 +182,7 @@
 │       │           ├── [L: 272] blocks.py
 │       │           ├── [L: 394] commander.py
 │       │           ├── [L: 174] commands.py
-│       │           ├── [L: 288] executor.py
+│       │           ├── [L: 290] executor.py
 │       │           ├── [L: 345] loop.py
 │       │           ├── [L: 346] rendering.py
 │       │           ├── [L: 146] themes.py
@@ -228,8 +228,8 @@
 │           ├── [L: 380] http.py
 │           ├── [L: 125] in_process.py
 │           ├── [L:  67] protocol.py
-│           ├── [L: 385] tcp_socket.py
-│           └── [L: 392] unix_socket.py
+│           ├── [L: 412] tcp_socket.py
+│           └── [L: 419] unix_socket.py
 └── tests/
     ├── [L:   1] __init__.py
     ├── cli/
@@ -300,4 +300,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 237 files, 53,797 total lines
+64 directories, 237 files, 53,853 total lines

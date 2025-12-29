@@ -150,6 +150,8 @@ class CommandExecutor:
             # Ongoing task - wait for it to complete
             # The task is already running and will update the block
             block.status = "running"
+            # Don't render here - just update status (avoids duplicate printing)
+            # User can verify concurrent execution by seeing prompts in wezterm panes
             await task
 
         except Exception as e:
@@ -160,7 +162,7 @@ class CommandExecutor:
             if block.duration_ms is None:
                 block.duration_ms = (time.monotonic() - start_time) * 1000
 
-        # Render the completed block
+        # Render the completed block (only render once at the end)
         print_block(self.console, block)
 
 
