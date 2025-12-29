@@ -137,11 +137,13 @@ class Block:
         if key == "input":
             return self.input_text
         elif key == "output":
-            # Return stdout or stderr (whichever has content)
+            # Prefer stdout/stderr for bash-like nodes
             if self.raw:
                 stdout = str(self.raw.get("stdout") or "")
                 stderr = str(self.raw.get("stderr") or "")
-                return stdout if stdout else stderr
+                if stdout or stderr:
+                    return stdout if stdout else stderr
+            # Fall back to output_text (for identity, LLM, and other nodes)
             return self.output_text
         elif key == "error":
             return self.error or ""
@@ -180,13 +182,13 @@ class Timeline:
     The timeline maintains chronological order and provides
     methods for filtering, display, and programmatic access.
 
-    Blocks are numbered starting from 1 and can be accessed via:
-    - timeline[1] - get block 1
+    Blocks are numbered starting from 0 (Pythonic) and can be accessed via:
+    - timeline[0] - get first block
     - timeline.blocks - list of all blocks
     """
 
     blocks: list[Block] = field(default_factory=list)
-    _next_number: int = field(default=1, init=False)
+    _next_number: int = field(default=0, init=False)
 
     def add(self, block: Block) -> None:
         """Add a block to the timeline, assigning it a number."""
@@ -237,10 +239,10 @@ class Timeline:
     def clear(self) -> None:
         """Clear all blocks and reset numbering."""
         self.blocks.clear()
-        self._next_number = 1
+        self._next_number = 0
 
     def get(self, number: int) -> Block | None:
-        """Get block by number (1-indexed)."""
+        """Get block by number (0-indexed)."""
         for block in self.blocks:
             if block.number == number:
                 return block
@@ -254,7 +256,7 @@ class Timeline:
         return len(self.blocks)
 
     def __getitem__(self, number: int) -> Block:
-        """Get block by number (1-indexed): timeline[1], timeline[2], etc."""
+        """Get block by number (0-indexed): timeline[0], timeline[1], etc."""
         block = self.get(number)
         if block is None:
             raise IndexError(f"No block with number {number}")

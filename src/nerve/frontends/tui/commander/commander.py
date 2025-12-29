@@ -286,7 +286,10 @@ class Commander:
             self._print_timeline(args)
 
         elif command == "clear":
-            self.console.clear()
+            # Full viewport clear using ANSI escape codes
+            # \033[2J clears entire screen, \033[H moves cursor to home (0,0)
+            # \033[3J also clears scrollback buffer for a true fresh start
+            print("\033[2J\033[3J\033[H", end="", flush=True)
 
         elif command == "clean":
             self._clean_blocks()
@@ -299,6 +302,9 @@ class Commander:
 
         elif command == "world":
             await self._show_world(args)
+
+        elif command == "loop":
+            await self._handle_loop(args)
 
         else:
             self.console.print(f"[warning]Unknown command: {command}[/]")
@@ -338,7 +344,12 @@ class Commander:
         node_type = self.nodes[node_id]
         block_type = self._get_block_type_from_str(node_type)
 
+        # Expand variables BEFORE adding block to timeline
+        # This ensures :::-1 references the previous block, not the current one
+        expanded_text = self._expand_variables(text)
+
         # Create block with assigned number (don't render yet)
+        # input_text stores RAW text (what user typed)
         block = Block(
             block_type=block_type,
             node_id=node_id,
@@ -352,8 +363,10 @@ class Commander:
         threshold_seconds = self.async_threshold_ms / 1000
 
         try:
-            # Create execution task
-            exec_task = asyncio.create_task(self._execute_node_command(block, text, start_time))
+            # Create execution task with already-expanded text
+            exec_task = asyncio.create_task(
+                self._execute_node_command(block, expanded_text, start_time)
+            )
 
             # Wait with timeout
             await asyncio.wait_for(
@@ -441,13 +454,21 @@ class Commander:
         """Expand :::N['key'] variables in text.
 
         Supports:
-            :::1['output']           - output from block 1 (stdout or stderr)
-            :::1['input']            - input from block 1
-            :::1['error']            - error from block 1
-            :::1['raw']['stdout']    - raw stdout from block 1
-            :::1['raw']['stderr']    - raw stderr from block 1
-            :::last['output']        - output from last block
-            :::last['raw']['stdout'] - raw stdout from last block
+            Block references (0-indexed):
+                :::0                     - first block's output
+                :::N['output']           - output from block N
+                :::N['input']            - input from block N
+                :::N['raw']['stdout']    - raw stdout from block N
+                :::-1                    - last block (negative indexing)
+                :::-2                    - second to last block
+                :::last                  - last block's output
+
+            Node references (per-node indexing):
+                :::claude                - last block from node 'claude'
+                :::claude[0]             - first block from 'claude'
+                :::claude[-1]            - last block from 'claude'
+                :::claude[-2]            - second to last from 'claude'
+                :::bash[0]['input']      - first bash block's input
 
         Args:
             text: Text with variable references.
@@ -456,6 +477,82 @@ class Commander:
             Text with variables expanded to their values.
         """
         import re
+
+        def get_block_by_negative_index(neg_idx: int) -> Block | None:
+            """Get block by negative index (-1 = last, -2 = second to last)."""
+            blocks = self.timeline.blocks
+            if not blocks:
+                return None
+            try:
+                return blocks[neg_idx]  # Python handles negative indexing
+            except IndexError:
+                return None
+
+        def get_node_blocks(node_id: str) -> list[Block]:
+            """Get all blocks for a specific node."""
+            return [b for b in self.timeline.blocks if b.node_id == node_id]
+
+        def get_node_block_by_index(node_id: str, idx: int) -> Block | None:
+            """Get block by index within a node's blocks (supports negative indexing)."""
+            node_blocks = get_node_blocks(node_id)
+            if not node_blocks:
+                return None
+            try:
+                return node_blocks[idx]
+            except IndexError:
+                return None
+
+        # Pattern: :::-N['raw']['key'] - negative index nested raw access
+        neg_raw_pattern = r":::(-\d+)\[(['\"])raw\2\]\[(['\"])(\w+)\3\]"
+
+        def replace_neg_raw_var(match: re.Match[str]) -> str:
+            neg_idx = int(match.group(1))
+            key = match.group(4)
+            block = get_block_by_negative_index(neg_idx)
+            if block is None:
+                return f"<error: no block at index {neg_idx}>"
+            try:
+                raw = block["raw"]
+                if isinstance(raw, dict):
+                    return str(raw.get(key, f"<no key: {key}>"))
+                return "<error: raw is not a dict>"
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(neg_raw_pattern, replace_neg_raw_var, text)
+
+        # Pattern: :::-N['key'] - negative index simple access
+        neg_pattern = r":::(-\d+)\[(['\"])(\w+)\2\]"
+
+        def replace_neg_var(match: re.Match[str]) -> str:
+            neg_idx = int(match.group(1))
+            key = match.group(3)
+            block = get_block_by_negative_index(neg_idx)
+            if block is None:
+                return f"<error: no block at index {neg_idx}>"
+            try:
+                value = block[key]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(neg_pattern, replace_neg_var, text)
+
+        # Pattern: :::-N (bare negative reference - shorthand for :::-N['output'])
+        bare_neg_pattern = r":::(-\d+)(?!\[)"
+
+        def replace_bare_neg_var(match: re.Match[str]) -> str:
+            neg_idx = int(match.group(1))
+            block = get_block_by_negative_index(neg_idx)
+            if block is None:
+                return f"<error: no block at index {neg_idx}>"
+            try:
+                value = block["output"]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(bare_neg_pattern, replace_bare_neg_var, text)
 
         # Pattern: :::N['raw']['key'] - nested raw access (must match first)
         raw_pattern = r":::(\d+)\[(['\"])raw\2\]\[(['\"])(\w+)\3\]"
@@ -552,6 +649,105 @@ class Commander:
 
         text = re.sub(bare_last_pattern, replace_bare_last_var, text)
 
+        # =====================================================================
+        # Node-based references: :::nodename, :::nodename[N], :::nodename[-1]
+        # =====================================================================
+        # Node names: start with letter/underscore, contain alphanumeric/underscore/hyphen
+        # Must not match: numbers, "last", or negative numbers
+
+        # Pattern: :::node[N]['raw']['key'] - node indexed with raw access
+        node_idx_raw_pattern = (
+            r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]\[(['\"])raw\3\]\[(['\"])(\w+)\4\]"
+        )
+
+        def replace_node_idx_raw_var(match: re.Match[str]) -> str:
+            node_id = match.group(1)
+            idx = int(match.group(2))
+            key = match.group(5)
+            block = get_node_block_by_index(node_id, idx)
+            if block is None:
+                return f"<error: no block for {node_id}[{idx}]>"
+            try:
+                raw = block["raw"]
+                if isinstance(raw, dict):
+                    return str(raw.get(key, f"<no key: {key}>"))
+                return "<error: raw is not a dict>"
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(node_idx_raw_pattern, replace_node_idx_raw_var, text)
+
+        # Pattern: :::node[N]['key'] - node indexed with key access
+        node_idx_key_pattern = r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]\[(['\"])(\w+)\3\]"
+
+        def replace_node_idx_key_var(match: re.Match[str]) -> str:
+            node_id = match.group(1)
+            idx = int(match.group(2))
+            key = match.group(4)
+            block = get_node_block_by_index(node_id, idx)
+            if block is None:
+                return f"<error: no block for {node_id}[{idx}]>"
+            try:
+                value = block[key]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(node_idx_key_pattern, replace_node_idx_key_var, text)
+
+        # Pattern: :::node[N] - node indexed bare (output shorthand)
+        node_idx_bare_pattern = r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\](?!\[)"
+
+        def replace_node_idx_bare_var(match: re.Match[str]) -> str:
+            node_id = match.group(1)
+            idx = int(match.group(2))
+            block = get_node_block_by_index(node_id, idx)
+            if block is None:
+                return f"<error: no block for {node_id}[{idx}]>"
+            try:
+                value = block["output"]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(node_idx_bare_pattern, replace_node_idx_bare_var, text)
+
+        # Pattern: :::node['key'] - node last block with key access
+        node_key_pattern = r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(['\"])(\w+)\2\]"
+
+        def replace_node_key_var(match: re.Match[str]) -> str:
+            node_id = match.group(1)
+            key = match.group(3)
+            block = get_node_block_by_index(node_id, -1)  # Last block for this node
+            if block is None:
+                return f"<error: no blocks for {node_id}>"
+            try:
+                value = block[key]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(node_key_pattern, replace_node_key_var, text)
+
+        # Pattern: :::node - node last block bare (output shorthand)
+        # Must not match "last" or start with digit or hyphen
+        node_bare_pattern = r":::([a-zA-Z_][a-zA-Z0-9_-]*)(?!\[)(?<!:::last)"
+
+        def replace_node_bare_var(match: re.Match[str]) -> str:
+            node_id = match.group(1)
+            if node_id == "last":  # Skip, handled by bare_last_pattern
+                return match.group(0)
+            block = get_node_block_by_index(node_id, -1)  # Last block for this node
+            if block is None:
+                return f"<error: no blocks for {node_id}>"
+            try:
+                value = block["output"]
+                return str(value) if not isinstance(value, str) else value
+            except KeyError as e:
+                return f"<error: {e}>"
+
+        text = re.sub(node_bare_pattern, replace_node_bare_var, text)
+
         return text
 
     def _print_help(self) -> None:
@@ -562,14 +758,18 @@ class Commander:
         self.console.print("  [bold]>>> code[/]       Execute Python code")
         self.console.print("  [bold]Ctrl+C[/]         Interrupt running command")
         self.console.print()
-        self.console.print("[bold]Block References:[/]")
-        self.console.print("  [bold]:::N[/]                   Output from block N (shorthand)")
-        self.console.print("  [bold]:::N['output'][/]         Output (stdout or stderr)")
-        self.console.print("  [bold]:::N['input'][/]          Input text")
-        self.console.print("  [bold]:::N['raw']['stdout'][/]  Raw stdout")
-        self.console.print("  [bold]:::N['raw']['stderr'][/]  Raw stderr")
-        self.console.print("  [bold]:::last[/]                Output from last block (shorthand)")
-        self.console.print("  [bold]:::last['output'][/]      Output from last block")
+        self.console.print("[bold]Block References:[/] (0-indexed)")
+        self.console.print("  [bold]:::0[/]                   First block's output")
+        self.console.print("  [bold]:::N[/]                   Block N's output")
+        self.console.print("  [bold]:::N['input'][/]          Block N's input text")
+        self.console.print("  [bold]:::-1[/]                  Last block (negative indexing)")
+        self.console.print("  [bold]:::-2[/]                  Second to last block")
+        self.console.print()
+        self.console.print("[bold]Node References:[/] (per-node indexing)")
+        self.console.print("  [bold]:::claude[/]              Last block from node 'claude'")
+        self.console.print("  [bold]:::claude[0][/]           First block from 'claude'")
+        self.console.print("  [bold]:::claude[-2][/]          Second to last from 'claude'")
+        self.console.print("  [bold]:::bash[0]['input'][/]    First bash block's input")
         self.console.print()
         self.console.print("[bold]Colon Commands:[/]")
         self.console.print("  [bold]:world bash[/]    Enter bash world (no @ prefix needed)")
@@ -577,10 +777,25 @@ class Commander:
         self.console.print("  [bold]:back[/]          Exit current world")
         self.console.print("  [bold]:timeline[/]      Show timeline (filtered in world)")
         self.console.print("  [bold]:refresh[/]       Clear screen and re-render view")
-        self.console.print("  [bold]:clean[/]         Clear all blocks, start from :::1")
+        self.console.print("  [bold]:clean[/]         Clear all blocks, start from :::0")
         self.console.print("  [bold]:nodes[/]         List available nodes")
         self.console.print("  [bold]:theme name[/]    Switch theme")
         self.console.print("  [bold]:exit[/]          Exit world or commander")
+        self.console.print()
+        self.console.print("[bold]Loop Command:[/]")
+        self.console.print('  [bold]:loop @n1 @n2 "prompt" [options][/]')
+        self.console.print("    Round-robin conversation between nodes")
+        self.console.print('    [dim]--until "phrase"[/]  Stop when output contains phrase')
+        self.console.print("    [dim]--max N[/]           Maximum rounds (default: 10)")
+        self.console.print('    [dim]--node "template"[/] Per-node prompt template')
+        self.console.print("    Template variables:")
+        self.console.print("      [dim]{prev}[/]    Previous step's output")
+        self.console.print(
+            "      [dim]{node}[/]    That node's last output (e.g., {claude}, {bash})"
+        )
+        self.console.print(
+            '  [dim]Example: :loop @claude @gemini "discuss AI" --until "AGREED" --max 5[/]'
+        )
         self.console.print()
 
     async def _print_nodes(self) -> None:
@@ -704,7 +919,7 @@ class Commander:
         self.timeline.clear()
         self.console.clear()
         self._print_welcome()
-        self.console.print(f"[dim]Cleared {count} blocks. Starting fresh from :::1[/]")
+        self.console.print(f"[dim]Cleared {count} blocks. Starting fresh from :::0[/]")
         self.console.print()
 
     async def _refresh_view(self) -> None:
@@ -738,6 +953,273 @@ class Commander:
             if self.timeline.blocks:
                 for i, block in enumerate(self.timeline.blocks):
                     self.console.print(block.render(self.console, show_separator=(i > 0)))
+
+    async def _handle_loop(self, args: str) -> None:
+        """Handle :loop command for multi-node conversation chains.
+
+        Syntax:
+            :loop @node1 @node2 [@node3...] "start prompt" [options]
+
+        Options:
+            --until "phrase"     Stop when output contains phrase
+            --max N              Maximum rounds (default: 10)
+            --<node> "template"  Per-node prompt template ({prev} = previous output)
+
+        Pattern: Chain (round-robin)
+            A → B → C → A → B → C → ...
+
+        Example:
+            :loop @claude @gemini "implement fibonacci" --until "LGTM" --max 5
+            :loop @dev @reviewer "write a parser" --dev "Feedback: {prev}" --reviewer "Review: {prev}"
+        """
+        if not args.strip():
+            self.console.print(
+                '[warning]Usage: :loop @node1 @node2 "start prompt" [--until phrase] [--max N][/]'
+            )
+            self.console.print('[dim]Example: :loop @claude @gemini "discuss AI" --max 5[/]')
+            return
+
+        # Parse the loop arguments
+        parsed = self._parse_loop_args(args)
+        if parsed is None:
+            return  # Error already printed
+
+        nodes, start_prompt, until_phrase, max_rounds, templates = parsed
+
+        # Validate nodes exist
+        await self._sync_nodes()
+        for node_id in nodes:
+            if node_id not in self.nodes:
+                self.console.print(f"[error]Node not found: {node_id}[/]")
+                return
+
+        if len(nodes) < 2:
+            self.console.print("[error]Loop requires at least 2 nodes[/]")
+            return
+
+        # Print loop start info
+        self.console.print()
+        self.console.print(f"[bold]Starting loop:[/] {' → '.join('@' + n for n in nodes)}")
+        self.console.print(
+            f"[dim]Max rounds: {max_rounds}"
+            + (f', until: "{until_phrase}"' if until_phrase else "")
+            + "[/]"
+        )
+        self.console.print()
+
+        # Execute the loop
+        prev_output = start_prompt
+        node_outputs: dict[str, str] = {}  # Track last output from each node
+        exchange_num = 0  # Total exchanges for reporting
+        stopped_by_phrase = False
+        aborted = False
+
+        try:
+            for round_num in range(max_rounds):
+                for step, node_id in enumerate(nodes):
+                    # Build the prompt
+                    if round_num == 0 and step == 0:
+                        # First exchange: use start prompt directly
+                        prompt = start_prompt
+                    else:
+                        # Subsequent: use template or raw prev_output
+                        template = templates.get(node_id, "{prev}")
+                        prompt = template.replace("{prev}", prev_output)
+                        # Replace {nodename} references with that node's last output
+                        for nid, output in node_outputs.items():
+                            prompt = prompt.replace("{" + nid + "}", output)
+
+                    # Execute on node (creates block, updates timeline)
+                    block = await self._execute_loop_step(node_id, prompt)
+                    if block is None:
+                        self.console.print("[error]Loop aborted due to execution error[/]")
+                        aborted = True
+                        break
+
+                    # Get output for next iteration
+                    prev_output = block.output_text or ""
+                    node_outputs[node_id] = prev_output  # Track this node's output
+                    exchange_num += 1
+
+                    # Check stop condition
+                    if until_phrase and until_phrase in prev_output:
+                        stopped_by_phrase = True
+                        break
+
+                # Break outer loop if inner loop broke
+                if stopped_by_phrase or aborted:
+                    break
+
+        except KeyboardInterrupt:
+            self.console.print()
+            self.console.print("[warning]Loop interrupted by user[/]")
+            return
+
+        # Print summary
+        self.console.print()
+        if stopped_by_phrase:
+            self.console.print(
+                f'[success]Loop ended: "{until_phrase}" detected after {exchange_num} exchanges[/]'
+            )
+        elif aborted:
+            self.console.print(f"[error]Loop aborted after {exchange_num} exchanges[/]")
+        else:
+            self.console.print(
+                f"[dim]Loop completed: {exchange_num} exchanges ({max_rounds} rounds)[/]"
+            )
+
+    def _parse_loop_args(
+        self, args: str
+    ) -> tuple[list[str], str, str | None, int, dict[str, str]] | None:
+        """Parse :loop command arguments.
+
+        Returns:
+            Tuple of (nodes, start_prompt, until_phrase, max_rounds, templates)
+            or None if parsing failed.
+        """
+        import shlex
+
+        # Default values
+        max_rounds = 10
+        until_phrase: str | None = None
+        templates: dict[str, str] = {}
+        nodes: list[str] = []
+        start_prompt: str | None = None
+
+        try:
+            # Use shlex to handle quoted strings properly
+            tokens = shlex.split(args)
+        except ValueError as e:
+            self.console.print(f"[error]Parse error: {e}[/]")
+            return None
+
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+
+            if token.startswith("@"):
+                # Node reference
+                nodes.append(token[1:])
+                i += 1
+
+            elif token == "--until":
+                # Until phrase
+                if i + 1 >= len(tokens):
+                    self.console.print("[error]--until requires a value[/]")
+                    return None
+                until_phrase = tokens[i + 1]
+                i += 2
+
+            elif token == "--max":
+                # Max rounds
+                if i + 1 >= len(tokens):
+                    self.console.print("[error]--max requires a number[/]")
+                    return None
+                try:
+                    max_rounds = int(tokens[i + 1])
+                except ValueError:
+                    self.console.print(f"[error]--max must be a number, got: {tokens[i + 1]}[/]")
+                    return None
+                i += 2
+
+            elif token.startswith("--"):
+                # Per-node template: --nodename "template"
+                node_name = token[2:]
+                if i + 1 >= len(tokens):
+                    self.console.print(f"[error]{token} requires a template value[/]")
+                    return None
+                templates[node_name] = tokens[i + 1]
+                i += 2
+
+            elif start_prompt is None:
+                # First non-option, non-node token is the start prompt
+                start_prompt = token
+                i += 1
+
+            else:
+                self.console.print(f"[error]Unexpected argument: {token}[/]")
+                return None
+
+        # Validate
+        if not nodes:
+            self.console.print("[error]No nodes specified. Use @node1 @node2 ...[/]")
+            return None
+
+        if start_prompt is None:
+            self.console.print("[error]No start prompt specified[/]")
+            return None
+
+        return nodes, start_prompt, until_phrase, max_rounds, templates
+
+    async def _execute_loop_step(self, node_id: str, prompt: str) -> Block | None:
+        """Execute a single step in the loop, creating a block.
+
+        Args:
+            node_id: Node to execute on.
+            prompt: Prompt to send.
+
+        Returns:
+            The completed Block, or None on error.
+        """
+        import time
+
+        if self._adapter is None:
+            return None
+
+        node_type = self.nodes.get(node_id, "node")
+        block_type = self._get_block_type_from_str(node_type)
+
+        # Expand variables BEFORE adding block to timeline
+        # This ensures :::-1 references the previous block, not the current one
+        expanded_prompt = self._expand_variables(prompt)
+
+        # Create and add block (input_text stores RAW prompt)
+        block = Block(
+            block_type=block_type,
+            node_id=node_id,
+            input_text=prompt,
+            status="running",
+        )
+        self.timeline.add(block)
+
+        # Render the running block
+        self.timeline.render_last(self.console)
+
+        # Execute
+        start_time = time.monotonic()
+
+        try:
+            self._active_node_id = node_id
+            result = await self._adapter.execute_on_node(node_id, expanded_prompt)
+        except Exception as e:
+            block.status = "error"
+            block.error = f"{type(e).__name__}: {e}"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            self._print_block(block)
+            return None
+        finally:
+            self._active_node_id = None
+
+        duration_ms = (time.monotonic() - start_time) * 1000
+
+        # Update block with results
+        if result.get("success"):
+            block.status = "completed"
+            block.output_text = str(result.get("output", "")).strip()
+            block.raw = result
+        else:
+            block.status = "error"
+            error_msg = result.get("error", "Unknown error")
+            error_type = result.get("error_type", "unknown")
+            block.error = f"[{error_type}] {error_msg}"
+            block.raw = result
+
+        block.duration_ms = duration_ms
+
+        # Print the completed block
+        self._print_block(block)
+
+        return block if block.status == "completed" else None
 
     async def _command_executor(self) -> None:
         """Background task that processes commands from the queue.
@@ -787,12 +1269,12 @@ class Commander:
         # This properly coordinates with prompt_toolkit's input line
         print(output, end="", file=sys.stdout, flush=True)
 
-    async def _execute_node_command(self, block: Block, raw_input: str, start_time: float) -> None:
+    async def _execute_node_command(self, block: Block, text: str, start_time: float) -> None:
         """Execute a node command and update the block with results.
 
         Args:
             block: The block to update with results.
-            raw_input: The raw input text (variables not yet expanded).
+            text: The input text (already expanded by caller).
             start_time: When execution started (for duration calculation).
         """
         if self._adapter is None:
@@ -807,9 +1289,6 @@ class Commander:
             block.error = "No node ID"
             block.duration_ms = (time.monotonic() - start_time) * 1000
             return
-
-        # Expand variables NOW (at execution time, when earlier blocks are complete)
-        text = self._expand_variables(raw_input)
 
         # Track active node for interrupt support
         self._active_node_id = node_id
