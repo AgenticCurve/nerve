@@ -90,6 +90,11 @@ class CommandExecutor:
         """
         threshold_seconds = self.async_threshold_ms / 1000
 
+        # Wait for dependencies BEFORE starting execution
+        # This ensures all referenced blocks (:::N) are completed before variable expansion
+        if block.depends_on:
+            await self.wait_for_dependencies(block)
+
         try:
             exec_task: asyncio.Task[None] = asyncio.create_task(execute_fn())
 
@@ -109,6 +114,70 @@ class CommandExecutor:
 
             # Queue the ongoing task for the executor to monitor
             await self._command_queue.put((block, exec_task))
+
+    async def wait_for_dependencies(self, block: Block) -> None:
+        """Wait for all dependency blocks to complete.
+
+        Polls every 100ms until all referenced blocks are in 'completed'
+        or 'error' state. Sets block status to 'waiting' while waiting.
+
+        Fails with timeout error if dependencies don't complete within 5 minutes.
+
+        Args:
+            block: The block waiting for dependencies.
+        """
+        # Validate dependencies: no self-reference or forward references
+        invalid_refs = [dep for dep in block.depends_on if dep >= block.number]
+        if invalid_refs:
+            block.status = "error"
+            block.error = (
+                f"Invalid block reference(s): {invalid_refs}. "
+                f"Block :::{block.number} cannot reference itself or future blocks "
+                f"(valid range: :::0 to :::{block.number - 1})"
+            )
+            self.timeline.render_last(self.console)
+            return
+
+        # Show waiting status
+        block.status = "waiting"
+        self.timeline.render_last(self.console)
+
+        # Timeout after 5 minutes to prevent infinite wait
+        timeout_seconds = 300
+        start_time = time.monotonic()
+
+        while True:
+            # Check timeout
+            elapsed = time.monotonic() - start_time
+            if elapsed > timeout_seconds:
+                block.status = "error"
+                block.error = (
+                    f"Timeout waiting for dependencies {list(block.depends_on)}. "
+                    f"Waited {timeout_seconds}s but dependencies did not complete."
+                )
+                self.timeline.render_last(self.console)
+                return
+            all_ready = True
+
+            for dep_num in block.depends_on:
+                # Bounds check
+                if dep_num >= len(self.timeline.blocks):
+                    continue
+
+                dep_block = self.timeline.blocks[dep_num]
+
+                # Wait for completed or error (both mean "done")
+                if dep_block.status not in ("completed", "error"):
+                    all_ready = False
+                    break
+
+            if all_ready:
+                # All dependencies ready - reset to pending for execution
+                block.status = "pending"
+                return
+
+            # Wait 100ms before checking again
+            await asyncio.sleep(0.1)
 
     async def _background_executor(self) -> None:
         """Background task that processes commands from the queue.
@@ -150,9 +219,6 @@ class CommandExecutor:
         try:
             # Ongoing task - wait for it to complete
             # The task is already running and will update the block
-            block.status = "running"
-            # Don't render here - just update status (avoids duplicate printing)
-            # User can verify concurrent execution by seeing prompts in wezterm panes
             await task
 
         except Exception as e:

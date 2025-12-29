@@ -296,26 +296,33 @@ class Commander:
         node_type = self.nodes[node_id]
         block_type = get_block_type(node_type)
 
-        # Expand variables BEFORE adding block to timeline
-        expanded_text = expand_variables(self.timeline, text, self._get_nodes_by_type())
+        # DON'T expand variables yet - detect dependencies first
+        from nerve.frontends.tui.commander.variables import extract_block_dependencies
 
-        # Create block (input_text stores RAW text)
+        dependencies = extract_block_dependencies(text, self.timeline, self._get_nodes_by_type())
+
+        # Create block with dependency info (input_text stores RAW text)
         block = Block(
             block_type=block_type,
             node_id=node_id,
             input_text=text,
-            status="running",
+            depends_on=dependencies,
         )
         self.timeline.add(block)
 
         # Execute with threshold handling
         start_time = time.monotonic()
 
+        # IMPORTANT: Variable expansion happens INSIDE execute function
+        # This ensures dependencies are completed before expansion
         async def execute() -> None:
+            # By this point, execute_with_threshold has waited for dependencies
+            expanded_text = expand_variables(self.timeline, text, self._get_nodes_by_type())
+
             await execute_node_command(
                 self._adapter,  # type: ignore[arg-type]
                 block,
-                expanded_text,
+                expanded_text,  # Now has correct values from completed dependencies
                 start_time,
                 self._set_active_node,
             )
@@ -332,12 +339,17 @@ class Commander:
             self.console.print("[error]Not connected to server[/]")
             return
 
-        # Create block
+        # Detect dependencies (Python code can reference blocks and nodes)
+        from nerve.frontends.tui.commander.variables import extract_block_dependencies
+
+        dependencies = extract_block_dependencies(code, self.timeline, self._get_nodes_by_type())
+
+        # Create block with dependency info
         block = Block(
             block_type="python",
             node_id=None,
             input_text=code,
-            status="running",
+            depends_on=dependencies,
         )
         self.timeline.add(block)
 
