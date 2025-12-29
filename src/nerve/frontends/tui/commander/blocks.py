@@ -38,10 +38,12 @@ class Block:
     duration_ms: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    # Execution status: "pending", "running", "completed", "error"
-    status: str = "completed"
+    # Execution status: "pending", "completed", "error", "waiting"
+    status: str = "pending"
     # Track if this block was executed asynchronously (exceeded threshold)
     was_async: bool = False
+    # Track which blocks this one depends on (for dependency-aware execution)
+    depends_on: set[int] = field(default_factory=set)
 
     def render(self, console: Console, show_separator: bool = True) -> RenderableType:
         """Render this block as borderless text.
@@ -117,19 +119,19 @@ class Block:
         else:
             header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")
 
-        # Status indicator for pending/running/async-completed
+        # Status indicator for pending/waiting/async-completed
         if self.status == "pending":
             header.append("⏳ ", style="pending")
-        elif self.status == "running":
-            header.append("⚡ ", style="warning")
+        elif self.status == "waiting":
+            header.append("⏸️ ", style="dim")
         elif self.status == "completed" and self.was_async:
             # Show ⚡ for blocks that completed asynchronously
             header.append("⚡ ", style="success")
 
         # Timestamp and duration
         time_str = self.timestamp.strftime("%H:%M:%S")
-        if self.status in ("pending", "running"):
-            header.append(f"({time_str})", style="pending" if is_pending else "timestamp")
+        if self.status in ("pending", "waiting"):
+            header.append(f"({time_str})", style="pending" if self.status == "pending" else "dim")
         elif self.duration_ms is not None:
             if self.duration_ms < 1000:
                 duration_str = f"{self.duration_ms:.0f}ms"

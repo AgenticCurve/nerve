@@ -260,21 +260,32 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     node_type = commander.nodes.get(node_id, "node")
     block_type = get_block_type(node_type)
 
-    # Expand variables BEFORE adding block to timeline
-    # This ensures :::-1 references the previous block, not the current one
-    expanded_prompt = expand_variables(commander.timeline, prompt, commander._get_nodes_by_type())
+    # Detect dependencies from prompt BEFORE expansion
+    from nerve.frontends.tui.commander.variables import extract_block_dependencies
+
+    dependencies = extract_block_dependencies(
+        prompt, commander.timeline, commander._get_nodes_by_type()
+    )
 
     # Create and add block (input_text stores RAW prompt)
     block = Block(
         block_type=block_type,
         node_id=node_id,
         input_text=prompt,
-        status="running",
+        depends_on=dependencies,
     )
     commander.timeline.add(block)
 
-    # Render the running block
-    commander.timeline.render_last(commander.console)
+    # Wait for dependencies if any (will render "waiting" status)
+    if dependencies:
+        await commander._executor.wait_for_dependencies(block)
+    else:
+        # No dependencies - render the pending block immediately
+        commander.timeline.render_last(commander.console)
+
+    # Expand variables AFTER dependencies are ready
+    # This ensures :::-1 and other refs have completed values
+    expanded_prompt = expand_variables(commander.timeline, prompt, commander._get_nodes_by_type())
 
     # Execute
     start_time = time.monotonic()

@@ -153,7 +153,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 565] adapters.py
+│       │   │   │   ├── [L: 581] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -179,14 +179,14 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 277] blocks.py
-│       │           ├── [L: 394] commander.py
+│       │           ├── [L: 279] blocks.py
+│       │           ├── [L: 406] commander.py
 │       │           ├── [L: 174] commands.py
-│       │           ├── [L: 291] executor.py
-│       │           ├── [L: 345] loop.py
+│       │           ├── [L: 357] executor.py
+│       │           ├── [L: 356] loop.py
 │       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
-│       │           └── [L: 413] variables.py
+│       │           └── [L: 504] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -273,9 +273,13 @@
     │   └── [L:  90] test_validation.py
     ├── frontends/
     │   ├── [L:   1] __init__.py
-    │   └── sdk/
+    │   ├── sdk/
+    │   │   ├── [L:   1] __init__.py
+    │   │   └── [L: 206] test_client.py
+    │   └── tui/
     │       ├── [L:   1] __init__.py
-    │       └── [L: 206] test_client.py
+    │       ├── [L: 346] test_commander_dependencies.py
+    │       └── [L: 395] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
     │   ├── clients/
@@ -300,4 +304,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 237 files, 53,863 total lines
+65 directories, 240 files, 54,803 total lines

@@ -411,3 +411,94 @@ def expand_variables(
         Text with variables expanded to their values.
     """
     return VariableExpander(timeline, nodes_by_type).expand(text)
+
+
+def extract_block_dependencies(
+    text: str, timeline: Timeline, nodes_by_type: dict[str, str] | None = None
+) -> set[int]:
+    """Extract block numbers that this text depends on.
+
+    Parses variable references to identify which blocks must complete
+    before this text can be safely expanded and executed.
+
+    Examples:
+        "review :::0" -> {0}
+        "compare :::0 and :::1" -> {0, 1}
+        "check :::-1" -> {<actual last block number>}
+        ":::last summary" -> {<last block number>}
+        "review :::claude" -> {<last claude block number>}
+        "compare :::claude[0] and :::gemini[0]" -> {<first claude>, <first gemini>}
+        "no refs" -> set()
+
+    Args:
+        text: Text with potential variable references.
+        timeline: Timeline to resolve relative references (:::last, :::-N, :::node).
+        nodes_by_type: Optional mapping from node type/name to node ID.
+            Required for resolving node references like :::claude.
+
+    Returns:
+        Set of block numbers (0-indexed) that must be completed before
+        this text can be expanded.
+    """
+    dependencies = set()
+
+    # Pattern 1: :::N (positive numeric references)
+    for match in re.finditer(r":::(\d+)", text):
+        dependencies.add(int(match.group(1)))
+
+    # Pattern 2: :::-N (negative indexing - resolve to actual block number NOW)
+    for match in re.finditer(r":::(-\d+)", text):
+        neg_idx = int(match.group(1))
+        actual_idx = len(timeline.blocks) + neg_idx
+        if 0 <= actual_idx < len(timeline.blocks):
+            dependencies.add(actual_idx)
+
+    # Pattern 3: :::last (resolve to last block number NOW)
+    if ":::last" in text and timeline.blocks:
+        dependencies.add(len(timeline.blocks) - 1)
+
+    # Pattern 4 & 5: Node references (:::nodename, :::nodename[N])
+    # Resolve to actual block numbers at extraction time
+    if nodes_by_type:
+        # Pattern 4a: :::nodename[N] - specific indexed block from node
+        # Must check this BEFORE bare nodename to avoid partial matches
+        for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]", text):
+            node_ref = match.group(1)
+            if node_ref == "last":
+                continue  # Already handled by pattern 3
+
+            idx = int(match.group(2))
+
+            # Resolve node_ref to actual node_id
+            node_id = nodes_by_type.get(node_ref, node_ref)
+
+            # Find all blocks for this node
+            node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+
+            # Get the specific indexed block (supports negative indexing)
+            if node_blocks:
+                try:
+                    target_block = node_blocks[idx]
+                    dependencies.add(target_block.number)
+                except IndexError:
+                    pass  # Out of bounds - will error during expansion
+
+        # Pattern 4b: :::nodename - last block from node
+        # Negative lookahead: don't match if followed by [NUMBER] (handled by pattern 4a)
+        # But DO match if followed by ['key'] (keyed access like :::claude['output'])
+        for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)(?!\[-?\d+\])", text):
+            node_ref = match.group(1)
+            if node_ref == "last":
+                continue  # Already handled by pattern 3
+
+            # Resolve node_ref to actual node_id
+            node_id = nodes_by_type.get(node_ref, node_ref)
+
+            # Find all blocks for this node
+            node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+
+            # Get the last block from this node
+            if node_blocks:
+                dependencies.add(node_blocks[-1].number)
+
+    return dependencies

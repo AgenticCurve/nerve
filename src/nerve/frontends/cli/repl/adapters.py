@@ -329,6 +329,11 @@ class LocalSessionAdapter:
 class RemoteSessionAdapter:
     """Adapter for remote server session."""
 
+    # Execution timeout constants (in seconds)
+    DEFAULT_TIMEOUT = 300.0  # 5 minutes for standard nodes
+    CLAUDE_NODE_TIMEOUT = 2400.0  # 40 minutes for long-running Claude tasks
+    CLAUDE_NODE_TYPES = {"ClaudeWezTermNode", "ClaudeWezTerm"}  # Node types with extended timeout
+
     def __init__(
         self, client: Any, server_name: str, session_name: str | None = None
     ):  # UnixSocketClient type
@@ -419,11 +424,22 @@ class RemoteSessionAdapter:
         """Execute on a server node."""
         from nerve.server.protocols import Command, CommandType
 
+        # Determine timeout based on node type
+        # ClaudeWezTermNode gets extended timeout for long-running tasks
+        timeout = self.DEFAULT_TIMEOUT
+        for node_info in self._cached_nodes_info:
+            if node_info.get("id") == node_id:
+                node_type = node_info.get("type", "")
+                if node_type in self.CLAUDE_NODE_TYPES:
+                    timeout = self.CLAUDE_NODE_TIMEOUT
+                break
+
         result = await self.client.send_command(
             Command(
                 type=CommandType.EXECUTE_INPUT,
                 params=self._add_session_id({"node_id": node_id, "text": text, "stream": False}),
-            )
+            ),
+            timeout=timeout,
         )
         if result.success:
             data = result.data or {}
