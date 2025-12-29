@@ -64,6 +64,7 @@ class ClaudeWezTermNode:
     _history_writer: HistoryWriter | None = field(default=None, init=False, repr=False)
     _created_via_create: bool = field(default=False, init=False, repr=False)
     _proxy_url: str | None = field(default=None, init=False, repr=False)
+    _execute_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prevent direct instantiation."""
@@ -199,6 +200,7 @@ class ClaudeWezTermNode:
             wrapper.state = NodeState.READY
             wrapper._history_writer = history_writer
             wrapper._proxy_url = proxy_url
+            wrapper._execute_lock = asyncio.Lock()  # Initialize lock for execute_when_ready
 
             # History: log the initial run command (buffer captured by first operation)
             if history_writer and history_writer.enabled:
@@ -364,6 +366,78 @@ class ClaudeWezTermNode:
                 duration_s=f"{duration:.1f}",
             )
             raise
+
+    async def execute_when_ready(
+        self,
+        context: ExecutionContext,
+        ready_timeout: float = 300.0,
+    ) -> dict[str, Any]:
+        """Execute when ready. Waits if terminal is busy.
+
+        This method checks if the terminal is busy (showing "esc to interrupt" markers)
+        and waits until it's ready before executing. This prevents sending commands
+        while Claude is still processing a previous request.
+
+        Args:
+            context: Execution context with input string.
+            ready_timeout: Maximum time to wait for terminal to be ready (seconds).
+
+        Returns:
+            Dict with fields (same as execute()):
+            - success: bool - True if terminal responded successfully
+            - error: str | None - Error message if failed, None if success
+            - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - input: str - The input sent to terminal
+            - output: str - Last text section content (Claude-specific, filters thinking)
+            - raw: str - Raw terminal output
+            - sections: list[dict] - Parsed sections from Claude parser
+            - is_ready: bool - Terminal is ready for new input
+            - is_complete: bool - Response is complete
+            - tokens: int | None - Token count from Claude parser
+            - parser: str - Parser type used (typically "CLAUDE")
+        """
+        async with self._execute_lock:
+            # Wait until terminal shows no busy markers
+            await self._wait_until_ready(ready_timeout)
+
+            # Now safe to execute
+            return await self.execute(context)
+
+    async def _wait_until_ready(self, timeout: float = 300.0) -> None:
+        """Wait until terminal shows ready state using Claude parser.
+
+        Uses the same logic as _wait_for_ready() but checks BEFORE sending input
+        rather than after, to ensure the terminal is idle.
+
+        Args:
+            timeout: Maximum time to wait (seconds).
+
+        Raises:
+            TimeoutError: If terminal doesn't become ready within timeout.
+        """
+        from nerve.core.parsers import get_parser
+
+        parser = get_parser(self._default_parser)  # Use Claude parser
+        start = time.monotonic()
+
+        ready_count = 0
+        consecutive_required = 2  # Match WezTermNode behavior
+
+        while time.monotonic() - start < timeout:
+            # Check FULL buffer (same as _wait_for_ready does)
+            check_content = self._inner.buffer
+
+            if parser.is_ready(check_content):
+                ready_count += 1
+                if ready_count >= consecutive_required:
+                    await asyncio.sleep(0.3)
+                    return  # Ready!
+            else:
+                ready_count = 0
+
+            await asyncio.sleep(2.0)  # Match WezTermNode poll interval
+
+        raise TimeoutError(f"Terminal did not become ready within {timeout}s")
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.

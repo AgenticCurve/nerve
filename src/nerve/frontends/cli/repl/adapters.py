@@ -201,13 +201,20 @@ class LocalSessionAdapter:
     async def execute_on_node(self, node_id: str, text: str) -> dict[str, Any]:
         """Execute on a node (for send command)."""
         from nerve.core.nodes.context import ExecutionContext
+        from nerve.core.nodes.terminal.claude_wezterm_node import ClaudeWezTermNode
 
         node = self.session.get_node(node_id)
         if not node:
             raise ValueError(f"Node not found: {node_id}")
 
         ctx = ExecutionContext(session=self.session, input=text)
-        result = await node.execute(ctx)
+
+        # Use execute_when_ready() for ClaudeWezTermNode to prevent concurrent execution
+        if isinstance(node, ClaudeWezTermNode):
+            result = await node.execute_when_ready(ctx)
+        else:
+            result = await node.execute(ctx)
+
         # All nodes now return dicts with success/error/error_type fields
         assert isinstance(result, dict)
         return result

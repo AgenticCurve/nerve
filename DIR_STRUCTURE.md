@@ -115,7 +115,7 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 655] claude_wezterm_node.py
+│       │   │   │   ├── [L: 729] claude_wezterm_node.py
 │       │   │   │   ├── [L: 772] pty_node.py
 │       │   │   │   └── [L: 865] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
@@ -153,7 +153,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 524] adapters.py
+│       │   │   │   ├── [L: 531] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -179,7 +179,7 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 267] blocks.py
+│       │           ├── [L: 272] blocks.py
 │       │           ├── [L: 378] commander.py
 │       │           ├── [L: 174] commands.py
 │       │           ├── [L: 241] executor.py
@@ -213,7 +213,7 @@
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
 │       │   │   ├── [L: 346] graph_handler.py
-│       │   │   ├── [L: 329] node_interaction_handler.py
+│       │   │   ├── [L: 336] node_interaction_handler.py
 │       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
@@ -300,4 +300,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 237 files, 53,488 total lines
+64 directories, 237 files, 53,581 total lines
