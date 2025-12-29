@@ -57,8 +57,8 @@ class Block:
         """
         parts: list[RenderableType] = []
 
-        # Pending blocks use theme's "pending" style throughout
-        is_pending = self.status == "pending"
+        # Pending and waiting blocks use theme's "pending" style throughout
+        is_pending = self.status in ("pending", "waiting")
 
         # Separator line (light dashed, matches terminal width)
         if show_separator:
@@ -101,8 +101,8 @@ class Block:
         """Build the header line with block number, node, and timing."""
         header = Text()
 
-        # Pending blocks use theme's "pending" style throughout
-        is_pending = self.status == "pending"
+        # Pending and waiting blocks use theme's "pending" style throughout
+        is_pending = self.status in ("pending", "waiting")
 
         # Block number :::1
         header.append(f":::{self.number} ", style="pending" if is_pending else "dim")
