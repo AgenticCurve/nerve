@@ -332,7 +332,7 @@ class RemoteSessionAdapter:
     # Execution timeout constants (in seconds)
     DEFAULT_TIMEOUT = 300.0  # 5 minutes for standard nodes
     CLAUDE_NODE_TIMEOUT = 2400.0  # 40 minutes for long-running Claude tasks
-    CLAUDE_NODE_TYPES = {"ClaudeWezTermNode", "ClaudeWezTerm"}  # Node types with extended timeout
+    CLAUDE_NODE_TYPES = {"claude-wezterm"}  # Node types with extended timeout
 
     def __init__(
         self, client: Any, server_name: str, session_name: str | None = None

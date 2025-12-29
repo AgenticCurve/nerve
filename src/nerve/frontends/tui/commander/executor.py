@@ -138,7 +138,27 @@ class CommandExecutor:
             self.timeline.render_last(self.console)
             return
 
-        # Show waiting status
+        # Check if dependencies are already ready BEFORE showing waiting status
+        all_ready = True
+        for dep_num in block.depends_on:
+            # Bounds check
+            if dep_num >= len(self.timeline.blocks):
+                all_ready = False
+                break
+
+            dep_block = self.timeline.blocks[dep_num]
+
+            # Wait for completed or error (both mean "done")
+            if dep_block.status not in ("completed", "error"):
+                all_ready = False
+                break
+
+        # If already ready, just set to pending and return (no render needed)
+        if all_ready:
+            block.status = "pending"
+            return
+
+        # Show waiting status ONLY if we actually need to wait
         block.status = "waiting"
         self.timeline.render_last(self.console)
 
@@ -157,8 +177,8 @@ class CommandExecutor:
                 )
                 self.timeline.render_last(self.console)
                 return
-            all_ready = True
 
+            all_ready = True
             for dep_num in block.depends_on:
                 # Bounds check
                 if dep_num >= len(self.timeline.blocks):
