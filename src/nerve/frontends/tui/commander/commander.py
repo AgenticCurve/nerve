@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
@@ -135,6 +136,10 @@ class Commander:
             parts.append(f"⏳ {pending_count}")
         if waiting_count > 0:
             parts.append(f"⏸️  {waiting_count}")
+
+        # Clock
+        current_time = datetime.now().strftime("%H:%M:%S")
+        parts.append(current_time)
 
         # Help hint
         parts.append(":help for commands")
