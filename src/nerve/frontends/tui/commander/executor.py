@@ -90,29 +90,45 @@ class CommandExecutor:
         """
         threshold_seconds = self.async_threshold_ms / 1000
 
-        # If block has dependencies, queue for background processing immediately
-        # This prevents blocking the main REPL loop while waiting for dependencies
+        # If block has dependencies, check if they're already ready
         if block.depends_on:
-            block.status = "waiting"
-            self.timeline.render_last(self.console)
+            # Check if dependencies are already complete
+            all_ready = True
+            for dep_num in block.depends_on:
+                # Bounds check
+                if dep_num >= len(self.timeline.blocks):
+                    all_ready = False
+                    break
 
-            # Create wrapper that waits for dependencies then executes
-            async def wait_and_execute() -> None:
-                await self.wait_for_dependencies(block)
+                dep_block = self.timeline.blocks[dep_num]
+                if dep_block.status not in ("completed", "error"):
+                    all_ready = False
+                    break
 
-                # If dependency wait failed (validation error or timeout), stop here
-                if block.status == "error":
-                    return
+            # If dependencies are NOT ready, queue for background waiting
+            if not all_ready:
+                block.status = "waiting"
+                self.timeline.render_last(self.console)
 
-                # Dependencies ready - now execute
-                await execute_fn()
+                # Create wrapper that waits for dependencies then executes
+                async def wait_and_execute() -> None:
+                    await self.wait_for_dependencies(block)
 
-            # Queue the wait+execute task for background processing
-            wait_task: asyncio.Task[None] = asyncio.create_task(wait_and_execute())
-            await self._command_queue.put((block, wait_task))
-            return  # Return immediately - don't block main loop!
+                    # If dependency wait failed (validation error or timeout), stop here
+                    if block.status == "error":
+                        return
 
-        # No dependencies - use threshold-based execution (fast path or background queue)
+                    # Dependencies ready - now execute
+                    await execute_fn()
+
+                # Queue the wait+execute task for background processing
+                wait_task: asyncio.Task[None] = asyncio.create_task(wait_and_execute())
+                await self._command_queue.put((block, wait_task))
+                return  # Return immediately - don't block main loop!
+
+            # Dependencies ARE ready - fall through to normal execution below
+
+        # No dependencies (or dependencies already ready) - use threshold-based execution (fast path or background queue)
         try:
             exec_task: asyncio.Task[None] = asyncio.create_task(execute_fn())
 

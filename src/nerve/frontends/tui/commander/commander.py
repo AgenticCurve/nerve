@@ -85,16 +85,15 @@ class Commander:
         theme = get_theme(self.theme_name)
         # force_terminal=True ensures ANSI codes work with patch_stdout()
         self.console = Console(theme=theme, force_terminal=True)
-        # Create bottom toolbar with empty lines for gutter space
-        toolbar = "\n" * self.bottom_gutter if self.bottom_gutter > 0 else None
+        # Create dynamic status bar (uses terminal's default colors)
         prompt_style = Style.from_dict(
             {
-                "bottom-toolbar": "noreverse",  # Remove default reverse video
+                "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
             }
         )
         self._prompt_session = PromptSession(
             history=InMemoryHistory(),
-            bottom_toolbar=toolbar,
+            bottom_toolbar=self._get_status_bar,
             style=prompt_style,
         )
         # Initialize executor for threshold-based async execution
@@ -103,6 +102,52 @@ class Commander:
             console=self.console,
             async_threshold_ms=self.async_threshold_ms,
         )
+
+    def _get_status_bar(self) -> str:
+        """Generate dynamic status bar content.
+
+        Returns gutter (empty lines) above the status line so it appears at the bottom.
+        """
+        parts = []
+
+        # Nodes info
+        node_count = len(self.nodes)
+        if node_count > 0:
+            nodes_text = f"{node_count} node{'s' if node_count != 1 else ''}"
+            parts.append(f"Nodes: {nodes_text}")
+        else:
+            parts.append("Nodes: none")
+
+        # World indicator
+        if self._current_world:
+            parts.append(f"World: {self._current_world}")
+        else:
+            parts.append("World: Timeline")
+
+        # Block counts
+        total_blocks = len(self.timeline.blocks)
+        pending_count = sum(1 for b in self.timeline.blocks if b.status == "pending")
+        waiting_count = sum(1 for b in self.timeline.blocks if b.status == "waiting")
+
+        parts.append(f"Blocks: {total_blocks}")
+
+        if pending_count > 0:
+            parts.append(f"⏳ {pending_count}")
+        if waiting_count > 0:
+            parts.append(f"⏸️  {waiting_count}")
+
+        # Help hint
+        parts.append(":help for commands")
+
+        # Join with separator
+        status_line = " │ ".join(parts)
+
+        # Add gutter spacing ABOVE the status line
+        if self.bottom_gutter > 0:
+            gutter = "\n" * self.bottom_gutter
+            return f"{gutter} {status_line}"
+        else:
+            return f" {status_line}"
 
     async def run(self) -> None:
         """Run the commander REPL loop."""
