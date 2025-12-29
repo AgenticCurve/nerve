@@ -21,7 +21,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar
 
-from nerve.core.nodes.llm.base import SingleShotLLMNode
+from nerve.core.nodes.llm.base import StatelessLLMNode
 
 
 def _find_project_root() -> Path | None:
@@ -59,7 +59,7 @@ def _load_env_and_get_headers() -> dict[str, str]:
 
 
 @dataclass(repr=False)
-class GLMNode(SingleShotLLMNode):
+class GLMNode(StatelessLLMNode):
     """Stateless node for Z.AI GLM API calls.
 
     GLMNode is stateless - each execute() call makes an independent HTTP request.

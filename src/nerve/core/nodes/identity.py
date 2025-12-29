@@ -104,17 +104,19 @@ class IdentityNode:
         if self.state == NodeState.STOPPED:
             return {
                 "success": False,
-                "output": "",
-                "input": "",
                 "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": "",
+                "output": "",
             }
 
         output = str(context.input) if context.input else ""
         return {
             "success": True,
-            "output": output,
-            "input": output,  # For compatibility with :::N['input'] in Commander
             "error": None,
+            "error_type": None,
+            "input": output,
+            "output": output,
         }
 
     async def interrupt(self) -> None:

@@ -31,7 +31,7 @@ async def test_bash_node_basic_execution(session, bash_node):
     assert result["stderr"] == ""
     assert result["exit_code"] == 0
     assert result["command"] == "echo hello"
-    assert result["error"] is None
+    assert result["error"] is None  # No error on success
     assert result["interrupted"] is False
 
 
@@ -43,7 +43,8 @@ async def test_bash_node_command_failure(session, bash_node):
 
     assert result["success"] is False
     assert result["exit_code"] == 42
-    assert result["error"] == "Command exited with code 42"
+    assert result["error"] == "Command exited with code 42"  # No stderr, so error message generated
+    assert result["error_type"] == "process_error"
 
 
 @pytest.mark.asyncio
@@ -86,7 +87,7 @@ async def test_bash_node_interrupt(session, bash_node):
 
     assert result["success"] is False
     assert result["interrupted"] is True
-    assert "interrupted" in result["error"].lower()
+    assert result["error_type"] == "interrupted"
 
 
 @pytest.mark.asyncio
@@ -189,9 +190,12 @@ async def test_bash_node_stderr_capture(session, bash_node):
     context = ExecutionContext(session=session, input="echo error >&2")
     result = await bash_node.execute(context)
 
-    assert result["success"] is True
+    # With new logic: any stderr makes success=False
+    assert result["success"] is False
     assert "error" in result["stderr"]
+    assert "error" in result["error"]  # error = stderr
     assert result["stdout"].strip() == ""
+    assert result["error_type"] == "process_error"
 
 
 @pytest.mark.asyncio

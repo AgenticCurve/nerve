@@ -87,7 +87,8 @@ class TestFunctionNode:
         context = ExecutionContext(session=session, input="hello")
 
         result = await node.execute(context)
-        assert result == "HELLO"
+        assert result["success"] is True
+        assert result["output"] == "HELLO"
 
     @pytest.mark.asyncio
     async def test_async_function(self, session):
@@ -100,7 +101,8 @@ class TestFunctionNode:
         context = ExecutionContext(session=session, input="test")
 
         result = await node.execute(context)
-        assert result == {"data": "test"}
+        assert result["success"] is True
+        assert result["output"] == {"data": "test"}
 
     @pytest.mark.asyncio
     async def test_lambda(self, session):
@@ -109,7 +111,8 @@ class TestFunctionNode:
         context = ExecutionContext(session=session, input=5)
 
         result = await node.execute(context)
-        assert result == 6
+        assert result["success"] is True
+        assert result["output"] == 6
 
     def test_properties(self, session):
         """Test node properties."""
@@ -144,7 +147,8 @@ class TestFunctionNode:
         context = ExecutionContext(session=session, input=None, upstream={"prev": "data"})
 
         result = await node.execute(context)
-        assert result == "got data"
+        assert result["success"] is True
+        assert result["output"] == "got data"
 
     def test_is_node_protocol(self, session):
         """FunctionNode satisfies Node protocol."""

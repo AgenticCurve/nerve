@@ -1,4 +1,6 @@
 ./
+├── docs/
+│   └── [L: 758] NODE_OUTPUT_SCHEMA.md
 ├── docs_for_agents/
 │   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
@@ -32,7 +34,7 @@
 │   ├── core_only/
 │   │   ├── [L: 109] graph_execution.py
 │   │   ├── [L:  63] multi_session.py
-│   │   ├── [L:  58] simple_session.py
+│   │   ├── [L:  60] simple_session.py
 │   │   └── [L:  52] streaming.py
 │   ├── [L: 312] debate.py
 │   ├── [L: 237] demo_proxy.py
@@ -90,8 +92,8 @@
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
-│       │   │   ├── [L: 324] base.py
-│       │   │   ├── [L: 429] bash.py
+│       │   │   ├── [L: 342] base.py
+│       │   │   ├── [L: 452] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -102,11 +104,11 @@
 │       │   │   │   ├── [L:1009] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
-│       │   │   ├── [L: 151] identity.py
+│       │   │   ├── [L: 153] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 683] base.py
-│       │   │   │   ├── [L: 560] chat.py
+│       │   │   │   ├── [L: 696] base.py
+│       │   │   │   ├── [L: 588] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -114,9 +116,9 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 638] claude_wezterm_node.py
-│       │   │   │   ├── [L: 717] pty_node.py
-│       │   │   │   └── [L: 814] wezterm_node.py
+│       │   │   │   ├── [L: 644] claude_wezterm_node.py
+│       │   │   │   ├── [L: 762] pty_node.py
+│       │   │   │   └── [L: 855] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
@@ -148,11 +150,11 @@
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
 │       │   │   ├── [L: 347] extract.py
-│       │   │   ├── [L: 242] main.py
+│       │   │   ├── [L: 257] main.py
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 520] adapters.py
+│       │   │   │   ├── [L: 524] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -173,13 +175,13 @@
 │       │   │   └── [L: 213] server.py
 │       │   ├── sdk/
 │       │   │   ├── [L:  27] __init__.py
-│       │   │   └── [L: 372] client.py
+│       │   │   └── [L: 364] client.py
 │       │   └── tui/
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 225] blocks.py
-│       │           ├── [L: 742] commander.py
+│       │           ├── [L: 766] commander.py
 │       │           └── [L: 139] themes.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
@@ -246,15 +248,15 @@
     │   │   │   ├── [L:   1] __init__.py
     │   │   │   ├── [L: 176] test_chat_node.py
     │   │   │   └── [L: 493] test_openrouter.py
-    │   │   ├── [L: 209] test_base.py
-    │   │   ├── [L: 206] test_bash.py
+    │   │   ├── [L: 213] test_base.py
+    │   │   ├── [L: 210] test_bash.py
     │   │   ├── [L: 231] test_budget.py
     │   │   ├── [L: 126] test_cancellation.py
     │   │   ├── [L: 173] test_claude_wezterm_proxy.py
     │   │   ├── [L: 258] test_context.py
-    │   │   ├── [L: 524] test_graph.py
+    │   │   ├── [L: 526] test_graph.py
     │   │   ├── [L: 121] test_policies.py
-    │   │   ├── [L: 924] test_terminal.py
+    │   │   ├── [L: 942] test_terminal.py
     │   │   ├── [L: 302] test_tools.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
@@ -294,4 +296,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-63 directories, 232 files, 52,031 total lines
+64 directories, 233 files, 53,030 total lines

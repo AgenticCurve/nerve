@@ -18,7 +18,7 @@ NODE_TYPE_CHOICES = [
     "IdentityNode",  # Stateless identity (echo)
     "OpenRouterNode",
     "GLMNode",  # Single-shot LLM
-    "LLMChatNode",  # Stateful chat
+    "StatefulLLMNode",  # Stateful chat
 ]
 
 
@@ -116,7 +116,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     "node_type",
     type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
-    help="Node type (stateful: PTYNode, WezTermNode, ClaudeWezTermNode, LLMChatNode; stateless: BashNode, IdentityNode, OpenRouterNode, GLMNode)",
+    help="Node type (stateful: PTYNode, WezTermNode, ClaudeWezTermNode, StatefulLLMNode; stateless: BashNode, IdentityNode, OpenRouterNode, GLMNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
@@ -208,17 +208,17 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=False,
     help="Enable thinking/reasoning mode (GLMNode only)",
 )
-# LLMChatNode-specific options
+# StatefulLLMNode-specific options
 @click.option(
     "--llm-provider",
     type=click.Choice(["openrouter", "glm"]),
     default=None,
-    help="LLM provider for chat node (LLMChatNode only)",
+    help="LLM provider for chat node (StatefulLLMNode only)",
 )
 @click.option(
     "--system",
     default=None,
-    help="System prompt for chat node (LLMChatNode only)",
+    help="System prompt for chat node (StatefulLLMNode only)",
 )
 @click.option(
     "--http-backend",
@@ -226,7 +226,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default="aiohttp",
     help="HTTP backend for LLM nodes (aiohttp or openai SDK, default: aiohttp)",
 )
-# Tool calling options (LLMChatNode only)
+# Tool calling options (StatefulLLMNode only)
 @click.option(
     "--tool",
     "tool_node_ids",
@@ -274,7 +274,7 @@ async def node_create(
     llm_timeout: float | None,
     llm_debug_dir: str | None,
     thinking: bool,
-    # LLMChatNode options
+    # StatefulLLMNode options
     llm_provider: str | None,
     system: str | None,
     # HTTP backend option
@@ -407,17 +407,17 @@ async def node_create(
         # --thinking only valid for GLMNode
         if thinking and node_type != "GLMNode":
             error_exit("--thinking is only valid for GLMNode")
-        # --llm-provider and --system are for LLMChatNode
+        # --llm-provider and --system are for StatefulLLMNode
         if llm_provider:
-            error_exit("--llm-provider is only valid for LLMChatNode")
-    elif node_type == "LLMChatNode":
+            error_exit("--llm-provider is only valid for StatefulLLMNode")
+    elif node_type == "StatefulLLMNode":
         # Chat node requires api_key, llm_model, and llm_provider
         if not api_key:
-            error_exit("--api-key is required for LLMChatNode")
+            error_exit("--api-key is required for StatefulLLMNode")
         if not llm_model:
-            error_exit("--llm-model is required for LLMChatNode")
+            error_exit("--llm-model is required for StatefulLLMNode")
         if not llm_provider:
-            error_exit("--llm-provider is required for LLMChatNode (openrouter or glm)")
+            error_exit("--llm-provider is required for StatefulLLMNode (openrouter or glm)")
         # --thinking only valid if provider is glm
         if thinking and llm_provider != "glm":
             error_exit("--thinking is only valid when --llm-provider is glm")
@@ -429,27 +429,27 @@ async def node_create(
         if api_key or llm_model or llm_base_url or llm_timeout:
             error_exit(
                 "--api-key, --llm-model, --llm-base-url, --llm-timeout "
-                "are only valid for LLM nodes (OpenRouterNode, GLMNode, LLMChatNode)"
+                "are only valid for LLM nodes (OpenRouterNode, GLMNode, StatefulLLMNode)"
             )
         if thinking:
-            error_exit("--thinking is only valid for GLMNode or LLMChatNode with glm provider")
+            error_exit("--thinking is only valid for GLMNode or StatefulLLMNode with glm provider")
         if llm_provider or system:
-            error_exit("--llm-provider and --system are only valid for LLMChatNode")
+            error_exit("--llm-provider and --system are only valid for StatefulLLMNode")
         if cwd and node_type not in ("PTYNode", "WezTermNode", "ClaudeWezTermNode"):
             error_exit("--cwd is only valid for BashNode and terminal nodes")
         if bash_timeout:
             error_exit("--bash-timeout is only valid for BashNode")
 
-    # Tool options are only valid for LLMChatNode
-    if node_type != "LLMChatNode":
+    # Tool options are only valid for StatefulLLMNode
+    if node_type != "StatefulLLMNode":
         if tool_node_ids:
-            error_exit("--tool is only valid for LLMChatNode")
+            error_exit("--tool is only valid for StatefulLLMNode")
         if tool_choice:
-            error_exit("--tool-choice is only valid for LLMChatNode")
+            error_exit("--tool-choice is only valid for StatefulLLMNode")
         if force_tool:
-            error_exit("--force-tool is only valid for LLMChatNode")
+            error_exit("--force-tool is only valid for StatefulLLMNode")
         if parallel_tool_calls is not None:
-            error_exit("--parallel-tool-calls is only valid for LLMChatNode")
+            error_exit("--parallel-tool-calls is only valid for StatefulLLMNode")
 
     # Map node type to wire protocol backend value
     backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")

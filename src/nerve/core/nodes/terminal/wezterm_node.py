@@ -17,7 +17,7 @@ from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 from nerve.core.parsers import get_parser
 from nerve.core.pty import BackendConfig
 from nerve.core.pty.wezterm_backend import WezTermBackend
-from nerve.core.types import ParsedResponse, ParserType
+from nerve.core.types import ParserType
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
@@ -410,17 +410,35 @@ class WezTermNode:
                 buffer_content = self.read_tail(HISTORY_BUFFER_LINES)
                 self._history_writer.log_read(buffer_content, lines=HISTORY_BUFFER_LINES)
 
-    async def execute(self, context: ExecutionContext) -> ParsedResponse:
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute by sending input and waiting for response.
 
         Args:
             context: Execution context with input string.
 
         Returns:
-            Parsed response.
+            Dict with base fields (success, error, error_type) and terminal-specific
+            fields (raw, sections, is_ready, is_complete, tokens, parser).
         """
+        # Initialize result dict
+        result: dict[str, Any] = {
+            "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input is not None else "",
+            "output": None,
+            "raw": "",
+            "sections": [],
+            "is_ready": False,
+            "is_complete": False,
+            "tokens": None,
+            "parser": str(context.parser or self._default_parser),
+        }
+
         if self.state == NodeState.STOPPED:
-            raise RuntimeError("Node is stopped")
+            result["error"] = "Node is stopped"
+            result["error_type"] = "node_stopped"
+            return result
 
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -479,7 +497,24 @@ class WezTermNode:
             await asyncio.sleep(0.5)
 
             buffer = self.backend.buffer
-            result = parser_instance.parse(buffer)
+            parsed_response = parser_instance.parse(buffer)
+
+            # Convert ParsedResponse to dict format
+            result["success"] = True
+            result["error"] = None
+            result["error_type"] = None
+            result["raw"] = parsed_response.raw
+            result["sections"] = [
+                {"type": s.type, "content": s.content, "metadata": s.metadata}
+                for s in parsed_response.sections
+            ]
+            result["is_ready"] = parsed_response.is_ready
+            result["is_complete"] = parsed_response.is_complete
+            result["tokens"] = parsed_response.tokens
+
+            # Set output to raw (generic terminal behavior)
+            # Specialized nodes (like ClaudeWezTermNode) can override this
+            result["output"] = parsed_response.raw
 
             # Log terminal complete
             duration = time.monotonic() - start_mono
@@ -490,19 +525,16 @@ class WezTermNode:
                 duration,
                 exec_id=exec_id,
                 output_len=len(buffer),
-                sections=len(result.sections),
+                sections=len(parsed_response.sections),
             )
 
             # History: log send
             if self._history_writer and self._history_writer.enabled and ts_start is not None:
                 response_data = {
-                    "sections": [
-                        {"type": s.type, "content": s.content, "metadata": s.metadata}
-                        for s in result.sections
-                    ],
-                    "tokens": result.tokens,
-                    "is_complete": result.is_complete,
-                    "is_ready": result.is_ready,
+                    "sections": result["sections"],
+                    "tokens": result["tokens"],
+                    "is_complete": result["is_complete"],
+                    "is_ready": result["is_ready"],
                 }
                 self._history_writer.log_send(
                     input=input_str,
@@ -515,6 +547,9 @@ class WezTermNode:
 
         except TimeoutError as e:
             duration = time.monotonic() - start_mono
+            result["error"] = str(e)
+            result["error_type"] = "timeout"
+            result["raw"] = self.backend.buffer if hasattr(self.backend, "buffer") else ""
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -524,10 +559,13 @@ class WezTermNode:
                 timeout=timeout,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return result
 
         except Exception as e:
             duration = time.monotonic() - start_mono
+            result["error"] = f"{type(e).__name__}: {e}"
+            result["error_type"] = "internal_error"
+            result["raw"] = self.backend.buffer if hasattr(self.backend, "buffer") else ""
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -536,7 +574,7 @@ class WezTermNode:
                 exec_id=exec_id,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return result
 
     async def execute_stream(self, context: ExecutionContext) -> AsyncIterator[str]:
         """Execute and stream output chunks.
@@ -545,10 +583,11 @@ class WezTermNode:
             context: Execution context with input string.
 
         Yields:
-            Output chunks as they arrive.
+            Output chunks as they arrive. On error, yields error message and returns.
         """
         if self.state == NodeState.STOPPED:
-            raise RuntimeError("Node is stopped")
+            yield "Error: Node is stopped"
+            return
 
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -629,6 +668,7 @@ class WezTermNode:
 
         except Exception as e:
             duration = time.monotonic() - start_mono
+            error_msg = f"Error: {type(e).__name__}: {e}"
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -638,14 +678,15 @@ class WezTermNode:
                 chunks=chunks_count,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            yield error_msg
+            return
 
     async def send(
         self,
         text: str,
         parser: ParserType | None = None,
         timeout: float | None = None,
-    ) -> ParsedResponse:
+    ) -> dict[str, Any]:
         """Convenience method to send input and get response.
 
         Args:
@@ -654,7 +695,7 @@ class WezTermNode:
             timeout: Response timeout (defaults to node's default).
 
         Returns:
-            Parsed response.
+            Response dict with success/error/error_type and terminal fields.
         """
         from nerve.core.nodes.context import ExecutionContext
 

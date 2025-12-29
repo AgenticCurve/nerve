@@ -87,10 +87,10 @@ class NodeLifecycleHandler:
         llm_timeout = params.get("llm_timeout")
         llm_debug_dir = params.get("llm_debug_dir")
         llm_thinking = params.get("llm_thinking", False)
-        # LLMChatNode options
+        # StatefulLLMNode options
         llm_provider = params.get("llm_provider")
         llm_system = params.get("llm_system")
-        # Tool calling options (LLMChatNode only)
+        # Tool calling options (StatefulLLMNode only)
         tool_node_ids = params.get("tool_node_ids")
         tool_choice = params.get("tool_choice")
         parallel_tool_calls = params.get("parallel_tool_calls")
@@ -139,7 +139,7 @@ class NodeLifecycleHandler:
                 llm_timeout=llm_timeout,
                 llm_debug_dir=llm_debug_dir,
                 llm_thinking=llm_thinking,
-                # LLMChatNode options
+                # StatefulLLMNode options
                 llm_provider=llm_provider,
                 llm_system=llm_system,
                 # Tool calling options
@@ -186,7 +186,7 @@ class NodeLifecycleHandler:
         )
 
         # Only start monitoring for stateful nodes with state (PTYNode, WezTermNode, etc.)
-        # Stateless nodes (BashNode, OpenRouterNode) and LLMChatNode
+        # Stateless nodes (BashNode, OpenRouterNode) and StatefulLLMNode
         # don't need lifecycle monitoring
         if node.persistent and hasattr(node, "state"):
             # Start monitoring (store task to prevent GC and enable cancellation)

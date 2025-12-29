@@ -1,13 +1,13 @@
-"""SingleShotLLMNode - abstract base class for stateless LLM API nodes.
+"""StatelessLLMNode - abstract base class for stateless LLM API nodes.
 
 This module provides the common implementation for LLM nodes that use
 OpenAI-compatible chat completion APIs. Each execute() call is independent -
 no conversation state is maintained between calls.
 
-Provider-specific nodes (OpenRouterNode, GLMNode) inherit from SingleShotLLMNode
+Provider-specific nodes (OpenRouterNode, GLMNode) inherit from StatelessLLMNode
 and only need to specify their defaults and any custom headers.
 
-For multi-turn conversations with tool support, use LLMChatNode instead.
+For multi-turn conversations with tool support, use StatefulLLMNode instead.
 
 Key features:
 - Stateless: each execute() is independent
@@ -79,11 +79,11 @@ def _truncate_messages(
 
 
 @dataclass
-class SingleShotLLMNode:
+class StatelessLLMNode:
     """Abstract base class for stateless OpenAI-compatible LLM API nodes.
 
     Each execute() call is independent - no conversation state is maintained.
-    For multi-turn conversations, use LLMChatNode which wraps this.
+    For multi-turn conversations, use StatefulLLMNode which wraps this.
 
     Subclasses should:
     1. Set the `node_type` class variable
@@ -219,14 +219,16 @@ class SingleShotLLMNode:
         if self.state == NodeState.STOPPED:
             return {
                 "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
                 "content": None,
                 "tool_calls": None,
                 "model": None,
                 "finish_reason": None,
                 "usage": None,
                 "request": {},
-                "error": "Node is stopped",
-                "error_type": "node_stopped",
                 "retries": 0,
             }
 
@@ -237,14 +239,16 @@ class SingleShotLLMNode:
         # Initialize result structure
         result: dict[str, Any] = {
             "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input else "",
+            "output": None,
             "content": None,
             "tool_calls": None,  # For tool use
             "model": None,
             "finish_reason": None,
             "usage": None,
             "request": {},
-            "error": None,
-            "error_type": None,
             "retries": 0,
         }
 
@@ -314,6 +318,15 @@ class SingleShotLLMNode:
                 }
 
             result["success"] = True
+
+            # Set output field
+            if result["content"]:
+                result["output"] = result["content"]
+            elif result["tool_calls"]:
+                tool_names = [tc["function"]["name"] for tc in result["tool_calls"]]
+                result["output"] = f"[Tool calls: {', '.join(tool_names)}]"
+            else:
+                result["output"] = ""
 
             # Log successful completion
             duration = time.monotonic() - start_mono

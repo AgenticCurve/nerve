@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.styles import Style
 from rich.console import Console
 
 from nerve.frontends.tui.commander.blocks import Block, Timeline
@@ -39,6 +40,7 @@ class Commander:
     server_name: str = "local"
     session_name: str = "default"
     theme_name: str = "default"
+    bottom_gutter: int = 3  # Lines of space between prompt and screen bottom
 
     # State (initialized in __post_init__ or run)
     console: Console = field(init=False)
@@ -59,7 +61,19 @@ class Commander:
         """Initialize console and prompt session."""
         theme = get_theme(self.theme_name)
         self.console = Console(theme=theme)
-        self._prompt_session = PromptSession(history=InMemoryHistory())
+        # Create bottom toolbar with empty lines for gutter space
+        # Use empty style to make it invisible (no background color)
+        toolbar = "\n" * self.bottom_gutter if self.bottom_gutter > 0 else None
+        prompt_style = Style.from_dict(
+            {
+                "bottom-toolbar": "noreverse",  # Remove default reverse video
+            }
+        )
+        self._prompt_session = PromptSession(
+            history=InMemoryHistory(),
+            bottom_toolbar=toolbar,
+            style=prompt_style,
+        )
 
     async def run(self) -> None:
         """Run the commander REPL loop."""
@@ -309,35 +323,44 @@ class Commander:
 
         # Execute via server and time it
         start_time = time.monotonic()
-        try:
-            response = await self._adapter.execute_on_node(node_id, text)
-            duration_ms = (time.monotonic() - start_time) * 1000
+        result = await self._adapter.execute_on_node(node_id, text)
+        duration_ms = (time.monotonic() - start_time) * 1000
+        self._active_node_id = None
 
-            # Create block with response
+        # Handle result dict (all nodes now return dicts with success/error/error_type)
+        if result.get("success"):
+            # Success - all nodes now have standard "output" field
+            output_text = result.get("output", "")
+
+            # Store complete result as raw_data for detailed block references
+            raw_data = result
+
+            # Convert output to string (might be dict, list, etc. from FunctionNode)
+            output_str = str(output_text) if output_text else ""
+
             block = Block(
                 block_type=block_type,
                 node_id=node_id,
                 input_text=text,
-                output_text=response.strip() if response else "",
+                output_text=output_str.strip(),
                 error=None,
-                raw={"stdout": response},
+                raw=raw_data,
                 duration_ms=duration_ms,
             )
+        else:
+            # Error - use error field
+            error_msg = result.get("error", "Unknown error")
+            error_type = result.get("error_type", "unknown")
 
-        except Exception as e:
-            duration_ms = (time.monotonic() - start_time) * 1000
-            error_msg = str(e)
             block = Block(
                 block_type=block_type,
                 node_id=node_id,
                 input_text=text,
                 output_text="",
-                error=error_msg,
-                raw={"error": error_msg},
+                error=f"[{error_type}] {error_msg}",
+                raw=result,
                 duration_ms=duration_ms,
             )
-        finally:
-            self._active_node_id = None
 
         self.timeline.add(block)
         self.timeline.render_last(self.console)
@@ -726,6 +749,7 @@ async def run_commander(
     server_name: str = "local",
     session_name: str = "default",
     theme: str = "default",
+    bottom_gutter: int = 3,
 ) -> None:
     """Run the commander TUI.
 
@@ -733,10 +757,12 @@ async def run_commander(
         server_name: Server to connect to (default: "local").
         session_name: Session to use (default: "default").
         theme: Theme name (default, nord, dracula, mono).
+        bottom_gutter: Lines of space between prompt and screen bottom (default: 3).
     """
     commander = Commander(
         server_name=server_name,
         session_name=session_name,
         theme_name=theme,
+        bottom_gutter=bottom_gutter,
     )
     await commander.run()

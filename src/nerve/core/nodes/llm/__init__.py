@@ -3,12 +3,12 @@
 Two types of LLM nodes:
 
 **Stateless nodes** (persistent=False):
-    SingleShotLLMNode: Abstract base class for stateless LLM API calls
+    StatelessLLMNode: Abstract base class for stateless LLM API calls
     OpenRouterNode: OpenRouter API (OpenAI-compatible, supports 100+ models)
     GLMNode: Z.AI GLM API (supports thinking mode)
 
 **Stateful nodes** (persistent=True):
-    LLMChatNode: Multi-turn conversations with tool support
+    StatefulLLMNode: Multi-turn conversations with tool support
 
 Example (stateless):
     >>> from nerve.core.nodes.llm import OpenRouterNode, GLMNode
@@ -37,11 +37,11 @@ Example (stateless):
     >>> result = await glm.execute(ExecutionContext(session=session, input="Solve: 15 * 23"))
 
 Example (chat with history):
-    >>> from nerve.core.nodes.llm import LLMChatNode, OpenRouterNode
+    >>> from nerve.core.nodes.llm import StatefulLLMNode, OpenRouterNode
     >>>
     >>> # Create chat node wrapping an LLM provider
     >>> llm = OpenRouterNode(id="llm", session=session, api_key="...", model="...")
-    >>> chat = LLMChatNode(
+    >>> chat = StatefulLLMNode(
     ...     id="chat",
     ...     session=session,
     ...     llm=llm,
@@ -53,16 +53,16 @@ Example (chat with history):
     >>> await chat.execute(ctx(input="Double that"))  # Remembers previous context
 """
 
-from nerve.core.nodes.llm.base import SingleShotLLMNode
-from nerve.core.nodes.llm.chat import LLMChatNode, Message, ToolDefinition
+from nerve.core.nodes.llm.base import StatelessLLMNode
+from nerve.core.nodes.llm.chat import Message, StatefulLLMNode, ToolDefinition
 from nerve.core.nodes.llm.glm import GLMNode
 from nerve.core.nodes.llm.openrouter import OpenRouterNode
 
 __all__ = [
     "GLMNode",
-    "LLMChatNode",
     "Message",
     "OpenRouterNode",
-    "SingleShotLLMNode",
+    "StatefulLLMNode",
+    "StatelessLLMNode",
     "ToolDefinition",
 ]

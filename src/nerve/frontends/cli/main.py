@@ -208,7 +208,14 @@ def _run_cli() -> None:
         type=click.Choice(["default", "nord", "dracula", "mono"]),
         help="Color theme (default: default)",
     )
-    def commander(server_name: str, session_name: str, theme: str) -> None:
+    @click.option(
+        "--bottom-gutter",
+        "-g",
+        default=3,
+        type=int,
+        help="Lines of space between prompt and screen bottom (default: 3)",
+    )
+    def commander(server_name: str, session_name: str, theme: str, bottom_gutter: int) -> None:
         """Interactive command center for nodes.
 
         A block-based timeline interface for interacting with nodes.
@@ -230,10 +237,18 @@ def _run_cli() -> None:
             nerve commander                    # Default theme
             nerve commander --theme nord       # Nord color scheme
             nerve commander -t dracula         # Dracula theme
+            nerve commander -g 5               # More bottom padding
         """
         from nerve.frontends.tui.commander import run_commander
 
-        asyncio.run(run_commander(server_name=server_name, session_name=session_name, theme=theme))
+        asyncio.run(
+            run_commander(
+                server_name=server_name,
+                session_name=session_name,
+                theme=theme,
+                bottom_gutter=bottom_gutter,
+            )
+        )
 
     cli()
 

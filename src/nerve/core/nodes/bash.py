@@ -145,11 +145,14 @@ class BashNode:
         if self.state == NodeState.STOPPED:
             return {
                 "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
                 "stdout": "",
                 "stderr": "",
                 "exit_code": None,
                 "command": str(context.input) if context.input else "",
-                "error": "Node is stopped",
                 "interrupted": False,
             }
 
@@ -158,13 +161,16 @@ class BashNode:
         exec_id = log_ctx.exec_id or context.exec_id
 
         # Initialize result structure
-        result = {
+        result: dict[str, Any] = {
             "success": False,
+            "error": None,
+            "error_type": None,
+            "input": str(context.input) if context.input else "",
+            "output": None,
             "stdout": "",
             "stderr": "",
             "exit_code": None,
             "command": "",
-            "error": None,
             "interrupted": False,
         }
 
@@ -177,6 +183,7 @@ class BashNode:
 
             if not command:
                 result["error"] = "No command provided in context.input"
+                result["error_type"] = "invalid_request_error"
                 return result
 
             # Log command start
@@ -222,14 +229,19 @@ class BashNode:
                 result["stderr"] = stderr_bytes.decode("utf-8", errors="replace")
                 result["exit_code"] = proc.returncode
 
-                # Handle exit code
+                # Set output field (always stdout)
+                result["output"] = result["stdout"]
+
+                # Handle exit code and set error field
                 if proc.returncode is None:
                     # Should not happen after communicate(), but handle explicitly
-                    result["error"] = "Process ended without exit code"
+                    result["error_type"] = "internal_error"
+                    result["error"] = "Process terminated unexpectedly"
                 elif proc.returncode in (-2, 130):
                     # Interrupted (SIGINT exit codes)
                     result["interrupted"] = True
-                    result["error"] = "Command interrupted (Ctrl+C)"
+                    result["error_type"] = "interrupted"
+                    result["error"] = result["stderr"] if result["stderr"] else "Interrupted"
                     duration = time.monotonic() - start_mono
                     log_warning(
                         log_ctx.logger,
@@ -239,8 +251,11 @@ class BashNode:
                         exit_code=proc.returncode,
                         duration_s=f"{duration:.1f}",
                     )
-                elif proc.returncode == 0:
+                elif proc.returncode == 0 and result["stderr"] == "":
+                    # Success: exit code 0 AND no stderr
                     result["success"] = True
+                    result["error"] = None  # No error on success
+                    result["error_type"] = None
                     duration = time.monotonic() - start_mono
                     log_complete(
                         log_ctx.logger,
@@ -251,9 +266,15 @@ class BashNode:
                         exit_code=0,
                     )
                 else:
-                    error_msg = f"Command exited with code {proc.returncode}"
-                    result["error"] = error_msg
+                    # Failure: non-zero exit code OR stderr present
+                    result["error_type"] = "process_error"
+                    result["error"] = (
+                        result["stderr"]
+                        if result["stderr"]
+                        else f"Command exited with code {proc.returncode}"
+                    )
                     duration = time.monotonic() - start_mono
+                    error_msg = result["error"]
                     log_error(
                         log_ctx.logger,
                         self.id,
@@ -270,6 +291,7 @@ class BashNode:
                 await proc.wait()
                 error_msg = f"Command timed out after {timeout}s"
                 result["error"] = error_msg
+                result["error_type"] = "timeout"
                 duration = time.monotonic() - start_mono
                 log_error(
                     log_ctx.logger,
@@ -289,6 +311,7 @@ class BashNode:
         except Exception as e:
             # Catch any other exceptions (file not found, permission denied, etc.)
             result["error"] = f"{type(e).__name__}: {str(e)}"
+            result["error_type"] = "internal_error"
             duration = time.monotonic() - start_mono
             log_error(
                 log_ctx.logger,

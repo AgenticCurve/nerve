@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Node
-    from nerve.core.nodes.llm.base import SingleShotLLMNode
+    from nerve.core.nodes.llm.base import StatelessLLMNode
     from nerve.core.session import Session
 
 # HTTP backend type
@@ -119,7 +119,7 @@ class NodeFactory:
         # Deferred imports to avoid circular dependencies and for testability
         from nerve.core.nodes.bash import BashNode
         from nerve.core.nodes.identity import IdentityNode
-        from nerve.core.nodes.llm import GLMNode, LLMChatNode, OpenRouterNode
+        from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
             PTYNode,
@@ -134,7 +134,7 @@ class NodeFactory:
             | IdentityNode
             | OpenRouterNode
             | GLMNode
-            | LLMChatNode
+            | StatefulLLMNode
         )
 
         if backend == "pty":
@@ -253,7 +253,7 @@ class NodeFactory:
             # Create underlying LLM node based on provider
             # Use a unique ID for the inner node
             inner_id = f"{node_id}-llm"
-            inner_llm: SingleShotLLMNode
+            inner_llm: StatelessLLMNode
             if llm_provider == "openrouter":
                 inner_llm = OpenRouterNode(
                     id=inner_id,
@@ -306,7 +306,7 @@ class NodeFactory:
                 tools, tool_executor = tools_from_nodes(tool_nodes)
 
             # Create chat node wrapping the LLM
-            node = LLMChatNode(
+            node = StatefulLLMNode(
                 id=str(node_id),
                 session=session,
                 llm=inner_llm,

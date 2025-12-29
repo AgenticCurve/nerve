@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Feature test for LLMChatNode with OpenRouter provider (multi-turn conversations).
+"""Feature test for StatefulLLMNode with OpenRouter provider (multi-turn conversations).
 
 Run with: uv run python features/openrouter/openrouter_chat_node.py
 """
@@ -20,7 +20,7 @@ else:
     print(f"Warning: {env_local} not found")
 
 from nerve.core.nodes.context import ExecutionContext
-from nerve.core.nodes.llm import LLMChatNode, OpenRouterNode
+from nerve.core.nodes.llm import OpenRouterNode, StatefulLLMNode
 from nerve.core.session import Session
 
 
@@ -40,7 +40,7 @@ async def test_multi_turn_conversation():
     )
 
     # Wrap in chat node
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="openrouter-chat",
         session=session,
         llm=llm,
@@ -81,7 +81,7 @@ async def test_system_prompt():
         http_backend=os.getenv("OPENROUTER_HTTP_BACKEND", "aiohttp"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="openrouter-chat-2",
         session=session,
         llm=llm,
@@ -119,7 +119,7 @@ async def test_conversation_clear():
         http_backend=os.getenv("OPENROUTER_HTTP_BACKEND", "aiohttp"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="openrouter-chat-3",
         session=session,
         llm=llm,
@@ -164,7 +164,7 @@ async def test_extended_conversation():
         http_backend=os.getenv("OPENROUTER_HTTP_BACKEND", "aiohttp"),
     )
 
-    chat = LLMChatNode(
+    chat = StatefulLLMNode(
         id="openrouter-chat-4",
         session=session,
         llm=llm,
@@ -194,7 +194,7 @@ async def test_extended_conversation():
 
 async def main():
     print("=" * 60)
-    print("LLMChatNode (OpenRouter) Feature Tests")
+    print("StatefulLLMNode (OpenRouter) Feature Tests")
     print("=" * 60 + "\n")
 
     # Check for API key
@@ -209,7 +209,7 @@ async def main():
         await test_extended_conversation()
 
         print("=" * 60)
-        print("✅ All LLMChatNode (OpenRouter) tests PASSED")
+        print("✅ All StatefulLLMNode (OpenRouter) tests PASSED")
         print("=" * 60)
     except AssertionError as e:
         print(f"FAILED: {e}")

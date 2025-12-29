@@ -34,7 +34,7 @@ async def main():
     # Send a message
     print("Sending message...")
     response = await session.send("Hello! Please respond with just 'Hi there!'")
-    print(f"Response: {response.raw[:200]}")
+    print(f"Response: {(response.get('raw') or '')[:200]}")
     print()
 
     # List sessions

@@ -100,7 +100,7 @@ class Node(Protocol):
         Stateful nodes (persistent=True):
         - Maintain state between execute() calls (e.g., terminal buffer, conversation history)
         - Must implement start() and stop() lifecycle methods
-        - Examples: PTYNode, WezTermNode, LLMChatNode
+        - Examples: PTYNode, WezTermNode, StatefulLLMNode
 
         Stateless nodes (persistent=False):
         - No state between execute() calls - each execution is independent
@@ -149,7 +149,7 @@ class PersistentNode(Node, Protocol):
     initialization and cleanup. They should be started before use and
     stopped when no longer needed.
 
-    Examples: PTYNode, WezTermNode, LLMChatNode
+    Examples: PTYNode, WezTermNode, StatefulLLMNode
 
     The Session manages lifecycle of registered stateful nodes.
     """
@@ -236,7 +236,7 @@ class FunctionNode:
                 self.id, "FunctionNode", persistent=self.persistent
             )
 
-    async def execute(self, context: ExecutionContext) -> Any:
+    async def execute(self, context: ExecutionContext) -> dict[str, Any]:
         """Execute the wrapped function.
 
         Handles both sync and async functions automatically.
@@ -245,14 +245,20 @@ class FunctionNode:
             context: Execution context with input and upstream results.
 
         Returns:
-            The function's return value.
+            Dict with success/error/error_type/input/output fields.
         """
         from nerve.core.nodes.run_logging import log_complete, log_error, log_start
         from nerve.core.nodes.session_logging import get_execution_logger
 
         # Check if node is stopped
         if self.state == NodeState.STOPPED:
-            raise RuntimeError("Node is stopped")
+            return {
+                "success": False,
+                "error": "Node is stopped",
+                "error_type": "node_stopped",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+            }
 
         # Get logger and exec_id
         log_ctx = get_execution_logger(self.id, context, self.session)
@@ -273,7 +279,13 @@ class FunctionNode:
             duration = time.monotonic() - start_mono
             log_complete(log_ctx.logger, self.id, "function_complete", duration, exec_id=exec_id)
 
-            return result
+            return {
+                "success": True,
+                "error": None,
+                "error_type": None,
+                "input": str(context.input) if context.input else "",
+                "output": result,
+            }
         except Exception as e:
             duration = time.monotonic() - start_mono
             log_error(
@@ -284,7 +296,13 @@ class FunctionNode:
                 exec_id=exec_id,
                 duration_s=f"{duration:.1f}",
             )
-            raise
+            return {
+                "success": False,
+                "error": f"{type(e).__name__}: {e}",
+                "error_type": "internal_error",
+                "input": str(context.input) if context.input else "",
+                "output": None,
+            }
         finally:
             self._current_task = None
 

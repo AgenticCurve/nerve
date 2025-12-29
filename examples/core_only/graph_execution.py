@@ -36,7 +36,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response.raw
+        return response["raw"]
 
     graph.add_step(
         FunctionNode(id="haiku", session=session, fn=generate_haiku),
@@ -45,7 +45,7 @@ async def main():
 
     # Step 2: Ask Claude to critique the haiku
     async def critique_haiku(ctx: ExecutionContext):
-        haiku = ctx.upstream["haiku"]
+        haiku = ctx.upstream["haiku"]["output"]
         response = await claude.execute(
             ExecutionContext(
                 session=session,
@@ -53,7 +53,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response.raw
+        return response["raw"]
 
     graph.add_step(
         FunctionNode(id="critique", session=session, fn=critique_haiku),
@@ -63,8 +63,8 @@ async def main():
 
     # Step 3: Ask Claude to improve based on critique
     async def improve_haiku(ctx: ExecutionContext):
-        haiku = ctx.upstream["haiku"]
-        critique = ctx.upstream["critique"]
+        haiku = ctx.upstream["haiku"]["output"]
+        critique = ctx.upstream["critique"]["output"]
         response = await claude.execute(
             ExecutionContext(
                 session=session,
@@ -73,7 +73,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response.raw
+        return response["raw"]
 
     graph.add_step(
         FunctionNode(id="improved", session=session, fn=improve_haiku),
@@ -98,9 +98,9 @@ async def main():
 
     print("Results:")
     print("-" * 50)
-    print(f"Original haiku:\n{results['haiku']}\n")
-    print(f"Critique:\n{results['critique']}\n")
-    print(f"Improved haiku:\n{results['improved']}")
+    print(f"Original haiku:\n{results['haiku']['output']}\n")
+    print(f"Critique:\n{results['critique']['output']}\n")
+    print(f"Improved haiku:\n{results['improved']['output']}")
 
     await claude.stop()
 
