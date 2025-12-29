@@ -482,6 +482,30 @@ class TestDependencyValidation:
         assert block2.status == "pending"
 
     @pytest.mark.asyncio
+    async def test_dependencies_already_ready_no_waiting_status(
+        self, executor: CommandExecutor
+    ) -> None:
+        """If dependencies already complete, should not show waiting status."""
+        # Add block 0 (already completed)
+        block0 = Block(block_type="bash", node_id="bash1", status="completed")
+        executor.timeline.add(block0)
+
+        # Block 1 referencing block 0 (which is already done)
+        block1 = Block(
+            block_type="bash",
+            node_id="bash2",
+            depends_on={0},
+        )
+        executor.timeline.add(block1)
+
+        # Wait for dependencies (should return immediately)
+        await executor.wait_for_dependencies(block1)
+
+        # Should NEVER have entered "waiting" status
+        # Should go straight to "pending" without rendering
+        assert block1.status == "pending"
+
+    @pytest.mark.asyncio
     async def test_timeout_protection(self, executor: CommandExecutor) -> None:
         """Should timeout if dependency doesn't complete within limit."""
         # Use a very short timeout for testing (override the default)
