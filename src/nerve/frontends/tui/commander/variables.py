@@ -20,11 +20,14 @@ Expands block references in text, supporting:
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nerve.frontends.tui.commander.blocks import Block, Timeline
+
+logger = logging.getLogger(__name__)
 
 
 class VariableExpander:
@@ -502,6 +505,15 @@ def extract_block_dependencies(
 
         # Get the last block from this node
         if node_blocks:
-            dependencies.add(node_blocks[-1].number)
+            last_block_num = node_blocks[-1].number
+            dependencies.add(last_block_num)
+            # DEBUG: Show which block is being referenced
+            logger.debug(
+                ":::%s resolved to block %d (found %d blocks for node '%s', using last one)",
+                node_ref,
+                last_block_num,
+                len(node_blocks),
+                node_id,
+            )
 
     return dependencies

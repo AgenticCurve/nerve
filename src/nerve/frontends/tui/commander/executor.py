@@ -90,11 +90,29 @@ class CommandExecutor:
         """
         threshold_seconds = self.async_threshold_ms / 1000
 
-        # Wait for dependencies BEFORE starting execution
-        # This ensures all referenced blocks (:::N) are completed before variable expansion
+        # If block has dependencies, queue for background processing immediately
+        # This prevents blocking the main REPL loop while waiting for dependencies
         if block.depends_on:
-            await self.wait_for_dependencies(block)
+            block.status = "waiting"
+            self.timeline.render_last(self.console)
 
+            # Create wrapper that waits for dependencies then executes
+            async def wait_and_execute() -> None:
+                await self.wait_for_dependencies(block)
+
+                # If dependency wait failed (validation error or timeout), stop here
+                if block.status == "error":
+                    return
+
+                # Dependencies ready - now execute
+                await execute_fn()
+
+            # Queue the wait+execute task for background processing
+            wait_task: asyncio.Task[None] = asyncio.create_task(wait_and_execute())
+            await self._command_queue.put((block, wait_task))
+            return  # Return immediately - don't block main loop!
+
+        # No dependencies - use threshold-based execution (fast path or background queue)
         try:
             exec_task: asyncio.Task[None] = asyncio.create_task(execute_fn())
 
