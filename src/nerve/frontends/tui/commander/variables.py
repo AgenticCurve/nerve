@@ -38,7 +38,12 @@ class VariableExpander:
         expanded = expander.expand("Previous output: :::-1")
     """
 
-    def __init__(self, timeline: Timeline, nodes_by_type: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        timeline: Timeline,
+        nodes_by_type: dict[str, str] | None = None,
+        exclude_block_from: int | None = None,
+    ) -> None:
         """Initialize expander with a timeline.
 
         Args:
@@ -46,9 +51,13 @@ class VariableExpander:
             nodes_by_type: Optional mapping from node type/name to node ID.
                 E.g., {"claude": "1", "bash": "2"} - maps user-facing names
                 to internal node IDs used in blocks.
+            exclude_block_from: Exclude blocks at or after this number when resolving
+                negative indices. Used to ensure :::-1 references the previous block,
+                not the current block being created.
         """
         self.timeline = timeline
         self.nodes_by_type = nodes_by_type or {}
+        self.exclude_block_from = exclude_block_from
 
     def expand(self, text: str) -> str:
         """Expand all variable references in text.
@@ -87,8 +96,17 @@ class VariableExpander:
     # =========================================================================
 
     def _get_block_by_negative_index(self, neg_idx: int) -> Block | None:
-        """Get block by negative index (-1 = last, -2 = second to last)."""
+        """Get block by negative index (-1 = last, -2 = second to last).
+
+        Respects exclude_block_from to ensure negative indices don't reference
+        the current block being created.
+        """
         blocks = self.timeline.blocks
+
+        # Exclude blocks at or after the specified number (e.g., current block)
+        if self.exclude_block_from is not None:
+            blocks = [b for b in blocks if b.number < self.exclude_block_from]
+
         if not blocks:
             return None
         try:
@@ -401,7 +419,10 @@ class VariableExpander:
 
 
 def expand_variables(
-    timeline: Timeline, text: str, nodes_by_type: dict[str, str] | None = None
+    timeline: Timeline,
+    text: str,
+    nodes_by_type: dict[str, str] | None = None,
+    exclude_block_from: int | None = None,
 ) -> str:
     """Convenience function to expand variables in text.
 
@@ -409,11 +430,14 @@ def expand_variables(
         timeline: The timeline containing blocks to reference.
         text: Text with variable references.
         nodes_by_type: Optional mapping from node type/name to node ID.
+        exclude_block_from: Exclude blocks at or after this number when resolving
+            negative indices. Pass the current block's number to ensure :::-1
+            references the previous block, not the current one.
 
     Returns:
         Text with variables expanded to their values.
     """
-    return VariableExpander(timeline, nodes_by_type).expand(text)
+    return VariableExpander(timeline, nodes_by_type, exclude_block_from).expand(text)
 
 
 def extract_block_dependencies(

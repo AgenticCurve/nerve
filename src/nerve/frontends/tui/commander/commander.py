@@ -16,10 +16,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich.console import Console
@@ -76,6 +79,7 @@ class Commander:
     _running: bool = field(default=False, init=False)
     _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
+    _open_monitor_requested: bool = field(default=False, init=False)  # Ctrl-Y pressed
 
     # Execution engine
     _executor: CommandExecutor = field(init=False)
@@ -85,17 +89,26 @@ class Commander:
         theme = get_theme(self.theme_name)
         # force_terminal=True ensures ANSI codes work with patch_stdout()
         self.console = Console(theme=theme, force_terminal=True)
-        # Create bottom toolbar with empty lines for gutter space
-        toolbar = "\n" * self.bottom_gutter if self.bottom_gutter > 0 else None
+        # Create dynamic status bar (uses terminal's default colors)
         prompt_style = Style.from_dict(
             {
-                "bottom-toolbar": "noreverse",  # Remove default reverse video
+                "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
             }
         )
+        # Create key bindings for prompt session
+        kb = KeyBindings()
+
+        @kb.add("c-y")
+        def open_monitor(event: KeyPressEvent) -> None:
+            """Open full-screen monitor TUI with Ctrl-Y."""
+            self._open_monitor_requested = True
+            event.app.exit()
+
         self._prompt_session = PromptSession(
             history=InMemoryHistory(),
-            bottom_toolbar=toolbar,
+            bottom_toolbar=self._get_status_bar,
             style=prompt_style,
+            key_bindings=kb,
         )
         # Initialize executor for threshold-based async execution
         self._executor = CommandExecutor(
@@ -103,6 +116,56 @@ class Commander:
             console=self.console,
             async_threshold_ms=self.async_threshold_ms,
         )
+
+    def _get_status_bar(self) -> str:
+        """Generate dynamic status bar content.
+
+        Returns gutter (empty lines) above the status line so it appears at the bottom.
+        """
+        parts = []
+
+        # Nodes info
+        node_count = len(self.nodes)
+        if node_count > 0:
+            nodes_text = f"{node_count} node{'s' if node_count != 1 else ''}"
+            parts.append(f"Nodes: {nodes_text}")
+        else:
+            parts.append("Nodes: none")
+
+        # World indicator
+        if self._current_world:
+            parts.append(f"World: {self._current_world}")
+        else:
+            parts.append("World: Timeline")
+
+        # Block counts
+        total_blocks = len(self.timeline.blocks)
+        pending_count = sum(1 for b in self.timeline.blocks if b.status == "pending")
+        waiting_count = sum(1 for b in self.timeline.blocks if b.status == "waiting")
+
+        parts.append(f"Blocks: {total_blocks}")
+
+        if pending_count > 0:
+            parts.append(f"⏳ {pending_count}")
+        if waiting_count > 0:
+            parts.append(f"⏸️  {waiting_count}")
+
+        # Clock
+        current_time = datetime.now().strftime("%H:%M:%S")
+        parts.append(current_time)
+
+        # Help hint
+        parts.append(":help for commands")
+
+        # Join with separator
+        status_line = " │ ".join(parts)
+
+        # Add gutter spacing ABOVE the status line
+        if self.bottom_gutter > 0:
+            gutter = "\n" * self.bottom_gutter
+            return f"{gutter} {status_line}"
+        else:
+            return f" {status_line}"
 
     async def run(self) -> None:
         """Run the commander REPL loop."""
@@ -175,6 +238,14 @@ class Commander:
                             prompt = "❯ "
 
                         user_input = await self._prompt_session.prompt_async(prompt)
+
+                        # Check if monitor was requested via Ctrl-Y
+                        if self._open_monitor_requested:
+                            self._open_monitor_requested = False
+                            from nerve.frontends.tui.commander.monitor import run_monitor
+
+                            await run_monitor(self.timeline)
+                            continue
 
                         if not user_input.strip():
                             continue
@@ -317,7 +388,10 @@ class Commander:
         # This ensures dependencies are completed before expansion
         async def execute() -> None:
             # By this point, execute_with_threshold has waited for dependencies
-            expanded_text = expand_variables(self.timeline, text, self._get_nodes_by_type())
+            # Pass block.number to exclude current block from negative index resolution
+            expanded_text = expand_variables(
+                self.timeline, text, self._get_nodes_by_type(), exclude_block_from=block.number
+            )
 
             await execute_node_command(
                 self._adapter,  # type: ignore[arg-type]

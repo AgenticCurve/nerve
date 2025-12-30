@@ -61,7 +61,7 @@
 │               ├── [L: 432] sample_pane_02.txt
 │               ├── [L: 379] sample_pane_03.txt
 │               └── [L:  57] sample_pane_04.txt
-├── [L:  36] Makefile
+├── [L:  90] Makefile
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
@@ -180,13 +180,14 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 279] blocks.py
-│       │           ├── [L: 406] commander.py
+│       │           ├── [L: 480] commander.py
 │       │           ├── [L: 174] commands.py
-│       │           ├── [L: 395] executor.py
+│       │           ├── [L: 411] executor.py
 │       │           ├── [L: 356] loop.py
+│       │           ├── [L: 690] monitor.py
 │       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
-│       │           └── [L: 519] variables.py
+│       │           └── [L: 543] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -279,7 +280,7 @@
     │   └── tui/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 682] test_commander_dependencies.py
-    │       └── [L: 395] test_variable_expansion.py
+    │       └── [L: 469] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
     │   ├── clients/
@@ -304,4 +305,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-65 directories, 240 files, 55,192 total lines
+65 directories, 241 files, 56,124 total lines
