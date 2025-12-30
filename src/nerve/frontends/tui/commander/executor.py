@@ -108,7 +108,7 @@ class CommandExecutor:
             # If dependencies are NOT ready, queue for background waiting
             if not all_ready:
                 block.status = "waiting"
-                self.timeline.render_last(self.console)
+                # Don't render here - wait_for_dependencies will render when it starts
 
                 # Create wrapper that waits for dependencies then executes
                 async def wait_and_execute() -> None:

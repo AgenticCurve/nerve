@@ -61,7 +61,7 @@
 │               ├── [L: 432] sample_pane_02.txt
 │               ├── [L: 379] sample_pane_03.txt
 │               └── [L:  57] sample_pane_04.txt
-├── [L:  36] Makefile
+├── [L:  90] Makefile
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
@@ -180,10 +180,11 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 279] blocks.py
-│       │           ├── [L: 456] commander.py
+│       │           ├── [L: 477] commander.py
 │       │           ├── [L: 174] commands.py
 │       │           ├── [L: 411] executor.py
 │       │           ├── [L: 356] loop.py
+│       │           ├── [L: 690] monitor.py
 │       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
 │       │           └── [L: 519] variables.py
@@ -304,4 +305,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-65 directories, 240 files, 55,258 total lines
+65 directories, 241 files, 56,023 total lines

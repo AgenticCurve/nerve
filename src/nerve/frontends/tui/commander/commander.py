@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich.console import Console
@@ -77,6 +79,7 @@ class Commander:
     _running: bool = field(default=False, init=False)
     _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
+    _open_monitor_requested: bool = field(default=False, init=False)  # Ctrl-Y pressed
 
     # Execution engine
     _executor: CommandExecutor = field(init=False)
@@ -92,10 +95,20 @@ class Commander:
                 "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
             }
         )
+        # Create key bindings for prompt session
+        kb = KeyBindings()
+
+        @kb.add("c-y")
+        def open_monitor(event: KeyPressEvent) -> None:
+            """Open full-screen monitor TUI with Ctrl-Y."""
+            self._open_monitor_requested = True
+            event.app.exit()
+
         self._prompt_session = PromptSession(
             history=InMemoryHistory(),
             bottom_toolbar=self._get_status_bar,
             style=prompt_style,
+            key_bindings=kb,
         )
         # Initialize executor for threshold-based async execution
         self._executor = CommandExecutor(
@@ -225,6 +238,14 @@ class Commander:
                             prompt = "❯ "
 
                         user_input = await self._prompt_session.prompt_async(prompt)
+
+                        # Check if monitor was requested via Ctrl-Y
+                        if self._open_monitor_requested:
+                            self._open_monitor_requested = False
+                            from nerve.frontends.tui.commander.monitor import run_monitor
+
+                            await run_monitor(self.timeline)
+                            continue
 
                         if not user_input.strip():
                             continue
