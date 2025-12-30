@@ -112,6 +112,80 @@ class TestNegativeIndexReferences:
         result = expand_variables(timeline, "review :::-5")
         assert "<error:" in result.lower()
 
+    def test_negative_index_excludes_current_block(self) -> None:
+        """:::-1 should reference previous block, not the current block being created.
+
+        This test simulates the scenario where we're creating a new block that uses :::-1.
+        The new block should reference the PREVIOUS block, not itself.
+
+        Timeline state:
+        - Block 0: "first"
+        - Block 1: "second"
+        - Block 2: (being created, uses :::-1)
+
+        Expected: :::-1 should expand to "second" (block 1), not block 2.
+        """
+        timeline = Timeline()
+        timeline.add(Block(block_type="bash", node_id="bash1", output_text="first"))
+        timeline.add(Block(block_type="bash", node_id="bash2", output_text="second"))
+
+        # Simulate creating block 2 that references :::-1
+        # Add the block to timeline (as would happen in commander.py)
+        current_block = Block(block_type="bash", node_id="bash3", input_text=":::-1")
+        timeline.add(current_block)
+
+        # Now expand variables, excluding the current block from negative index resolution
+        result = expand_variables(
+            timeline, ":::-1", nodes_by_type=None, exclude_block_from=current_block.number
+        )
+
+        # Should expand to "second" (block 1), not reference block 2 (current block)
+        assert result == "second"
+
+    def test_negative_index_minus_two_excludes_current_block(self) -> None:
+        """:::-2 should reference 2 blocks back, not 1 block back.
+
+        Timeline state:
+        - Block 0: "zero"
+        - Block 1: "one"
+        - Block 2: "two"
+        - Block 3: (being created, uses :::-2)
+
+        Expected: :::-2 should expand to "one" (block 1), not "two" (block 2).
+        """
+        timeline = Timeline()
+        timeline.add(Block(block_type="bash", node_id="bash1", output_text="zero"))
+        timeline.add(Block(block_type="bash", node_id="bash2", output_text="one"))
+        timeline.add(Block(block_type="bash", node_id="bash3", output_text="two"))
+
+        # Simulate creating block 3 that references :::-2
+        current_block = Block(block_type="bash", node_id="bash4", input_text=":::-2")
+        timeline.add(current_block)
+
+        # Expand with current block excluded
+        result = expand_variables(
+            timeline, ":::-2", nodes_by_type=None, exclude_block_from=current_block.number
+        )
+
+        # Should expand to "one" (block 1), not "two" (block 2)
+        assert result == "one"
+
+    def test_negative_index_without_exclude_includes_current(self) -> None:
+        """Without exclude_block_from, :::-1 includes all blocks (backward compatibility).
+
+        This ensures that existing code that doesn't pass exclude_block_from
+        still works as expected (though it may reference unintended blocks).
+        """
+        timeline = Timeline()
+        timeline.add(Block(block_type="bash", node_id="bash1", output_text="first"))
+        timeline.add(Block(block_type="bash", node_id="bash2", output_text="second"))
+
+        # Don't pass exclude_block_from - should use all blocks
+        result = expand_variables(timeline, ":::-1", nodes_by_type=None)
+
+        # Should expand to "second" (last block in timeline)
+        assert result == "second"
+
 
 class TestLastKeywordReferences:
     """Tests for :::last keyword expansion."""

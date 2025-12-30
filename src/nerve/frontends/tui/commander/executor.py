@@ -196,8 +196,8 @@ class CommandExecutor:
         block.status = "waiting"
         self.timeline.render_last(self.console)
 
-        # Timeout after 5 minutes to prevent infinite wait
-        timeout_seconds = 300
+        # Timeout after 40 minutes to prevent infinite wait
+        timeout_seconds = 2400  # 40 minutes
         start_time = time.monotonic()
 
         while True:

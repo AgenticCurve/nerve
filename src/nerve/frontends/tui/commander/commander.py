@@ -388,7 +388,10 @@ class Commander:
         # This ensures dependencies are completed before expansion
         async def execute() -> None:
             # By this point, execute_with_threshold has waited for dependencies
-            expanded_text = expand_variables(self.timeline, text, self._get_nodes_by_type())
+            # Pass block.number to exclude current block from negative index resolution
+            expanded_text = expand_variables(
+                self.timeline, text, self._get_nodes_by_type(), exclude_block_from=block.number
+            )
 
             await execute_node_command(
                 self._adapter,  # type: ignore[arg-type]

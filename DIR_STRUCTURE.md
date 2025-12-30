@@ -180,14 +180,14 @@
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 279] blocks.py
-│       │           ├── [L: 477] commander.py
+│       │           ├── [L: 480] commander.py
 │       │           ├── [L: 174] commands.py
 │       │           ├── [L: 411] executor.py
 │       │           ├── [L: 356] loop.py
 │       │           ├── [L: 690] monitor.py
 │       │           ├── [L: 350] rendering.py
 │       │           ├── [L: 146] themes.py
-│       │           └── [L: 519] variables.py
+│       │           └── [L: 543] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -280,7 +280,7 @@
     │   └── tui/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 682] test_commander_dependencies.py
-    │       └── [L: 395] test_variable_expansion.py
+    │       └── [L: 469] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
     │   ├── clients/
@@ -305,4 +305,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-65 directories, 241 files, 56,023 total lines
+65 directories, 241 files, 56,124 total lines
