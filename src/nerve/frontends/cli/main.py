@@ -60,9 +60,9 @@ def _run_cli() -> None:
     # Import and register command groups
     # =========================================================================
 
-    # Server commands (server start/stop/status, node/*, graph/*)
+    # Server commands (server start/stop/status, node/*, graph/*, workflow/*)
     # Import subcommands to register them with the server group
-    from nerve.frontends.cli.server import graph, node, server, session  # noqa: F401
+    from nerve.frontends.cli.server import graph, node, server, session, workflow  # noqa: F401
 
     cli.add_command(server)
 

@@ -5,6 +5,7 @@ This package contains handlers that process specific types of commands:
 - NodeInteractionHandler: Node I/O operations
 - GraphHandler: Graph execution and management
 - SessionHandler: Session management
+- WorkflowHandler: Workflow execution and management
 - PythonExecutor: Python code execution (security boundary)
 - ReplCommandHandler: REPL meta-commands
 - ServerHandler: Server control
@@ -17,6 +18,7 @@ from nerve.server.handlers.python_executor import PythonExecutor
 from nerve.server.handlers.repl_command_handler import ReplCommandHandler
 from nerve.server.handlers.server_handler import ServerHandler
 from nerve.server.handlers.session_handler import SessionHandler
+from nerve.server.handlers.workflow_handler import WorkflowHandler
 
 __all__ = [
     "GraphHandler",
@@ -26,4 +28,5 @@ __all__ = [
     "ReplCommandHandler",
     "ServerHandler",
     "SessionHandler",
+    "WorkflowHandler",
 ]

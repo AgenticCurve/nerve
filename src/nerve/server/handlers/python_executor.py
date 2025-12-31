@@ -148,6 +148,7 @@ class PythonExecutor:
             WezTermNode,
         )
         from nerve.core.session import Session as SessionClass
+        from nerve.core.workflow import Workflow, WorkflowContext
 
         return {
             "asyncio": asyncio,
@@ -159,6 +160,9 @@ class PythonExecutor:
             "PTYNode": PTYNode,
             "WezTermNode": WezTermNode,
             "ClaudeWezTermNode": ClaudeWezTermNode,
+            # Workflow classes
+            "Workflow": Workflow,
+            "WorkflowContext": WorkflowContext,
             # Other useful classes
             "ExecutionContext": ExecutionContext,
             "Session": SessionClass,

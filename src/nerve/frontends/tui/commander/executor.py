@@ -21,6 +21,8 @@ from nerve.frontends.tui.commander.blocks import Block, Timeline
 from nerve.frontends.tui.commander.rendering import print_block
 
 if TYPE_CHECKING:
+    from prompt_toolkit import PromptSession
+
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
 
 
@@ -288,17 +290,20 @@ class CommandExecutor:
 
 
 def get_block_type(node_type: str) -> str:
-    """Determine block type from node/graph type string.
+    """Determine block type from node/graph/workflow type string.
 
     Args:
-        node_type: Node or graph type name (e.g., "BashNode", "LLMChatNode", "graph").
+        node_type: Node, graph, or workflow type name
+            (e.g., "BashNode", "LLMChatNode", "graph", "workflow").
 
     Returns:
-        Block type for rendering ("bash", "llm", "graph", or "node").
+        Block type for rendering ("bash", "llm", "graph", "workflow", or "node").
     """
     node_type_lower = node_type.lower()
     if node_type_lower == "graph":
         return "graph"
+    elif node_type_lower == "workflow":
+        return "workflow"
     elif "bash" in node_type_lower:
         return "bash"
     elif "llm" in node_type_lower or "chat" in node_type_lower:
@@ -462,3 +467,158 @@ async def execute_python_command(
         block.output_text = output.strip() if output else ""
 
     block.duration_ms = duration_ms
+
+
+async def execute_workflow_command(
+    adapter: RemoteSessionAdapter,
+    block: Block,
+    workflow_id: str,
+    input_text: str,
+    start_time: float,
+    console: Console,
+    prompt_session: PromptSession[str],
+) -> None:
+    """Execute a workflow and update the block with results.
+
+    Handles workflow execution including:
+    - Starting the workflow
+    - Polling for status changes
+    - Prompting user at gates
+    - Updating block with final result
+
+    Args:
+        adapter: Session adapter for server communication.
+        block: The block to update with results.
+        workflow_id: ID of the workflow to execute.
+        input_text: Input text for the workflow.
+        start_time: When execution started (for duration calculation).
+        console: Rich console for output.
+        prompt_session: Prompt session for gate input.
+    """
+
+    # Start workflow (non-blocking)
+    try:
+        result = await adapter.execute_workflow(workflow_id, input_text, wait=False)
+    except Exception as e:
+        block.status = "error"
+        block.error = f"{type(e).__name__}: {e}"
+        block.duration_ms = (time.monotonic() - start_time) * 1000
+        return
+
+    if not result.get("run_id"):
+        block.status = "error"
+        block.error = result.get("error", "Failed to start workflow")
+        block.duration_ms = (time.monotonic() - start_time) * 1000
+        return
+
+    run_id = result["run_id"]
+    block.metadata["run_id"] = run_id
+    console.print(f"[dim]Workflow started: {run_id[:8]}...[/]")
+
+    # Poll for completion, handling gates
+    poll_interval = 0.2  # seconds
+    timeout = 3600  # 1 hour timeout
+    poll_start = time.monotonic()
+
+    while True:
+        # Check timeout
+        elapsed = time.monotonic() - poll_start
+        if elapsed > timeout:
+            block.status = "error"
+            block.error = f"Workflow timed out after {timeout}s"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        try:
+            run_info = await adapter.get_workflow_run(run_id)
+        except Exception as e:
+            block.status = "error"
+            block.error = f"Failed to get workflow status: {e}"
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        state = run_info.get("state", "unknown")
+
+        if state == "completed":
+            block.status = "completed"
+            block.output_text = str(run_info.get("result", "")).strip()
+            block.raw = run_info
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        elif state == "failed":
+            block.status = "error"
+            block.error = run_info.get("error", "Workflow failed")
+            block.raw = run_info
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        elif state == "cancelled":
+            block.status = "error"
+            block.error = "Workflow was cancelled"
+            block.raw = run_info
+            block.duration_ms = (time.monotonic() - start_time) * 1000
+            return
+
+        elif state == "waiting":
+            # Handle gate
+            gate = run_info.get("pending_gate")
+            if gate:
+                await _handle_workflow_gate(adapter, run_id, gate, console, prompt_session)
+
+        # Still running or waiting - poll again
+        await asyncio.sleep(poll_interval)
+
+
+async def _handle_workflow_gate(
+    adapter: RemoteSessionAdapter,
+    run_id: str,
+    gate: dict[str, Any],
+    console: Console,
+    prompt_session: PromptSession[str],
+) -> None:
+    """Handle a workflow gate by prompting user for input.
+
+    Args:
+        adapter: Session adapter for server communication.
+        run_id: The workflow run ID.
+        gate: Gate info dict with prompt and optional choices.
+        console: Rich console for output.
+        prompt_session: Prompt session for user input (unused, kept for API compat).
+    """
+    prompt = gate.get("prompt", "Input required:")
+    choices = gate.get("choices")
+
+    # Display prompt
+    console.print()
+    console.print(f"[bold yellow]⏸ Gate:[/] {prompt}")
+
+    if choices:
+        for i, choice in enumerate(choices, 1):
+            console.print(f"  [dim]{i}.[/] {choice}")
+
+    try:
+        # Get user input using asyncio.to_thread to avoid nested prompt_toolkit issue
+        # We can't use prompt_session.prompt_async() because it conflicts with
+        # the main Commander prompt loop
+        answer = await asyncio.to_thread(input, "gate> ")
+        answer = answer.strip()
+
+        # Convert number to choice if applicable
+        if choices and answer.isdigit():
+            idx = int(answer) - 1
+            if 0 <= idx < len(choices):
+                answer = choices[idx]
+
+        # Send answer to workflow
+        result = await adapter.answer_gate(run_id, answer)
+        if not result.get("success"):
+            console.print(f"[error]Failed to answer gate: {result.get('error')}[/]")
+
+    except (KeyboardInterrupt, EOFError):
+        console.print("[dim]Gate input cancelled[/]")
+        # Try to cancel the workflow
+        try:
+            await adapter.cancel_workflow(run_id)
+        except Exception:
+            pass

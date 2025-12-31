@@ -419,7 +419,7 @@ class RemoteSessionAdapter:
             Command(type=CommandType.LIST_NODES, params=self._add_session_id({}))
         )
         if result.success:
-            nodes_info = result.data.get("nodes_info", [])
+            nodes_info = (result.data or {}).get("nodes_info", [])
             self._cached_nodes_info = nodes_info  # Cache for node_count
 
             # Return (name, backend_type) tuples
@@ -434,7 +434,7 @@ class RemoteSessionAdapter:
             Command(type=CommandType.LIST_GRAPHS, params=self._add_session_id({}))
         )
         if result.success:
-            graphs = result.data.get("graphs", [])
+            graphs = (result.data or {}).get("graphs", [])
             self._cached_graphs = graphs  # Cache for graph_count
             return [g["id"] for g in graphs]
         return []
@@ -473,7 +473,7 @@ class RemoteSessionAdapter:
 
         if result.success:
             # Server returns {"response": {...}} with Graph.execute() standardized dict
-            return cast(dict[str, Any], result.data.get("response", {}))
+            return cast(dict[str, Any], (result.data or {}).get("response", {}))
         else:
             return {
                 "success": False,
@@ -656,3 +656,138 @@ class RemoteSessionAdapter:
             error = result.data.get("error")
             return output, error
         return "", result.error
+
+    # =========================================================================
+    # Workflow methods
+    # =========================================================================
+
+    async def list_workflows(self) -> list[dict[str, Any]]:
+        """List workflows from server.
+
+        Returns:
+            List of workflow info dicts with 'id', 'description' keys.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(type=CommandType.LIST_WORKFLOWS, params=self._add_session_id({}))
+        )
+        if result.success:
+            return cast(list[dict[str, Any]], (result.data or {}).get("workflows", []))
+        return []
+
+    async def execute_workflow(
+        self, workflow_id: str, input: Any = None, wait: bool = False
+    ) -> dict[str, Any]:
+        """Execute a workflow on the server.
+
+        Args:
+            workflow_id: ID of the workflow to execute.
+            input: Optional input for the workflow.
+            wait: If True, wait for completion (blocking).
+
+        Returns:
+            Dict with run_id, state, and optionally result/error.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.EXECUTE_WORKFLOW,
+                params=self._add_session_id(
+                    {
+                        "workflow_id": workflow_id,
+                        "input": input,
+                        "wait": wait,
+                    }
+                ),
+            ),
+            timeout=3600.0,  # Workflows can be long-running
+        )
+
+        if result.success:
+            return cast(dict[str, Any], result.data or {})
+        else:
+            return {
+                "success": False,
+                "error": result.error or "Workflow execution failed",
+            }
+
+    async def get_workflow_run(self, run_id: str) -> dict[str, Any]:
+        """Get workflow run status.
+
+        Args:
+            run_id: The workflow run ID.
+
+        Returns:
+            Dict with run info including state, result, pending_gate, etc.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.GET_WORKFLOW_RUN,
+                params=self._add_session_id({"run_id": run_id}),
+            )
+        )
+
+        if result.success:
+            return cast(dict[str, Any], (result.data or {}).get("run", {}))
+        else:
+            return {
+                "success": False,
+                "error": result.error or "Failed to get workflow run",
+            }
+
+    async def answer_gate(self, run_id: str, answer: str) -> dict[str, Any]:
+        """Answer a pending workflow gate.
+
+        Args:
+            run_id: The workflow run ID with a pending gate.
+            answer: The user's answer to the gate prompt.
+
+        Returns:
+            Dict with success status.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.ANSWER_GATE,
+                params=self._add_session_id({"run_id": run_id, "answer": answer}),
+            )
+        )
+
+        if result.success:
+            return {"success": True}
+        else:
+            return {
+                "success": False,
+                "error": result.error or "Failed to answer gate",
+            }
+
+    async def cancel_workflow(self, run_id: str) -> dict[str, Any]:
+        """Cancel a running workflow.
+
+        Args:
+            run_id: The workflow run ID to cancel.
+
+        Returns:
+            Dict with success status.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.CANCEL_WORKFLOW,
+                params=self._add_session_id({"run_id": run_id}),
+            )
+        )
+
+        if result.success:
+            return {"success": True}
+        else:
+            return {
+                "success": False,
+                "error": result.error or "Failed to cancel workflow",
+            }

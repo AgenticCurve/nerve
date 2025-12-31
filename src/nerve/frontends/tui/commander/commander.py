@@ -13,6 +13,7 @@ This module is the main orchestrator, delegating to specialized modules:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -39,6 +40,7 @@ from nerve.frontends.tui.commander.executor import (
 from nerve.frontends.tui.commander.rendering import print_welcome
 from nerve.frontends.tui.commander.themes import get_theme
 from nerve.frontends.tui.commander.variables import expand_variables
+from nerve.frontends.tui.commander.workflow_runner import run_workflow_tui
 
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
@@ -98,6 +100,12 @@ class Commander:
     # Execution engine
     _executor: CommandExecutor = field(init=False)
 
+    # Active (backgrounded) workflow runs: run_id -> workflow info
+    _active_workflows: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
+
+    # Background task for polling workflow status
+    _workflow_poll_task: asyncio.Task[None] | None = field(default=None, init=False)
+
     def __post_init__(self) -> None:
         """Initialize console, prompt session, and executor."""
         theme = get_theme(self.theme_name)
@@ -151,12 +159,13 @@ class Commander:
         """
         parts = []
 
-        # Entities info (nodes + graphs)
+        # Entities info (nodes + graphs + workflows)
         entity_count = len(self.entities)
         if entity_count > 0:
-            # Count nodes and graphs separately
+            # Count nodes, graphs, and workflows separately
             node_count = sum(1 for e in self.entities.values() if e.type == "node")
             graph_count = sum(1 for e in self.entities.values() if e.type == "graph")
+            workflow_count = sum(1 for e in self.entities.values() if e.type == "workflow")
 
             # Build status text
             entity_parts = []
@@ -164,6 +173,10 @@ class Commander:
                 entity_parts.append(f"{node_count} node{'s' if node_count != 1 else ''}")
             if graph_count > 0:
                 entity_parts.append(f"{graph_count} graph{'s' if graph_count != 1 else ''}")
+            if workflow_count > 0:
+                entity_parts.append(
+                    f"{workflow_count} workflow{'s' if workflow_count != 1 else ''}"
+                )
 
             parts.append(f"Entities: {', '.join(entity_parts)}")
         else:
@@ -186,6 +199,18 @@ class Commander:
             parts.append(f"⏳ {pending_count}")
         if waiting_count > 0:
             parts.append(f"⏸️  {waiting_count}")
+
+        # Active (backgrounded) workflows
+        active_wf_count = len(self._active_workflows)
+        if active_wf_count > 0:
+            # Check if any have waiting gates
+            waiting_gates = sum(
+                1 for wf in self._active_workflows.values() if wf.get("pending_gate") is not None
+            )
+            if waiting_gates > 0:
+                parts.append(f"🔄 {active_wf_count} wf ({waiting_gates} gate)")
+            else:
+                parts.append(f"🔄 {active_wf_count} wf")
 
         # Clock
         current_time = datetime.now().strftime("%H:%M:%S")
@@ -300,7 +325,7 @@ class Commander:
         await self._cleanup()
 
     async def _sync_entities(self) -> None:
-        """Fetch both nodes and graphs from server session."""
+        """Fetch nodes, graphs, and workflows from server session."""
         if self._adapter is None:
             return
 
@@ -323,6 +348,18 @@ class Commander:
                     type="graph",
                     node_type="graph",
                 )
+
+            # Fetch workflows
+            workflows = await self._adapter.list_workflows()
+            for wf in workflows:
+                wf_id = wf.get("id", "")
+                if wf_id:
+                    self.entities[wf_id] = EntityInfo(
+                        id=wf_id,
+                        type="workflow",
+                        node_type="workflow",
+                        metadata={"description": wf.get("description", "")},
+                    )
         except (ConnectionError, TimeoutError, RuntimeError, OSError) as e:
             # Handle known network/transport errors gracefully
             self.console.print(f"[warning]Failed to fetch entities: {e}[/]")
@@ -375,9 +412,13 @@ class Commander:
                 await self._handle_entity_message(f"{self._current_world} {user_input}")
             return
 
-        # Node messages start with @
+        # Node/graph messages start with @
         if user_input.startswith("@"):
             await self._handle_entity_message(user_input[1:])
+
+        # Workflow execution starts with %
+        elif user_input.startswith("%"):
+            await self._handle_workflow(user_input[1:])
 
         # Python code starts with >>>
         elif user_input.startswith(">>>"):
@@ -386,8 +427,8 @@ class Commander:
         # Default: show help
         else:
             self.console.print(
-                "[dim]Prefix with @node_name to send to a node, "
-                ">>> for Python, or :help for commands[/]"
+                "[dim]Prefix with @node to send to a node, "
+                "%workflow for workflows, >>> for Python, or :help[/]"
             )
 
     async def _handle_entity_message(self, message: str) -> None:
@@ -503,13 +544,230 @@ class Commander:
 
         await self._executor.execute_with_threshold(block, execute)
 
+    async def _handle_workflow(self, message: str) -> None:
+        """Handle %workflow_id input syntax for workflow execution.
+
+        Workflows run in a dedicated full-screen TUI that:
+        - Shows workflow state, events, and progress
+        - Handles gates with interactive prompts
+        - Returns result to store in the block
+
+        NOTE: The workflow TUI is a separate prompt_toolkit Application that
+        takes over the terminal, but does NOT stop the Commander's background
+        executor. Any in-progress blocks continue executing while workflow runs.
+        """
+        if self._adapter is None:
+            self.console.print("[error]Not connected to server[/]")
+            return
+
+        parts = message.split(maxsplit=1)
+        if not parts:
+            self.console.print("[warning]Usage: %workflow_id input[/]")
+            return
+
+        workflow_id = parts[0]
+        input_text = parts[1] if len(parts) > 1 else ""
+
+        # Check if workflow exists
+        if workflow_id not in self.entities:
+            await self._sync_entities()
+            if workflow_id not in self.entities:
+                self.console.print(f"[error]Workflow not found: {workflow_id}[/]")
+                # List available workflows
+                workflows = [e.id for e in self.entities.values() if e.type == "workflow"]
+                if workflows:
+                    self.console.print(f"[dim]Available workflows: {', '.join(workflows)}[/]")
+                else:
+                    self.console.print("[dim]No workflows registered[/]")
+                return
+
+        entity = self.entities[workflow_id]
+        if entity.type != "workflow":
+            self.console.print(f"[error]'{workflow_id}' is a {entity.type}, not a workflow[/]")
+            self.console.print("[dim]Use @ for nodes/graphs, % for workflows[/]")
+            return
+
+        # Extract dependencies from input (for :::N references)
+        from nerve.frontends.tui.commander.variables import extract_block_dependencies
+
+        dependencies = extract_block_dependencies(
+            input_text, self.timeline, self._get_nodes_by_type()
+        )
+
+        # Create block for workflow (stores raw input)
+        block = Block(
+            block_type="workflow",
+            node_id=workflow_id,
+            input_text=input_text,
+            depends_on=dependencies,
+        )
+        self.timeline.add(block)
+
+        # Wait for dependencies before expanding variables
+        # This ensures :::N references see completed block data
+        if dependencies:
+            block.status = "waiting"
+            from nerve.frontends.tui.commander.rendering import print_block
+
+            print_block(self.console, block)
+            await self._executor.wait_for_dependencies(block)
+
+            # If dependency wait failed, stop here
+            if block.status == "error":
+                print_block(self.console, block)
+                return
+
+        # NOW expand variables - dependencies are complete
+        expanded_input = expand_variables(
+            self.timeline, input_text, self._get_nodes_by_type(), exclude_block_from=block.number
+        )
+
+        # Launch full-screen workflow TUI
+        # This takes over the screen until workflow completes
+        result = await run_workflow_tui(
+            self._adapter,
+            workflow_id,
+            expanded_input,
+        )
+
+        # Update block with result
+        block.duration_ms = result.get("duration_ms", 0)
+
+        if result.get("backgrounded"):
+            # Workflow was backgrounded - track it for resume
+            block.status = "pending"  # Mark as pending since still running
+            block.output_text = "(backgrounded - use :wf to resume)"
+            block.raw = result
+            run_id = result.get("run_id", "")
+            if run_id:
+                self._active_workflows[run_id] = {
+                    "workflow_id": workflow_id,
+                    "run_id": run_id,
+                    "block_number": block.number,
+                    "events": result.get("events", []),
+                    "pending_gate": result.get("pending_gate"),
+                    "start_time": result.get("start_time", 0),
+                }
+            self.console.print(
+                f"[dim]Workflow backgrounded. Use :world to list or :world {run_id[:8]} to resume[/]"
+            )
+            # Start background polling for status updates
+            self._start_workflow_polling()
+        else:
+            # Handle completed, cancelled, or failed states
+            from nerve.frontends.tui.commander.rendering import print_block
+
+            if result.get("state") == "completed":
+                block.status = "completed"
+                block.output_text = str(result.get("result", ""))
+                block.raw = result
+            elif result.get("state") == "cancelled":
+                block.status = "error"
+                block.error = "Workflow cancelled"
+                block.raw = result
+            else:
+                block.status = "error"
+                block.error = result.get("error", "Workflow failed")
+                block.raw = result
+
+            print_block(self.console, block)
+
     def _set_active_node(self, node_id: str | None) -> None:
         """Set or clear the active node ID (for interrupt support)."""
         self._active_node_id = node_id
 
+    def _start_workflow_polling(self) -> None:
+        """Start background polling for active workflows if not already running.
+
+        Polling fetches fresh workflow state from the server every 3 seconds,
+        updating _active_workflows so the status bar shows accurate info.
+        """
+        if self._workflow_poll_task is not None and not self._workflow_poll_task.done():
+            return  # Already polling
+
+        self._workflow_poll_task = asyncio.create_task(self._poll_active_workflows())
+
+    async def _poll_active_workflows(self) -> None:
+        """Background task that polls workflow status every 3 seconds.
+
+        Updates _active_workflows with fresh state and pending_gate info.
+        Removes completed/failed workflows from tracking.
+        Stops when no more active workflows.
+        """
+        poll_interval = 3.0  # seconds
+
+        while self._active_workflows and self._adapter is not None:
+            try:
+                # Poll each active workflow
+                completed_runs: list[str] = []
+
+                for run_id, wf_info in list(self._active_workflows.items()):
+                    try:
+                        status = await self._adapter.get_workflow_run(run_id)
+
+                        if status:
+                            state = status.get("state", "unknown")
+
+                            # Update workflow info with fresh data
+                            wf_info["state"] = state
+                            wf_info["pending_gate"] = status.get("pending_gate")
+                            wf_info["events"] = status.get("events", [])
+
+                            # If workflow completed, update block and remove from active
+                            if state in ("completed", "failed", "cancelled"):
+                                completed_runs.append(run_id)
+
+                                # Update the associated block
+                                block_num = wf_info.get("block_number")
+                                if block_num is not None:
+                                    block = self.timeline.get(block_num)
+                                    if block:
+                                        if state == "completed":
+                                            block.status = "completed"
+                                            block.output_text = str(status.get("result", ""))
+                                        else:
+                                            block.status = "error"
+                                            block.error = status.get("error", f"Workflow {state}")
+                                        block.raw = status
+
+                    except Exception as e:
+                        logger.debug(f"Failed to poll workflow {run_id}: {e}")
+
+                # Remove completed workflows from tracking
+                for run_id in completed_runs:
+                    del self._active_workflows[run_id]
+
+                # Sleep before next poll
+                await asyncio.sleep(poll_interval)
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Workflow polling error: {e}")
+                await asyncio.sleep(poll_interval)
+
     async def _cleanup(self) -> None:
-        """Cleanup resources."""
+        """Cleanup resources including active workflows."""
         await self._executor.stop()
+
+        # Cancel workflow polling task
+        if self._workflow_poll_task is not None and not self._workflow_poll_task.done():
+            self._workflow_poll_task.cancel()
+            try:
+                await self._workflow_poll_task
+            except asyncio.CancelledError:
+                pass
+            self._workflow_poll_task = None
+
+        # Cancel any active (backgrounded) workflows
+        if self._active_workflows and self._adapter is not None:
+            for run_id in list(self._active_workflows.keys()):
+                try:
+                    await self._adapter.cancel_workflow(run_id)
+                    logger.debug(f"Cancelled workflow {run_id} on exit")
+                except Exception as e:
+                    logger.debug(f"Failed to cancel workflow {run_id}: {e}")
+            self._active_workflows.clear()
 
         if self._client is not None:
             try:

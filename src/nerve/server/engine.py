@@ -27,6 +27,7 @@ from nerve.server.handlers.python_executor import PythonExecutor
 from nerve.server.handlers.repl_command_handler import ReplCommandHandler
 from nerve.server.handlers.server_handler import ServerHandler
 from nerve.server.handlers.session_handler import SessionHandler
+from nerve.server.handlers.workflow_handler import WorkflowHandler
 from nerve.server.protocols import (
     Command,
     CommandResult,
@@ -73,6 +74,7 @@ class NerveEngine:
     node_interaction_handler: NodeInteractionHandler
     graph_handler: GraphHandler
     session_handler: SessionHandler
+    workflow_handler: WorkflowHandler
     python_executor: PythonExecutor
     repl_command_handler: ReplCommandHandler
     server_handler: ServerHandler
@@ -197,6 +199,13 @@ class NerveEngine:
             CommandType.DELETE_SESSION: self.session_handler.delete_session,
             CommandType.LIST_SESSIONS: self.session_handler.list_sessions,
             CommandType.GET_SESSION: self.session_handler.get_session_info,
+            # Workflow management
+            CommandType.EXECUTE_WORKFLOW: self.workflow_handler.execute_workflow,
+            CommandType.LIST_WORKFLOWS: self.workflow_handler.list_workflows,
+            CommandType.GET_WORKFLOW_RUN: self.workflow_handler.get_workflow_run,
+            CommandType.LIST_WORKFLOW_RUNS: self.workflow_handler.list_workflow_runs,
+            CommandType.ANSWER_GATE: self.workflow_handler.answer_gate,
+            CommandType.CANCEL_WORKFLOW: self.workflow_handler.cancel_workflow,
             # Server control
             CommandType.STOP: self.server_handler.stop,
             CommandType.PING: self.server_handler.ping,
@@ -276,6 +285,12 @@ def build_nerve_engine(
         server_name=server_name,
     )
 
+    workflow_handler = WorkflowHandler(
+        event_sink=event_sink,
+        validation=validation,
+        session_registry=session_registry,
+    )
+
     server_handler = ServerHandler(
         event_sink=event_sink,
         proxy_manager=proxy_manager,
@@ -291,6 +306,7 @@ def build_nerve_engine(
         node_interaction_handler=node_interaction_handler,
         graph_handler=graph_handler,
         session_handler=session_handler,
+        workflow_handler=workflow_handler,
         python_executor=python_executor,
         repl_command_handler=repl_command_handler,
         server_handler=server_handler,
