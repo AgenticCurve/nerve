@@ -25,7 +25,7 @@ async def main():
 
     if result["success"]:
         print("✓ Command succeeded")
-        print(f"Output:\n{result['stdout']}")
+        print(f"Output:\n{result['attributes']['stdout']}")
     else:
         print(f"✗ Command failed: {result['error']}")
 
@@ -43,7 +43,7 @@ async def main():
     )
 
     print(f"Success: {result['success']}")
-    print(f"Output:\n{result['stdout']}")
+    print(f"Output:\n{result['attributes']['stdout']}")
 
     # Example 3: Using BashNode in a Graph
     print("\n" + "=" * 60)
@@ -68,12 +68,13 @@ async def main():
     )
 
     # Execute graph
-    results = await graph.execute(ExecutionContext(session=session))
+    graph_result = await graph.execute(ExecutionContext(session=session))
 
     print("Graph execution results:")
-    for step_id, result in results.items():
+    steps = graph_result["attributes"]["steps"]
+    for step_id, result in steps.items():
         status = "✓" if result["success"] else "✗"
-        print(f"  {status} {step_id}: {result['stdout'].strip()}")
+        print(f"  {status} {step_id}: {result['attributes']['stdout'].strip()}")
 
     # Example 4: Interrupt handling
     print("\n" + "=" * 60)
@@ -95,7 +96,7 @@ async def main():
 
     # Get result
     result = await task
-    print(f"Interrupted: {result['interrupted']}")
+    print(f"Interrupted: {result['attributes']['interrupted']}")
     print(f"Error: {result['error']}")
 
     # Example 5: Error handling
@@ -109,9 +110,9 @@ async def main():
     )
 
     print(f"Success: {result['success']}")
-    print(f"Exit code: {result['exit_code']}")
+    print(f"Exit code: {result['attributes']['exit_code']}")
     print(f"Error: {result['error']}")
-    print(f"Stderr: {result['stderr']}")
+    print(f"Stderr: {result['attributes']['stderr']}")
 
     # Example 6: Environment variables
     print("\n" + "=" * 60)
@@ -131,7 +132,7 @@ async def main():
         ExecutionContext(session=session, input="echo $MY_VAR && echo $MY_NUMBER")
     )
 
-    print(f"Output:\n{result['stdout']}")
+    print(f"Output:\n{result['attributes']['stdout']}")
 
     # Cleanup
     await session.stop()

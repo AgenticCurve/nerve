@@ -94,9 +94,9 @@ async def test_system_prompt():
     assert result["success"], f"Request failed: {result.get('error')}"
     # Shakespearean words
     shakespeare_words = ["thee", "thou", "thy", "hath", "doth", "art", "verily", "forsooth", "prithee", "'tis"]
-    content_lower = result["content"].lower()
+    content_lower = result["attributes"]["content"].lower()
     has_shakespeare = any(word in content_lower for word in shakespeare_words)
-    print(f"  Response: {result['content'][:150]}...")
+    print(f"  Response: {result['attributes']['content'][:150]}...")
     print(f"  Has Shakespearean style: {has_shakespeare}")
     if not has_shakespeare:
         print("  ⚠️  Warning: No Shakespearean words detected (LLM response may vary)")

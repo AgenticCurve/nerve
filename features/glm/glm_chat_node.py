@@ -94,9 +94,9 @@ async def test_system_prompt():
     assert result["success"], f"Request failed: {result.get('error')}"
     # Pirate-like words
     pirate_words = ["arr", "ahoy", "matey", "ye", "aye", "captain", "ship", "sea"]
-    content_lower = result["content"].lower()
+    content_lower = result["attributes"]["content"].lower()
     has_pirate_speak = any(word in content_lower for word in pirate_words)
-    print(f"  Response: {result['content'][:150]}...")
+    print(f"  Response: {result['attributes']['content'][:150]}...")
     print(f"  Has pirate speak: {has_pirate_speak}")
     if not has_pirate_speak:
         print("  ⚠️  Warning: No pirate words detected (LLM response may vary)")

@@ -104,9 +104,11 @@ class TestBashNodeToolMethods:
         """tool_result formats successful execution."""
         result = {
             "success": True,
-            "stdout": "file1.txt\nfile2.txt",
-            "stderr": "",
-            "exit_code": 0,
+            "attributes": {
+                "stdout": "file1.txt\nfile2.txt",
+                "stderr": "",
+                "exit_code": 0,
+            },
         }
         formatted = bash_node.tool_result(result)
         assert formatted == "file1.txt\nfile2.txt"
@@ -115,9 +117,11 @@ class TestBashNodeToolMethods:
         """tool_result handles empty stdout."""
         result = {
             "success": True,
-            "stdout": "",
-            "stderr": "",
-            "exit_code": 0,
+            "attributes": {
+                "stdout": "",
+                "stderr": "",
+                "exit_code": 0,
+            },
         }
         formatted = bash_node.tool_result(result)
         assert formatted == "(no output)"
@@ -126,10 +130,12 @@ class TestBashNodeToolMethods:
         """tool_result formats error execution."""
         result = {
             "success": False,
-            "stdout": "",
-            "stderr": "command not found",
-            "exit_code": 127,
             "error": "Command exited with code 127",
+            "attributes": {
+                "stdout": "",
+                "stderr": "command not found",
+                "exit_code": 127,
+            },
         }
         formatted = bash_node.tool_result(result)
         assert "Error" in formatted

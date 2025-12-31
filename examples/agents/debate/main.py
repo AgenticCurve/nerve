@@ -51,7 +51,7 @@ async def main():
             parser=ParserType.CLAUDE,
         )
         response = await advocate_python.execute(context)
-        message = response["raw"][:500]
+        message = response["attributes"]["raw"][:500]
         print(f"[PYTHON]: {message[:300]}...")
 
         # JavaScript advocate's turn
@@ -62,7 +62,7 @@ async def main():
             parser=ParserType.CLAUDE,
         )
         response = await advocate_js.execute(context)
-        message = response["raw"][:500]
+        message = response["attributes"]["raw"][:500]
         print(f"[JAVASCRIPT]: {message[:300]}...")
 
     print("\n" + "=" * 60)

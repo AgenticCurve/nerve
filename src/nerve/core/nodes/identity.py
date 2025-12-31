@@ -97,12 +97,15 @@ class IdentityNode:
             context: Execution context with input to echo.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - Always True (unless node is stopped)
             - error: str | None - Error message if node is stopped, None otherwise
             - error_type: str | None - "node_stopped" or None
+            - node_type: str - "identity"
+            - node_id: str - ID of this node
             - input: str - The input provided
             - output: str - The echoed output (same as input)
+            - attributes: dict - Empty dict (no additional attributes for IdentityNode)
         """
         # Check if node is stopped
         if self.state == NodeState.STOPPED:
@@ -110,8 +113,11 @@ class IdentityNode:
                 "success": False,
                 "error": "Node is stopped",
                 "error_type": "node_stopped",
+                "node_type": "identity",
+                "node_id": self.id,
                 "input": "",
                 "output": "",
+                "attributes": {},
             }
 
         output = str(context.input) if context.input else ""
@@ -119,8 +125,11 @@ class IdentityNode:
             "success": True,
             "error": None,
             "error_type": None,
+            "node_type": "identity",
+            "node_id": self.id,
             "input": output,
             "output": output,
+            "attributes": {},
         }
 
     async def interrupt(self) -> None:

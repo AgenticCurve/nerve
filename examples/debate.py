@@ -23,7 +23,7 @@ from nerve.server.protocols import Command, CommandType
 
 def extract_text_response(response_data: dict) -> str:
     """Extract the text content from a parsed response."""
-    sections = response_data.get("sections", [])
+    sections = response_data.get("attributes", {}).get("sections", [])
 
     # Collect all text sections
     text_parts = []
@@ -37,7 +37,7 @@ def extract_text_response(response_data: dict) -> str:
         return "\n".join(text_parts)
 
     # Fallback to raw (truncated)
-    return response_data.get("raw", "")[:500]
+    return response_data.get("attributes", {}).get("raw", "")[:500]
 
 
 async def run_debate(

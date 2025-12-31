@@ -1,5 +1,8 @@
 ./
 ├── docs/
+│   └── plans/
+│       ├── [L:1338] graph-execution-in-commander.md
+│       └── [L: 359] standardized-output-api.md
 ├── docs_for_agents/
 │   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
@@ -11,27 +14,27 @@
 │   │   │   └── [L:  23] prompts.py
 │   │   ├── dev_coach_architecture/
 │   │   │   ├── [L:   1] __init__.py
-│   │   │   ├── [L: 456] main.py
+│   │   │   ├── [L: 460] main.py
 │   │   │   └── [L: 135] prompts.py
 │   │   ├── dev_coach_base/
 │   │   │   ├── [L:   1] __init__.py
-│   │   │   ├── [L: 454] main.py
+│   │   │   ├── [L: 458] main.py
 │   │   │   └── [L: 150] prompts.py
 │   │   ├── dev_coach_consultants/
 │   │   │   ├── [L:   1] __init__.py
-│   │   │   ├── [L: 445] main.py
+│   │   │   ├── [L: 449] main.py
 │   │   │   └── [L: 238] prompts.py
 │   │   ├── dev_coach_review/
 │   │   │   ├── [L:   1] __init__.py
-│   │   │   ├── [L: 537] main.py
+│   │   │   ├── [L: 541] main.py
 │   │   │   └── [L: 223] prompts.py
 │   │   └── dev_coach_review_prd/
 │   │       ├── [L:   1] __init__.py
-│   │       ├── [L: 632] main.py
+│   │       ├── [L: 636] main.py
 │   │       └── [L: 234] prompts.py
-│   ├── [L: 141] bash_node_example.py
+│   ├── [L: 142] bash_node_example.py
 │   ├── core_only/
-│   │   ├── [L: 109] graph_execution.py
+│   │   ├── [L: 110] graph_execution.py
 │   │   ├── [L:  63] multi_session.py
 │   │   ├── [L:  60] simple_session.py
 │   │   └── [L:  52] streaming.py
@@ -40,7 +43,7 @@
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
-│   ├── [L: 324] number_loop.py
+│   ├── [L: 328] number_loop.py
 │   ├── remote/
 │   │   ├── [L:  54] client.py
 │   │   └── [L:  40] server.py
@@ -91,8 +94,8 @@
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
-│       │   │   ├── [L: 366] base.py
-│       │   │   ├── [L: 454] bash.py
+│       │   │   ├── [L: 378] base.py
+│       │   │   ├── [L: 469] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -100,14 +103,14 @@
 │       │   │   │   ├── [L:  21] __init__.py
 │       │   │   │   ├── [L: 151] builder.py
 │       │   │   │   ├── [L:  29] events.py
-│       │   │   │   ├── [L:1009] graph.py
+│       │   │   │   ├── [L:1052] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
-│       │   │   ├── [L: 157] identity.py
+│       │   │   ├── [L: 166] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 699] base.py
-│       │   │   │   ├── [L: 592] chat.py
+│       │   │   │   ├── [L: 714] base.py
+│       │   │   │   ├── [L: 596] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -115,9 +118,9 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 729] claude_wezterm_node.py
-│       │   │   │   ├── [L: 772] pty_node.py
-│       │   │   │   └── [L: 865] wezterm_node.py
+│       │   │   │   ├── [L: 736] claude_wezterm_node.py
+│       │   │   │   ├── [L: 779] pty_node.py
+│       │   │   │   └── [L: 872] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
@@ -259,10 +262,10 @@
     │   │   ├── [L: 126] test_cancellation.py
     │   │   ├── [L: 173] test_claude_wezterm_proxy.py
     │   │   ├── [L: 258] test_context.py
-    │   │   ├── [L: 526] test_graph.py
+    │   │   ├── [L: 529] test_graph.py
     │   │   ├── [L: 121] test_policies.py
     │   │   ├── [L: 942] test_terminal.py
-    │   │   ├── [L: 302] test_tools.py
+    │   │   ├── [L: 308] test_tools.py
     │   │   ├── [L: 317] test_trace.py
     │   │   └── [L: 332] test_unified_api.py
     │   ├── session/
@@ -305,4 +308,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-65 directories, 241 files, 56,124 total lines
+66 directories, 243 files, 57,975 total lines

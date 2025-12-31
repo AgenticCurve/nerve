@@ -36,7 +36,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response["raw"]
+        return response["attributes"]["raw"]
 
     graph.add_step(
         FunctionNode(id="haiku", session=session, fn=generate_haiku),
@@ -53,7 +53,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response["raw"]
+        return response["attributes"]["raw"]
 
     graph.add_step(
         FunctionNode(id="critique", session=session, fn=critique_haiku),
@@ -73,7 +73,7 @@ async def main():
                 parser=ParserType.CLAUDE,
             )
         )
-        return response["raw"]
+        return response["attributes"]["raw"]
 
     graph.add_step(
         FunctionNode(id="improved", session=session, fn=improve_haiku),
@@ -98,9 +98,10 @@ async def main():
 
     print("Results:")
     print("-" * 50)
-    print(f"Original haiku:\n{results['haiku']['output']}\n")
-    print(f"Critique:\n{results['critique']['output']}\n")
-    print(f"Improved haiku:\n{results['improved']['output']}")
+    steps = results["attributes"]["steps"]
+    print(f"Original haiku:\n{steps['haiku']['output']}\n")
+    print(f"Critique:\n{steps['critique']['output']}\n")
+    print(f"Improved haiku:\n{steps['improved']['output']}")
 
     await claude.stop()
 

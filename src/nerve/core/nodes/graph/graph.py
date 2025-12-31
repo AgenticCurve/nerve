@@ -56,8 +56,10 @@ class Graph:
         >>>
         >>> # Execute
         >>> context = ExecutionContext(session=session, input=None)
-        >>> results = await graph.execute(context)
-        >>> print(results["process"])
+        >>> result = await graph.execute(context)
+        >>> print(result["output"])  # Output of final step
+        >>> print(result["attributes"]["steps"]["process"]["output"])  # Specific step output
+        >>> print(result["success"])  # Overall graph success
     """
 
     def __init__(self, id: str, session: Session, max_parallel: int = 1) -> None:
@@ -370,7 +372,18 @@ class Graph:
             context: Execution context with session, input, and agent capabilities.
 
         Returns:
-            Dict mapping step_id to step result.
+            Dict with standardized fields:
+            - success: bool - True if ALL steps succeeded
+            - error: str | None - First error encountered, None if all succeeded
+            - error_type: str | None - Error type of first error
+            - node_type: str - "graph"
+            - node_id: str - ID of this graph
+            - input: Any - Input provided to the graph
+            - output: Any - Output of the final step in execution order
+            - attributes: dict - Contains:
+                - steps: dict[str, Any] - All step results (maps step_id -> result)
+                - execution_order: list[str] - Step IDs in execution order
+                - final_step_id: str - Which step's output is in top-level "output"
 
         Raises:
             ValueError: If graph is invalid.
@@ -528,6 +541,38 @@ class Graph:
             if trace:
                 trace.complete()
 
+            # Calculate overall success and collect first error
+            overall_success = all(
+                step_result.get("success", False) for step_result in results.values()
+            )
+            first_error = None
+            first_error_type = None
+            for step_id in execution_order:
+                if not results[step_id].get("success", False):
+                    first_error = results[step_id].get("error")
+                    first_error_type = results[step_id].get("error_type")
+                    break
+
+            # Get final step's output
+            final_step_id = execution_order[-1] if execution_order else None
+            final_output = results[final_step_id].get("output") if final_step_id else None
+
+            # Return standardized format
+            return {
+                "success": overall_success,
+                "error": first_error,
+                "error_type": first_error_type,
+                "node_type": "graph",
+                "node_id": self._id,
+                "input": context.input,
+                "output": final_output,
+                "attributes": {
+                    "steps": results,
+                    "execution_order": execution_order,
+                    "final_step_id": final_step_id,
+                },
+            }
+
         except Exception as e:
             # Log graph failure
             graph_duration = time.monotonic() - graph_start_mono
@@ -550,8 +595,6 @@ class Graph:
             # Cleanup run logger if we created it
             if owns_run_logger and run_logger:
                 run_logger.close()
-
-        return results
 
     async def interrupt(self) -> None:
         """Request interruption of graph execution.

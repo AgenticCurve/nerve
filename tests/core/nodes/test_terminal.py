@@ -125,10 +125,10 @@ class TestPTYNode:
             # Nodes now return dicts instead of ParsedResponse
             assert isinstance(result, dict)
             assert result["success"] is True
-            assert result["raw"] == "HELLO"
-            assert len(result["sections"]) == 1
-            assert result["is_ready"] is True
-            assert result["is_complete"] is True
+            assert result["attributes"]["raw"] == "HELLO"
+            assert len(result["attributes"]["sections"]) == 1
+            assert result["attributes"]["is_ready"] is True
+            assert result["attributes"]["is_complete"] is True
             mock_backend.write.assert_called()
             await node.stop()
 
@@ -377,10 +377,10 @@ class TestWezTermNode:
             # Nodes now return dicts instead of ParsedResponse
             assert isinstance(result, dict)
             assert result["success"] is True
-            assert result["raw"] == "HELLO"
-            assert len(result["sections"]) == 1
-            assert result["is_ready"] is True
-            assert result["is_complete"] is True
+            assert result["attributes"]["raw"] == "HELLO"
+            assert len(result["attributes"]["sections"]) == 1
+            assert result["attributes"]["is_ready"] is True
+            assert result["attributes"]["is_complete"] is True
             mock_backend.write.assert_called()
             await node.stop()
 
@@ -711,10 +711,10 @@ class TestClaudeWezTermNode:
             # Nodes now return dicts instead of ParsedResponse
             assert isinstance(result, dict)
             assert result["success"] is True
-            assert result["raw"] == "Hello World"
-            assert len(result["sections"]) == 1
-            assert result["is_ready"] is True
-            assert result["is_complete"] is True
+            assert result["attributes"]["raw"] == "Hello World"
+            assert len(result["attributes"]["sections"]) == 1
+            assert result["attributes"]["is_ready"] is True
+            assert result["attributes"]["is_complete"] is True
             await node.stop()
 
     @pytest.mark.asyncio

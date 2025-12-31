@@ -27,12 +27,12 @@ async def test_bash_node_basic_execution(session, bash_node):
     result = await bash_node.execute(context)
 
     assert result["success"] is True
-    assert "hello" in result["stdout"]
-    assert result["stderr"] == ""
-    assert result["exit_code"] == 0
-    assert result["command"] == "echo hello"
+    assert "hello" in result["attributes"]["stdout"]
+    assert result["attributes"]["stderr"] == ""
+    assert result["attributes"]["exit_code"] == 0
+    assert result["attributes"]["command"] == "echo hello"
     assert result["error"] is None  # No error on success
-    assert result["interrupted"] is False
+    assert result["attributes"]["interrupted"] is False
 
 
 @pytest.mark.asyncio
@@ -42,7 +42,7 @@ async def test_bash_node_command_failure(session, bash_node):
     result = await bash_node.execute(context)
 
     assert result["success"] is False
-    assert result["exit_code"] == 42
+    assert result["attributes"]["exit_code"] == 42
     assert result["error"] == "Command exited with code 42"  # No stderr, so error message generated
     assert result["error_type"] == "process_error"
 
@@ -54,7 +54,7 @@ async def test_bash_node_chained_commands(session, bash_node):
     result = await bash_node.execute(context)
 
     assert result["success"] is True
-    assert "/tmp" in result["stdout"]
+    assert "/tmp" in result["attributes"]["stdout"]
 
 
 @pytest.mark.asyncio
@@ -67,7 +67,7 @@ async def test_bash_node_timeout():
 
     assert result["success"] is False
     assert "timed out" in result["error"]
-    assert result["exit_code"] is None
+    assert result["attributes"]["exit_code"] is None
 
 
 @pytest.mark.asyncio
@@ -86,7 +86,7 @@ async def test_bash_node_interrupt(session, bash_node):
     result = await task
 
     assert result["success"] is False
-    assert result["interrupted"] is True
+    assert result["attributes"]["interrupted"] is True
     assert result["error_type"] == "interrupted"
 
 
@@ -99,7 +99,7 @@ async def test_bash_node_working_directory(tmp_path):
     result = await bash_node.execute(context)
 
     assert result["success"] is True
-    assert str(tmp_path) in result["stdout"]
+    assert str(tmp_path) in result["attributes"]["stdout"]
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ async def test_bash_node_environment_variables():
     result = await bash_node.execute(context)
 
     assert result["success"] is True
-    assert "test_value" in result["stdout"]
+    assert "test_value" in result["attributes"]["stdout"]
 
 
 @pytest.mark.asyncio
@@ -174,7 +174,7 @@ async def test_bash_node_multiple_interrupts(session, bash_node):
     await bash_node.interrupt()
 
     result = await task
-    assert result["interrupted"] is True
+    assert result["attributes"]["interrupted"] is True
 
 
 @pytest.mark.asyncio
@@ -192,9 +192,9 @@ async def test_bash_node_stderr_capture(session, bash_node):
 
     # With new logic: any stderr makes success=False
     assert result["success"] is False
-    assert "error" in result["stderr"]
+    assert "error" in result["attributes"]["stderr"]
     assert "error" in result["error"]  # error = stderr
-    assert result["stdout"].strip() == ""
+    assert result["attributes"]["stdout"].strip() == ""
     assert result["error_type"] == "process_error"
 
 

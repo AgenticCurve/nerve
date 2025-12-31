@@ -417,32 +417,34 @@ class WezTermNode:
             context: Execution context with input string.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if terminal responded successfully
             - error: str | None - Error message if failed, None if success
             - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - node_type: str - "wezterm"
+            - node_id: str - ID of this node
             - input: str - The input sent to terminal
             - output: str - Raw terminal output (generic behavior)
-            - raw: str - Raw terminal output
-            - sections: list[dict] - Parsed sections (if parser enabled)
-            - is_ready: bool - Terminal is ready for new input
-            - is_complete: bool - Response is complete
-            - tokens: int | None - Token count (if available from parser)
-            - parser: str - Parser type used ("CLAUDE", "NONE", etc.)
+            - attributes: dict - Contains raw, sections, is_ready, is_complete, tokens, parser
         """
         # Initialize result dict
+        parser_str = str(context.parser or self._default_parser)
         result: dict[str, Any] = {
             "success": False,
             "error": None,
             "error_type": None,
+            "node_type": "wezterm",
+            "node_id": self.id,
             "input": str(context.input) if context.input is not None else "",
             "output": None,
-            "raw": "",
-            "sections": [],
-            "is_ready": False,
-            "is_complete": False,
-            "tokens": None,
-            "parser": str(context.parser or self._default_parser),
+            "attributes": {
+                "raw": "",
+                "sections": [],
+                "is_ready": False,
+                "is_complete": False,
+                "tokens": None,
+                "parser": parser_str,
+            },
         }
 
         if self.state == NodeState.STOPPED:
@@ -513,14 +515,19 @@ class WezTermNode:
             result["success"] = True
             result["error"] = None
             result["error_type"] = None
-            result["raw"] = parsed_response.raw
-            result["sections"] = [
+
+            # Parse sections list
+            sections_list = [
                 {"type": s.type, "content": s.content, "metadata": s.metadata}
                 for s in parsed_response.sections
             ]
-            result["is_ready"] = parsed_response.is_ready
-            result["is_complete"] = parsed_response.is_complete
-            result["tokens"] = parsed_response.tokens
+
+            # Update attributes with parsed data
+            result["attributes"]["raw"] = parsed_response.raw
+            result["attributes"]["sections"] = sections_list
+            result["attributes"]["is_ready"] = parsed_response.is_ready
+            result["attributes"]["is_complete"] = parsed_response.is_complete
+            result["attributes"]["tokens"] = parsed_response.tokens
 
             # Set output to raw (generic terminal behavior)
             # Specialized nodes (like ClaudeWezTermNode) can override this
@@ -541,10 +548,10 @@ class WezTermNode:
             # History: log send
             if self._history_writer and self._history_writer.enabled and ts_start is not None:
                 response_data = {
-                    "sections": result["sections"],
-                    "tokens": result["tokens"],
-                    "is_complete": result["is_complete"],
-                    "is_ready": result["is_ready"],
+                    "sections": result["attributes"]["sections"],
+                    "tokens": result["attributes"]["tokens"],
+                    "is_complete": result["attributes"]["is_complete"],
+                    "is_ready": result["attributes"]["is_ready"],
                 }
                 self._history_writer.log_send(
                     input=input_str,
@@ -559,7 +566,7 @@ class WezTermNode:
             duration = time.monotonic() - start_mono
             result["error"] = str(e)
             result["error_type"] = "timeout"
-            result["raw"] = self.backend.buffer if hasattr(self.backend, "buffer") else ""
+            result["attributes"]["raw"] = self.backend.buffer
             log_error(
                 log_ctx.logger,
                 self.id,
@@ -575,7 +582,7 @@ class WezTermNode:
             duration = time.monotonic() - start_mono
             result["error"] = f"{type(e).__name__}: {e}"
             result["error_type"] = "internal_error"
-            result["raw"] = self.backend.buffer if hasattr(self.backend, "buffer") else ""
+            result["attributes"]["raw"] = self.backend.buffer
             log_error(
                 log_ctx.logger,
                 self.id,
