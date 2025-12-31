@@ -142,7 +142,7 @@ async def run_chain_test(server_name: str = "graph-test", node_name: str = "clau
         extracted = extract_number_from_response(response)
         results[step_id] = extracted
 
-        print(f"  Response sections: {len(response.get('sections', []))}")
+        print(f"  Response sections: {len(response.get('attributes', {}).get('sections', []))}")
         for i, section in enumerate(response.get("attributes", {}).get("sections", [])):
             sect_type = section.get("type", "?")
             content = section.get("content", "")[:80]
