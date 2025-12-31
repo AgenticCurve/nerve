@@ -21,6 +21,7 @@ def create_theme(
     # Node type colors
     node_bash: str = "green",
     node_llm: str = "magenta",
+    node_graph: str = "cyan",
     node_python: str = "yellow",
     # Misc
     timestamp: str = "dim cyan",
@@ -49,6 +50,7 @@ def create_theme(
             # Node types
             "node.bash": node_bash,
             "node.llm": node_llm,
+            "node.graph": node_graph,
             "node.python": node_python,
             # Misc
             "timestamp": timestamp,
@@ -79,6 +81,7 @@ NORD_THEME = create_theme(
     error_text="#BF616A",
     node_bash="#A3BE8C",
     node_llm="#B48EAD",
+    node_graph="#88C0D0",  # Nord frost cyan - subtle distinction
     node_python="#EBCB8B",
     timestamp="#4C566A",
     prompt="#88C0D0",
@@ -98,6 +101,7 @@ DRACULA_THEME = create_theme(
     error_text="#FF5555",
     node_bash="#50FA7B",
     node_llm="#FF79C6",
+    node_graph="#8BE9FD",  # Dracula cyan - subtle distinction
     node_python="#F1FA8C",
     timestamp="#6272A4",
     prompt="#50FA7B",
@@ -117,6 +121,7 @@ MONO_THEME = create_theme(
     error_text="bold red",
     node_bash="bold",
     node_llm="bold",
+    node_graph="bold",  # Same as nodes for true transparency
     node_python="bold",
     timestamp="dim",
     prompt="bold",

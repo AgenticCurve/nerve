@@ -114,7 +114,12 @@ class Block:
             if is_pending:
                 style = "pending"
             else:
-                style = f"node.{self.block_type}" if self.block_type in ("bash", "llm") else "bold"
+                # Use theme-specific styles for bash, llm, and graph blocks
+                style = (
+                    f"node.{self.block_type}"
+                    if self.block_type in ("bash", "llm", "graph")
+                    else "bold"
+                )
             header.append(f"@{self.node_id} ", style=style)
         else:
             header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")

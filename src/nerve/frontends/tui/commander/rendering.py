@@ -7,7 +7,7 @@ and block printing coordination with prompt_toolkit.
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
@@ -51,9 +51,9 @@ def print_help(console: Console) -> None:
     """
     console.print()
     console.print("[bold]Commands:[/]")
-    console.print("  [bold]@node message[/]  Send message to a node")
-    console.print("  [bold]>>> code[/]       Execute Python code")
-    console.print("  [bold]Ctrl+C[/]         Interrupt running command")
+    console.print("  [bold]@entity message[/]  Send message to node or graph")
+    console.print("  [bold]>>> code[/]         Execute Python code")
+    console.print("  [bold]Ctrl+C[/]           Interrupt running command")
     console.print()
     console.print("[bold]Block References:[/] (0-indexed)")
     console.print("  [bold]:::0[/]                   First block's output")
@@ -75,7 +75,14 @@ def print_help(console: Console) -> None:
     console.print("  [bold]:timeline[/]      Show timeline (filtered in world)")
     console.print("  [bold]:refresh[/]       Clear screen and re-render view")
     console.print("  [bold]:clean[/]         Clear all blocks, start from :::0")
-    console.print("  [bold]:nodes[/]         List available nodes")
+    console.print()
+    console.print("[bold]Entity Discovery:[/]")
+    console.print("  [bold]:nodes[/]         List nodes only")
+    console.print("  [bold]:graphs[/]        List graphs only")
+    console.print("  [bold]:entities[/]      List all (nodes + graphs)")
+    console.print("  [bold]:info <name>[/]   Show entity or block details")
+    console.print()
+    console.print("[bold]Other:[/]")
     console.print("  [bold]:theme name[/]    Switch theme")
     console.print("  [bold]:exit[/]          Exit world or commander")
     console.print()
@@ -106,6 +113,112 @@ def print_nodes(console: Console, nodes: dict[str, str]) -> None:
     else:
         for node_id, node_type in nodes.items():
             console.print(f"  [bold]{node_id}[/] ({node_type})")
+    console.print()
+
+
+def print_graphs(console: Console, graphs: dict[str, Any]) -> None:
+    """Print available graphs.
+
+    Args:
+        console: Rich console for output.
+        graphs: Dict of graph_id -> EntityInfo.
+    """
+    from rich.table import Table
+
+    console.print()
+    console.print("[bold]Available Graphs:[/]")
+    if not graphs:
+        console.print("  [dim]No graphs in session[/]")
+    else:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="dim")
+
+        for graph_id, entity in graphs.items():
+            table.add_row(graph_id, entity.node_type)
+
+        console.print(table)
+    console.print()
+
+
+def print_entities(console: Console, entities: dict[str, Any]) -> None:
+    """Print all entities (nodes and graphs).
+
+    Args:
+        console: Rich console for output.
+        entities: Dict of entity_id -> EntityInfo.
+    """
+    from rich.table import Table
+
+    console.print()
+    console.print("[bold]Available Entities:[/]")
+    if not entities:
+        console.print("  [dim]No entities in session[/]")
+    else:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="yellow")
+        table.add_column("Kind", style="dim")
+
+        for entity_id, entity in entities.items():
+            type_badge = "📊" if entity.type == "graph" else "⚙️"
+            table.add_row(entity_id, f"{type_badge} {entity.type}", entity.node_type)
+
+        console.print(table)
+    console.print()
+
+
+def print_block_info(console: Console, block: Any) -> None:
+    """Print detailed information about a block.
+
+    Args:
+        console: Rich console for output.
+        block: The block to display info for.
+    """
+    console.print()
+    console.print(f"[bold]Block {block.number}[/]")
+    console.print(f"  Type: {block.block_type}")
+    console.print(f"  Entity: {block.node_id}")
+    console.print(f"  Status: {block.status}")
+
+    if block.duration_ms is not None:
+        console.print(f"  Duration: {block.duration_ms:.1f}ms")
+
+    if block.error:
+        console.print(f"  [red]Error: {block.error}[/]")
+
+    # Show graph-specific details if available
+    if block.block_type == "graph" and block.raw and isinstance(block.raw, dict):
+        attrs = block.raw.get("attributes", {})
+        if attrs:
+            console.print("\n  [dim]Graph Details:[/]")
+            execution_order = attrs.get("execution_order", [])
+            if execution_order:
+                console.print(f"    Steps: {', '.join(execution_order)}")
+            final_step = attrs.get("final_step_id")
+            if final_step:
+                console.print(f"    Final step: {final_step}")
+
+    console.print()
+
+
+def print_entity_info(console: Console, entity: Any) -> None:
+    """Print detailed information about an entity.
+
+    Args:
+        console: Rich console for output.
+        entity: The EntityInfo to display.
+    """
+    console.print()
+    console.print(f"[bold]{entity.id}[/]")
+    console.print(f"  Type: {entity.type}")
+    console.print(f"  Kind: {entity.node_type}")
+
+    if entity.type == "graph" and entity.metadata:
+        console.print("\n  [dim]Graph Metadata:[/]")
+        for key, value in entity.metadata.items():
+            console.print(f"    {key}: {value}")
+
     console.print()
 
 

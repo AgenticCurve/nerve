@@ -11,7 +11,7 @@ Tests the full end-to-end flow:
 Usage:
     # First start server and create node:
     nerve server start graph-test
-    nerve server node create claude --server graph-test --backend claude-wezterm --command claude
+    nerve server node create claude --server graph-test --type ClaudeWezTermNode --command claude
 
     # Then run this script:
     python examples/graph_chain_test.py
@@ -54,7 +54,7 @@ def extract_number_from_response(response_data: dict) -> str:
 
     Looks for the text section and extracts the number.
     """
-    sections = response_data.get("sections", [])
+    sections = response_data.get("attributes", {}).get("sections", [])
 
     # Find text sections
     for section in sections:
@@ -72,7 +72,7 @@ def extract_number_from_response(response_data: dict) -> str:
             return content
 
     # Fallback: try to find number in raw response
-    raw = response_data.get("raw", "")
+    raw = response_data.get("attributes", {}).get("raw", "")
     for line in raw.split("\n"):
         stripped = line.strip()
         if stripped.startswith("\u23fa") and "(" not in stripped:
@@ -83,7 +83,7 @@ def extract_number_from_response(response_data: dict) -> str:
             except ValueError:
                 pass
 
-    return response_data.get("raw", "")[:100]
+    return response_data.get("attributes", {}).get("raw", "")[:100]
 
 
 async def run_chain_test(server_name: str = "graph-test", node_name: str = "claude"):
@@ -142,8 +142,8 @@ async def run_chain_test(server_name: str = "graph-test", node_name: str = "clau
         extracted = extract_number_from_response(response)
         results[step_id] = extracted
 
-        print(f"  Response sections: {len(response.get('sections', []))}")
-        for i, section in enumerate(response.get("sections", [])):
+        print(f"  Response sections: {len(response.get('attributes', {}).get('sections', []))}")
+        for i, section in enumerate(response.get("attributes", {}).get("sections", [])):
             sect_type = section.get("type", "?")
             content = section.get("content", "")[:80]
             print(f"    [{i}] {sect_type}: {content}...")

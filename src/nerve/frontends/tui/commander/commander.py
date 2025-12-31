@@ -31,6 +31,7 @@ from nerve.frontends.tui.commander.blocks import Block, Timeline
 from nerve.frontends.tui.commander.commands import dispatch_command
 from nerve.frontends.tui.commander.executor import (
     CommandExecutor,
+    execute_graph_command,
     execute_node_command,
     execute_python_command,
     get_block_type,
@@ -44,6 +45,19 @@ if TYPE_CHECKING:
     from nerve.transport import UnixSocketClient
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EntityInfo:
+    """Information about an executable entity (node or graph).
+
+    Provides unified tracking of both nodes and graphs in commander.
+    """
+
+    id: str
+    type: str  # "node" or "graph"
+    node_type: str  # "BashNode", "LLMChatNode", "graph", etc.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -68,7 +82,7 @@ class Commander:
     # State (initialized in __post_init__ or run)
     console: Console = field(init=False)
     timeline: Timeline = field(default_factory=Timeline)
-    nodes: dict[str, str] = field(default_factory=dict)  # node_id -> node_type
+    entities: dict[str, EntityInfo] = field(default_factory=dict)  # Unified nodes + graphs
 
     # Server connection (initialized in run)
     _client: UnixSocketClient | None = field(default=None, init=False)
@@ -117,6 +131,19 @@ class Commander:
             async_threshold_ms=self.async_threshold_ms,
         )
 
+    @property
+    def nodes(self) -> dict[str, str]:
+        """Backward-compatible nodes dict (filters entities to nodes only).
+
+        Returns:
+            Dict mapping node_id -> node_type for all entities of type "node".
+        """
+        return {
+            entity_id: entity.node_type
+            for entity_id, entity in self.entities.items()
+            if entity.type == "node"
+        }
+
     def _get_status_bar(self) -> str:
         """Generate dynamic status bar content.
 
@@ -124,13 +151,23 @@ class Commander:
         """
         parts = []
 
-        # Nodes info
-        node_count = len(self.nodes)
-        if node_count > 0:
-            nodes_text = f"{node_count} node{'s' if node_count != 1 else ''}"
-            parts.append(f"Nodes: {nodes_text}")
+        # Entities info (nodes + graphs)
+        entity_count = len(self.entities)
+        if entity_count > 0:
+            # Count nodes and graphs separately
+            node_count = sum(1 for e in self.entities.values() if e.type == "node")
+            graph_count = sum(1 for e in self.entities.values() if e.type == "graph")
+
+            # Build status text
+            entity_parts = []
+            if node_count > 0:
+                entity_parts.append(f"{node_count} node{'s' if node_count != 1 else ''}")
+            if graph_count > 0:
+                entity_parts.append(f"{graph_count} graph{'s' if graph_count != 1 else ''}")
+
+            parts.append(f"Entities: {', '.join(entity_parts)}")
         else:
-            parts.append("Nodes: none")
+            parts.append("Entities: none")
 
         # World indicator
         if self._current_world:
@@ -204,7 +241,7 @@ class Commander:
         self.console.print(f"[dim]Connected! Session: {self.session_name}[/]")
 
         # Fetch nodes from session
-        await self._sync_nodes()
+        await self._sync_entities()
 
         # Print welcome
         print_welcome(self.console, self.server_name, self.session_name, self.nodes)
@@ -262,18 +299,34 @@ class Commander:
 
         await self._cleanup()
 
-    async def _sync_nodes(self) -> None:
-        """Fetch nodes from server session."""
+    async def _sync_entities(self) -> None:
+        """Fetch both nodes and graphs from server session."""
         if self._adapter is None:
             return
 
         try:
+            # Fetch nodes
             node_list = await self._adapter.list_nodes()
-            self.nodes.clear()
+            self.entities.clear()
             for node_id, node_type in node_list:
-                self.nodes[node_id] = node_type
-        except Exception as e:
-            self.console.print(f"[warning]Failed to fetch nodes: {e}[/]")
+                self.entities[node_id] = EntityInfo(
+                    id=node_id,
+                    type="node",
+                    node_type=node_type,
+                )
+
+            # Fetch graphs
+            graph_ids = await self._adapter.list_graphs()
+            for graph_id in graph_ids:
+                self.entities[graph_id] = EntityInfo(
+                    id=graph_id,
+                    type="graph",
+                    node_type="graph",
+                )
+        except (ConnectionError, TimeoutError, RuntimeError, OSError) as e:
+            # Handle known network/transport errors gracefully
+            self.console.print(f"[warning]Failed to fetch entities: {e}[/]")
+            logger.warning("Entity sync failed: %s", e, exc_info=True)
 
     def _get_nodes_by_type(self) -> dict[str, str]:
         """Build reverse mapping from node type to node ID.
@@ -319,12 +372,12 @@ class Commander:
             if self._current_world == "python":
                 await self._handle_python(user_input)
             else:
-                await self._handle_node_message(f"{self._current_world} {user_input}")
+                await self._handle_entity_message(f"{self._current_world} {user_input}")
             return
 
         # Node messages start with @
         if user_input.startswith("@"):
-            await self._handle_node_message(user_input[1:])
+            await self._handle_entity_message(user_input[1:])
 
         # Python code starts with >>>
         elif user_input.startswith(">>>"):
@@ -337,35 +390,35 @@ class Commander:
                 ">>> for Python, or :help for commands[/]"
             )
 
-    async def _handle_node_message(self, message: str) -> None:
-        """Handle @node_name message syntax with threshold-based async."""
+    async def _handle_entity_message(self, message: str) -> None:
+        """Handle @entity_name message syntax for both nodes and graphs."""
         if self._adapter is None:
             self.console.print("[error]Not connected to server[/]")
             return
 
         parts = message.split(maxsplit=1)
         if not parts:
-            self.console.print("[warning]Usage: @node_name message[/]")
+            self.console.print("[warning]Usage: @entity_name message[/]")
             return
 
-        node_id = parts[0]
+        entity_id = parts[0]
         text = parts[1] if len(parts) > 1 else ""
 
         if not text:
-            self.console.print(f"[warning]No message provided for @{node_id}[/]")
+            self.console.print(f"[warning]No message provided for @{entity_id}[/]")
             return
 
-        if node_id not in self.nodes:
-            await self._sync_nodes()
-            if node_id not in self.nodes:
-                self.console.print(f"[error]Node not found: {node_id}[/]")
+        if entity_id not in self.entities:
+            await self._sync_entities()
+            if entity_id not in self.entities:
+                self.console.print(f"[error]Entity not found: {entity_id}[/]")
                 self.console.print(
-                    f"[dim]Available nodes: {', '.join(self.nodes.keys()) or 'none'}[/]"
+                    f"[dim]Available: {', '.join(self.entities.keys()) or 'none'}[/]"
                 )
                 return
 
-        node_type = self.nodes[node_id]
-        block_type = get_block_type(node_type)
+        entity = self.entities[entity_id]
+        block_type = get_block_type(entity.node_type)
 
         # DON'T expand variables yet - detect dependencies first
         from nerve.frontends.tui.commander.variables import extract_block_dependencies
@@ -375,7 +428,7 @@ class Commander:
         # Create block with dependency info (input_text stores RAW text)
         block = Block(
             block_type=block_type,
-            node_id=node_id,
+            node_id=entity_id,  # Works for both nodes and graphs
             input_text=text,
             depends_on=dependencies,
         )
@@ -393,13 +446,23 @@ class Commander:
                 self.timeline, text, self._get_nodes_by_type(), exclude_block_from=block.number
             )
 
-            await execute_node_command(
-                self._adapter,  # type: ignore[arg-type]
-                block,
-                expanded_text,  # Now has correct values from completed dependencies
-                start_time,
-                self._set_active_node,
-            )
+            # Route based on entity type
+            if entity.type == "graph":
+                await execute_graph_command(
+                    self._adapter,  # type: ignore[arg-type]
+                    block,
+                    entity_id,
+                    expanded_text,
+                    start_time,
+                )
+            else:
+                await execute_node_command(
+                    self._adapter,  # type: ignore[arg-type]
+                    block,
+                    expanded_text,
+                    start_time,
+                    self._set_active_node,
+                )
 
         await self._executor.execute_with_threshold(block, execute)
 

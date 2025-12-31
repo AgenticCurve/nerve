@@ -71,7 +71,7 @@ def generate_sequence(n: int) -> str:
 
 def extract_number(response_data: dict) -> int | None:
     """Extract a number between 3-10 from Claude's response."""
-    sections = response_data.get("sections", [])
+    sections = response_data.get("attributes", {}).get("sections", [])
 
     for section in sections:
         if section.get("type") == "text":
@@ -82,7 +82,7 @@ def extract_number(response_data: dict) -> int | None:
                 return int(numbers[0])
 
     # Fallback: search in raw
-    raw = response_data.get("raw", "")
+    raw = response_data.get("attributes", {}).get("raw", "")
     numbers = re.findall(r"\b([3-9]|10)\b", raw)
     if numbers:
         return int(numbers[0])
@@ -92,14 +92,18 @@ def extract_number(response_data: dict) -> int | None:
 
 def extract_text_response(response_data: dict) -> str:
     """Extract text content from response."""
-    sections = response_data.get("sections", [])
+    sections = response_data.get("attributes", {}).get("sections", [])
     text_parts = []
     for section in sections:
         if section.get("type") == "text":
             content = section.get("content", "").strip()
             if content:
                 text_parts.append(content)
-    return "\n".join(text_parts) if text_parts else response_data.get("raw", "")[:300]
+    return (
+        "\n".join(text_parts)
+        if text_parts
+        else response_data.get("attributes", {}).get("raw", "")[:300]
+    )
 
 
 async def run_number_loop(

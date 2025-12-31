@@ -104,7 +104,7 @@ class GLMNode(StatelessLLMNode):
         >>> # Simple string prompt
         >>> ctx = ExecutionContext(session=session, input="What is 2+2?")
         >>> result = await llm.execute(ctx)
-        >>> print(result["content"])
+        >>> print(result["attributes"]["content"])
         "4"
         >>>
         >>> # With thinking mode enabled

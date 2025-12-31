@@ -162,9 +162,8 @@ class StatefulLLMNode:
         # Validate node ID
         validate_name(self.id, "node")
 
-        # Check for duplicates
-        if self.id in self.session.nodes:
-            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        self.session.validate_unique_id(self.id, "node")
 
         # Auto-register with session
         self.session.nodes[self.id] = self
@@ -183,17 +182,15 @@ class StatefulLLMNode:
                 (user message) or can be None to continue after tool calls.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if conversation turn succeeded
             - error: str | None - Error message if failed, None if success
             - error_type: str | None - Error category (see base.py for types)
+            - node_type: str - "llm_chat"
+            - node_id: str - ID of this node
             - input: str - The user input for this turn
             - output: str - Primary output: content if available, error message, or "[Tool calls: ...]"
-            - content: str | None - Assistant's text response
-            - tool_calls: list[dict] | None - Tool calls from final turn
-            - usage: dict - Cumulative token usage {prompt_tokens, completion_tokens, total_tokens}
-            - messages_count: int - Total messages in conversation history
-            - tool_rounds: int - Number of tool execution rounds
+            - attributes: dict - Contains content, tool_calls, usage, messages_count, tool_rounds
         """
         # Get logger and exec_id
         from nerve.core.nodes.session_logging import get_execution_logger
@@ -205,13 +202,17 @@ class StatefulLLMNode:
             "success": False,
             "error": None,
             "error_type": None,
+            "node_type": "llm_chat",
+            "node_id": self.id,
             "input": str(context.input) if context.input is not None else "",
             "output": None,
-            "content": None,
-            "tool_calls": None,
-            "usage": None,
-            "messages_count": 0,
-            "tool_rounds": 0,
+            "attributes": {
+                "content": None,
+                "tool_calls": None,
+                "usage": None,
+                "messages_count": 0,
+                "tool_rounds": 0,
+            },
         }
 
         start_mono = time.monotonic()
@@ -255,10 +256,10 @@ class StatefulLLMNode:
                 if not llm_result["success"]:
                     result["error"] = llm_result.get("error")
                     result["error_type"] = llm_result.get("error_type", "internal_error")
-                    result["messages_count"] = len(self.messages)
+                    result["attributes"]["messages_count"] = len(self.messages)
                     # tool_rounds = rounds where we executed tools (current round failed before tool execution)
-                    result["tool_rounds"] = max(0, rounds - 1)
-                    result["usage"] = total_usage
+                    result["attributes"]["tool_rounds"] = max(0, rounds - 1)
+                    result["attributes"]["usage"] = total_usage
                     result["output"] = result["error"]  # Set output for consistency with schema
                     duration = time.monotonic() - start_mono
                     log_error(
@@ -273,13 +274,13 @@ class StatefulLLMNode:
                     return result
 
                 # Accumulate usage
-                if llm_result.get("usage"):
+                if llm_result.get("attributes", {}).get("usage"):
                     for key in total_usage:
-                        total_usage[key] += llm_result["usage"].get(key, 0)
+                        total_usage[key] += llm_result["attributes"]["usage"].get(key, 0)
 
                 # Parse tool calls from response
                 tool_calls = self._parse_tool_calls(llm_result)
-                content = llm_result.get("content")
+                content = llm_result.get("attributes", {}).get("content")
 
                 # Add assistant message
                 self.messages.append(
@@ -293,12 +294,12 @@ class StatefulLLMNode:
                 # If no tool calls or no executor, we're done
                 if not tool_calls or not self.tool_executor:
                     result["success"] = True
-                    result["content"] = content
-                    result["tool_calls"] = tool_calls
-                    result["usage"] = total_usage
-                    result["messages_count"] = len(self.messages)
+                    result["attributes"]["content"] = content
+                    result["attributes"]["tool_calls"] = tool_calls
+                    result["attributes"]["usage"] = total_usage
+                    result["attributes"]["messages_count"] = len(self.messages)
                     # tool_rounds = rounds where we executed tools (current round gave final answer)
-                    result["tool_rounds"] = max(0, rounds - 1) if tool_calls else 0
+                    result["attributes"]["tool_rounds"] = max(0, rounds - 1) if tool_calls else 0
 
                     # Set output field
                     if content:
@@ -407,11 +408,11 @@ class StatefulLLMNode:
             # Max rounds reached - include context about last tools
             result["error"] = f"Max tool rounds ({self.max_tool_rounds}) reached"
             result["error_type"] = "internal_error"
-            result["messages_count"] = len(self.messages)
+            result["attributes"]["messages_count"] = len(self.messages)
             # tool_rounds = rounds where we executed tools (we executed in all rounds including current)
-            result["tool_rounds"] = rounds
-            result["usage"] = total_usage
-            result["tool_calls"] = tool_calls
+            result["attributes"]["tool_rounds"] = rounds
+            result["attributes"]["usage"] = total_usage
+            result["attributes"]["tool_calls"] = tool_calls
             result["output"] = result["error"]  # Set output for consistency with schema
             duration = time.monotonic() - start_mono
             # Get last tool names for context
@@ -433,7 +434,7 @@ class StatefulLLMNode:
         except Exception as e:
             result["error"] = f"{type(e).__name__}: {e}"
             result["error_type"] = "internal_error"
-            result["messages_count"] = len(self.messages)
+            result["attributes"]["messages_count"] = len(self.messages)
             duration = time.monotonic() - start_mono
             log_error(
                 log_ctx.logger,
@@ -480,9 +481,11 @@ class StatefulLLMNode:
         Handles both OpenAI format (tool_calls in response) and
         checking the raw response for tool_calls.
         """
-        # Check for tool_calls in result
-        if "tool_calls" in llm_result and llm_result["tool_calls"]:
-            return cast(list[dict[str, Any]], llm_result["tool_calls"])
+        # Check for tool_calls in attributes
+        attributes = llm_result.get("attributes", {})
+        tool_calls = attributes.get("tool_calls")
+        if tool_calls:
+            return cast(list[dict[str, Any]], tool_calls)
 
         # Check raw response (some providers include it differently)
         # This would need to be extended based on provider-specific formats

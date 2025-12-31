@@ -288,16 +288,18 @@ class CommandExecutor:
 
 
 def get_block_type(node_type: str) -> str:
-    """Determine block type from node type string.
+    """Determine block type from node/graph type string.
 
     Args:
-        node_type: Node type name from server (e.g., "BashNode", "LLMChatNode").
+        node_type: Node or graph type name (e.g., "BashNode", "LLMChatNode", "graph").
 
     Returns:
-        Block type for rendering ("bash", "llm", or "node").
+        Block type for rendering ("bash", "llm", "graph", or "node").
     """
     node_type_lower = node_type.lower()
-    if "bash" in node_type_lower:
+    if node_type_lower == "graph":
+        return "graph"
+    elif "bash" in node_type_lower:
         return "bash"
     elif "llm" in node_type_lower or "chat" in node_type_lower:
         return "llm"
@@ -373,6 +375,57 @@ async def execute_node_command(
         block.raw = result
         block.metadata["executed_node_id"] = node_id
         block.metadata["executed_pane_id"] = result.get("_executed_on_pane_id", "unknown")
+
+    block.duration_ms = duration_ms
+
+
+async def execute_graph_command(
+    adapter: RemoteSessionAdapter,
+    block: Block,
+    graph_id: str,
+    text: str,
+    start_time: float,
+) -> None:
+    """Execute a graph and update the block with results.
+
+    Args:
+        adapter: Session adapter for server communication.
+        block: The block to update with results.
+        graph_id: ID of the graph to execute.
+        text: The input text (already expanded by caller).
+        start_time: When execution started (for duration calculation).
+    """
+    if not graph_id:
+        block.status = "error"
+        block.error = "No graph ID"
+        block.duration_ms = (time.monotonic() - start_time) * 1000
+        return
+
+    try:
+        result = await adapter.execute_graph(graph_id, input=text if text else None)
+    except Exception as e:
+        block.status = "error"
+        block.error = f"{type(e).__name__}: {e}"
+        block.duration_ms = (time.monotonic() - start_time) * 1000
+        return
+
+    duration_ms = (time.monotonic() - start_time) * 1000
+
+    # Update block with results (identical to node handling for transparency)
+    if result.get("success"):
+        block.status = "completed"
+        # CRITICAL: Show only final output (not step details) for transparency
+        block.output_text = str(result.get("output", "")).strip()
+        block.raw = result  # Full dict available for power users (:::N['attributes'])
+        block.error = None
+        block.metadata["executed_graph_id"] = graph_id
+    else:
+        block.status = "error"
+        error_msg = result.get("error", "Unknown error")
+        error_type = result.get("error_type", "unknown")
+        block.error = f"[{error_type}] {error_msg}"
+        block.raw = result  # Includes partial results in attributes
+        block.metadata["executed_graph_id"] = graph_id
 
     block.duration_ms = duration_ms
 

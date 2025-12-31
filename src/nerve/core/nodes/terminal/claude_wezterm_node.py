@@ -137,8 +137,8 @@ class ClaudeWezTermNode:
 
         # Validate
         validate_name(id, "node")
-        if id in session.nodes:
-            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        session.validate_unique_id(id, "node")
 
         if "claude" not in command.lower():
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
@@ -267,18 +267,21 @@ class ClaudeWezTermNode:
             context: Execution context with input string.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if terminal responded successfully
             - error: str | None - Error message if failed, None if success
             - error_type: str | None - "timeout", "node_stopped", "internal_error", etc.
+            - node_type: str - "claude_wezterm"
+            - node_id: str - ID of this node
             - input: str - The input sent to terminal
             - output: str - Last text section content (Claude-specific, filters thinking)
-            - raw: str - Raw terminal output
-            - sections: list[dict] - Parsed sections from Claude parser
-            - is_ready: bool - Terminal is ready for new input
-            - is_complete: bool - Response is complete
-            - tokens: int | None - Token count from Claude parser
-            - parser: str - Parser type used (typically "CLAUDE")
+            - raw: str - Raw terminal output (DEPRECATED - use attributes.raw)
+            - sections: list[dict] - Parsed sections (DEPRECATED - use attributes.sections)
+            - is_ready: bool - Terminal is ready for new input (DEPRECATED - use attributes.is_ready)
+            - is_complete: bool - Response is complete (DEPRECATED - use attributes.is_complete)
+            - tokens: int | None - Token count (DEPRECATED - use attributes.tokens)
+            - parser: str - Parser type used (DEPRECATED - use attributes.parser)
+            - attributes: dict - Contains raw, sections, is_ready, is_complete, tokens, parser
         """
         # Capture pending buffer from previous run/write
         self._capture_pending_buffer_if_needed()
@@ -316,12 +319,17 @@ class ClaudeWezTermNode:
         exec_context = context.with_parser(parser_type)
 
         try:
-            # Delegate to inner
+            # Delegate to inner WezTermNode
             result = await self._inner.execute(exec_context)
+
+            # Override node_type and node_id to reflect ClaudeWezTermNode
+            result["node_type"] = "claude_wezterm"
+            result["node_id"] = self.id
 
             # Override output with Claude-specific logic: extract last text section
             # This filters out thinking blocks and returns only the final text response
-            sections = result.get("sections", [])
+            # Note: sections are in result["attributes"]["sections"], not result["sections"]
+            sections = result.get("attributes", {}).get("sections", [])
             text_sections = [s for s in sections if s.get("type") == "text"]
             result["output"] = text_sections[-1]["content"] if text_sections else ""
 

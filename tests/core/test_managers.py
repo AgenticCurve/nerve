@@ -67,7 +67,7 @@ class TestSession:
         FunctionNode(id="fn1", session=session, fn=lambda ctx: None)
 
         # Creating another node with same ID should raise
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             FunctionNode(id="fn1", session=session, fn=lambda ctx: None)
 
     def test_get_node(self):

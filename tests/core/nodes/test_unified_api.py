@@ -38,7 +38,7 @@ class TestBashNodeUnifiedAPI:
         session = Session(name="test")
         BashNode(id="bash", session=session)
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             BashNode(id="bash", session=session)
 
     def test_bash_node_invalid_id_raises(self):
@@ -83,7 +83,7 @@ class TestFunctionNodeUnifiedAPI:
         session = Session(name="test")
         FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             FunctionNode(id="fn", session=session, fn=lambda ctx: ctx.input)
 
     def test_function_node_sync_callable(self):
@@ -154,7 +154,7 @@ class TestPTYNodeUnifiedAPI:
         mock_existing = MagicMock()
         session.nodes["pty"] = mock_existing
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             await PTYNode.create(id="pty", session=session, command="bash")
 
 
@@ -285,7 +285,7 @@ class TestGraphUnifiedAPI:
         session = Session(name="test")
         Graph(id="pipeline", session=session)
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             Graph(id="pipeline", session=session)
 
     def test_graph_has_session_property(self):
@@ -328,5 +328,27 @@ class TestCrossNodeIntegration:
         BashNode(id="node", session=session)
 
         # Cannot create FunctionNode with same ID
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             FunctionNode(id="node", session=session, fn=lambda ctx: ctx.input)
+
+    def test_node_graph_cross_type_collision(self):
+        """Same ID cannot be used for both node and graph."""
+        session = Session(name="test")
+
+        # Create a node first
+        BashNode(id="pipeline", session=session)
+
+        # Cannot create Graph with same ID as existing node
+        with pytest.raises(ValueError, match="conflicts with existing node"):
+            Graph(id="pipeline", session=session)
+
+    def test_graph_node_cross_type_collision(self):
+        """Same ID cannot be used for both graph and node."""
+        session = Session(name="test")
+
+        # Create a graph first
+        Graph(id="runner", session=session)
+
+        # Cannot create BashNode with same ID as existing graph
+        with pytest.raises(ValueError, match="conflicts with existing graph"):
+            BashNode(id="runner", session=session)

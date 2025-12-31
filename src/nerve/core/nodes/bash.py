@@ -77,7 +77,7 @@ class BashNode:
         >>> await asyncio.sleep(1)
         >>> await node.interrupt()  # Sends SIGINT immediately
         >>> result = await task
-        >>> assert result["interrupted"] == True
+        >>> assert result["attributes"]["interrupted"] == True
     """
 
     # Required fields (no defaults)
@@ -103,9 +103,8 @@ class BashNode:
         # Validate node ID
         validate_name(self.id, "node")
 
-        # Check for duplicates
-        if self.id in self.session.nodes:
-            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        self.session.validate_unique_id(self.id, "node")
 
         # Auto-register with session
         self.session.nodes[self.id] = self
@@ -124,17 +123,15 @@ class BashNode:
                      Optional context.timeout overrides node timeout.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if exit_code==0 AND stderr is empty
             - error: str | None - None on success, stderr if present, exit message otherwise
             - error_type: str | None - "process_error", "timeout", "interrupted", etc.
+            - node_type: str - "bash"
+            - node_id: str - ID of this node
             - input: str - The command input
             - output: str - Always stdout (primary output)
-            - stdout: str - Standard output from command
-            - stderr: str - Standard error from command
-            - exit_code: int | None - Process exit code (None if not started)
-            - command: str - The command that was executed
-            - interrupted: bool - Whether execution was interrupted (Ctrl+C)
+            - attributes: dict - Contains stdout, stderr, exit_code, command, interrupted
 
         Note:
             This method never raises exceptions - all errors are returned in
@@ -149,13 +146,17 @@ class BashNode:
                 "success": False,
                 "error": "Node is stopped",
                 "error_type": "node_stopped",
+                "node_type": "bash",
+                "node_id": self.id,
                 "input": str(context.input) if context.input else "",
                 "output": None,
-                "stdout": "",
-                "stderr": "",
-                "exit_code": None,
-                "command": str(context.input) if context.input else "",
-                "interrupted": False,
+                "attributes": {
+                    "stdout": "",
+                    "stderr": "",
+                    "exit_code": None,
+                    "command": str(context.input) if context.input else "",
+                    "interrupted": False,
+                },
             }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
@@ -167,13 +168,17 @@ class BashNode:
             "success": False,
             "error": None,
             "error_type": None,
+            "node_type": "bash",
+            "node_id": self.id,
             "input": str(context.input) if context.input else "",
             "output": None,
-            "stdout": "",
-            "stderr": "",
-            "exit_code": None,
-            "command": "",
-            "interrupted": False,
+            "attributes": {
+                "stdout": "",
+                "stderr": "",
+                "exit_code": None,
+                "command": "",
+                "interrupted": False,
+            },
         }
 
         start_mono = time.monotonic()
@@ -181,7 +186,7 @@ class BashNode:
         try:
             # Get command from context
             command = str(context.input) if context.input else ""
-            result["command"] = command
+            result["attributes"]["command"] = command
 
             if not command:
                 result["error"] = "No command provided in context.input"
@@ -227,12 +232,15 @@ class BashNode:
                 )
 
                 # Decode output
-                result["stdout"] = stdout_bytes.decode("utf-8", errors="replace")
-                result["stderr"] = stderr_bytes.decode("utf-8", errors="replace")
-                result["exit_code"] = proc.returncode
+                stdout_str = stdout_bytes.decode("utf-8", errors="replace")
+                stderr_str = stderr_bytes.decode("utf-8", errors="replace")
+
+                result["attributes"]["stdout"] = stdout_str
+                result["attributes"]["stderr"] = stderr_str
+                result["attributes"]["exit_code"] = proc.returncode
 
                 # Set output field (always stdout)
-                result["output"] = result["stdout"]
+                result["output"] = stdout_str
 
                 # Handle exit code and set error field
                 if proc.returncode is None:
@@ -241,9 +249,13 @@ class BashNode:
                     result["error"] = "Process terminated unexpectedly"
                 elif proc.returncode in (-2, 130):
                     # Interrupted (SIGINT exit codes)
-                    result["interrupted"] = True
+                    result["attributes"]["interrupted"] = True
                     result["error_type"] = "interrupted"
-                    result["error"] = result["stderr"] if result["stderr"] else "Interrupted"
+                    result["error"] = (
+                        result["attributes"]["stderr"]
+                        if result["attributes"]["stderr"]
+                        else "Interrupted"
+                    )
                     duration = time.monotonic() - start_mono
                     log_warning(
                         log_ctx.logger,
@@ -253,7 +265,7 @@ class BashNode:
                         exit_code=proc.returncode,
                         duration_s=f"{duration:.1f}",
                     )
-                elif proc.returncode == 0 and result["stderr"] == "":
+                elif proc.returncode == 0 and result["attributes"]["stderr"] == "":
                     # Success: exit code 0 AND no stderr
                     result["success"] = True
                     result["error"] = None  # No error on success
@@ -271,8 +283,8 @@ class BashNode:
                     # Failure: non-zero exit code OR stderr present
                     result["error_type"] = "process_error"
                     result["error"] = (
-                        result["stderr"]
-                        if result["stderr"]
+                        result["attributes"]["stderr"]
+                        if result["attributes"]["stderr"]
                         else f"Command exited with code {proc.returncode}"
                     )
                     duration = time.monotonic() - start_mono
@@ -352,7 +364,7 @@ class BashNode:
             >>> await node.interrupt()  # ← Sends SIGINT right now
             >>>
             >>> result = await task
-            >>> assert result["interrupted"] == True
+            >>> assert result["attributes"]["interrupted"] == True
         """
         async with self._proc_lock:
             if self._current_proc and self._current_proc.returncode is None:
@@ -440,13 +452,15 @@ class BashNode:
             Formatted string with command output or error.
         """
         if result.get("success"):
-            stdout = result.get("stdout", "")
+            attributes = result.get("attributes", {})
+            stdout = attributes.get("stdout", "")
             return stdout if stdout else "(no output)"
 
         # Error case - include stderr and exit code
-        stderr = result.get("stderr", "")
+        attributes = result.get("attributes", {})
+        stderr = attributes.get("stderr", "")
         error = result.get("error", "")
-        exit_code = result.get("exit_code", "?")
+        exit_code = attributes.get("exit_code", "?")
         error_msg = stderr or error or "Command failed"
         return f"Error (exit {exit_code}): {error_msg}"
 

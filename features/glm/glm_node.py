@@ -43,9 +43,9 @@ async def test_basic_prompt():
     await node.close()
 
     assert result["success"], f"Request failed: {result.get('error')}"
-    assert result["content"] is not None, "No content in response"
-    print(f"  Response: {result['content']}")
-    print(f"  Model: {result['model']}")
+    assert result["attributes"]["content"] is not None, "No content in response"
+    print(f"  Response: {result['attributes']['content']}")
+    print(f"  Model: {result['attributes']['model']}")
     print("  ✅ PASSED\n")
 
 
@@ -73,8 +73,8 @@ async def test_messages_array():
     await node.close()
 
     assert result["success"], f"Request failed: {result.get('error')}"
-    assert "Paris" in result["content"], f"Expected 'Paris' in response: {result['content']}"
-    print(f"  Response: {result['content']}")
+    assert "Paris" in result["attributes"]["content"], f"Expected 'Paris' in response: {result['attributes']['content']}"
+    print(f"  Response: {result['attributes']['content']}")
     print("  ✅ PASSED\n")
 
 
@@ -97,9 +97,9 @@ async def test_usage_tracking():
     await node.close()
 
     assert result["success"], f"Request failed: {result.get('error')}"
-    assert result["usage"] is not None, "No usage data"
-    assert result["usage"]["total_tokens"] > 0, "No tokens counted"
-    print(f"  Usage: {result['usage']}")
+    assert result["attributes"]["usage"] is not None, "No usage data"
+    assert result["attributes"]["usage"]["total_tokens"] > 0, "No tokens counted"
+    print(f"  Usage: {result['attributes']['usage']}")
     print("  ✅ PASSED\n")
 
 

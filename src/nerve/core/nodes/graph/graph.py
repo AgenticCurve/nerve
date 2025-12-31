@@ -56,8 +56,10 @@ class Graph:
         >>>
         >>> # Execute
         >>> context = ExecutionContext(session=session, input=None)
-        >>> results = await graph.execute(context)
-        >>> print(results["process"])
+        >>> result = await graph.execute(context)
+        >>> print(result["output"])  # Output of final step
+        >>> print(result["attributes"]["steps"]["process"]["output"])  # Specific step output
+        >>> print(result["success"])  # Overall graph success
     """
 
     def __init__(self, id: str, session: Session, max_parallel: int = 1) -> None:
@@ -69,12 +71,12 @@ class Graph:
             max_parallel: Maximum concurrent step executions (default 1 = sequential).
 
         Raises:
-            ValueError: If graph_id is empty or already exists in session.
+            ValueError: If graph_id is empty or conflicts with existing node/graph.
         """
         if not id or not id.strip():
             raise ValueError("graph_id cannot be empty")
-        if id in session.graphs:
-            raise ValueError(f"Graph '{id}' already exists in session '{session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        session.validate_unique_id(id, "graph")
 
         self._id = id
         self._session = session
@@ -370,7 +372,18 @@ class Graph:
             context: Execution context with session, input, and agent capabilities.
 
         Returns:
-            Dict mapping step_id to step result.
+            Dict with standardized fields:
+            - success: bool - True if ALL steps succeeded
+            - error: str | None - First error encountered, None if all succeeded
+            - error_type: str | None - Error type of first error
+            - node_type: str - "graph"
+            - node_id: str - ID of this graph
+            - input: Any - Input provided to the graph
+            - output: Any - Output of the final step in execution order
+            - attributes: dict - Contains:
+                - steps: dict[str, Any] - All step results (maps step_id -> result)
+                - execution_order: list[str] - Step IDs in execution order
+                - final_step_id: str - Which step's output is in top-level "output"
 
         Raises:
             ValueError: If graph is invalid.
@@ -427,8 +440,8 @@ class Graph:
                 step = self._steps[step_id]
                 node = self._resolve_node(step, context.session)
 
-                # Resolve input
-                step_input = self._resolve_input(step, results)
+                # Resolve input (pass graph input for {input} template expansion)
+                step_input = self._resolve_input(step, results, context.input)
 
                 # Create step context
                 step_context = context.with_input(step_input).with_upstream(results)
@@ -528,6 +541,38 @@ class Graph:
             if trace:
                 trace.complete()
 
+            # Calculate overall success and collect first error
+            overall_success = all(
+                step_result.get("success", False) for step_result in results.values()
+            )
+            first_error = None
+            first_error_type = None
+            for step_id in execution_order:
+                if not results[step_id].get("success", False):
+                    first_error = results[step_id].get("error")
+                    first_error_type = results[step_id].get("error_type")
+                    break
+
+            # Get final step's output
+            final_step_id = execution_order[-1] if execution_order else None
+            final_output = results[final_step_id].get("output") if final_step_id else None
+
+            # Return standardized format
+            return {
+                "success": overall_success,
+                "error": first_error,
+                "error_type": first_error_type,
+                "node_type": "graph",
+                "node_id": self._id,
+                "input": context.input,
+                "output": final_output,
+                "attributes": {
+                    "steps": results,
+                    "execution_order": execution_order,
+                    "final_step_id": final_step_id,
+                },
+            }
+
         except Exception as e:
             # Log graph failure
             graph_duration = time.monotonic() - graph_start_mono
@@ -550,8 +595,6 @@ class Graph:
             # Cleanup run logger if we created it
             if owns_run_logger and run_logger:
                 run_logger.close()
-
-        return results
 
     async def interrupt(self) -> None:
         """Request interruption of graph execution.
@@ -634,7 +677,8 @@ class Graph:
                 step = self._steps[step_id]
                 node = self._resolve_node(step, context.session)
 
-                step_input = self._resolve_input(step, results)
+                # Resolve input (pass graph input for {input} template expansion)
+                step_input = self._resolve_input(step, results, context.input)
                 step_context = context.with_input(step_input).with_upstream(results)
                 if step.parser:
                     step_context = step_context.with_parser(step.parser)
@@ -792,18 +836,21 @@ class Graph:
 
         raise ValueError("Step has neither node nor node_ref")
 
-    def _resolve_input(self, step: Step, upstream: dict[str, Any]) -> Any:
+    def _resolve_input(self, step: Step, upstream: dict[str, Any], graph_input: Any = None) -> Any:
         """Resolve step input from static value or dynamic function.
 
         Args:
             step: The step with input configuration.
             upstream: Results from upstream steps.
+            graph_input: The original input passed to the graph (for {input} templates).
 
         Returns:
             Resolved input value.
         """
         if step.input_fn is not None:
-            return step.input_fn(upstream)
+            # Include graph input under "input" key for template expansion
+            data = {**upstream, "input": graph_input}
+            return step.input_fn(data)
         return step.input
 
     async def _execute_with_policy(

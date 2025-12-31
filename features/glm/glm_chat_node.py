@@ -52,16 +52,16 @@ async def test_multi_turn_conversation():
     result1 = await chat.execute(ctx1)
 
     assert result1["success"], f"Turn 1 failed: {result1.get('error')}"
-    print(f"  Turn 1 response: {result1['content'][:100]}...")
+    print(f"  Turn 1 response: {result1['attributes']['content'][:100]}...")
 
     # Turn 2: Test context retention
     ctx2 = ExecutionContext(session=session, input="What is my name?")
     result2 = await chat.execute(ctx2)
 
     assert result2["success"], f"Turn 2 failed: {result2.get('error')}"
-    assert "Alice" in result2["content"], f"Context not retained: {result2['content']}"
-    print(f"  Turn 2 response: {result2['content'][:100]}...")
-    print(f"  Messages count: {result2['messages_count']}")
+    assert "Alice" in result2["attributes"]["content"], f"Context not retained: {result2['attributes']['content']}"
+    print(f"  Turn 2 response: {result2['attributes']['content'][:100]}...")
+    print(f"  Messages count: {result2['attributes']['messages_count']}")
 
     await chat.close()
     print("  ✅ PASSED\n")
@@ -94,9 +94,9 @@ async def test_system_prompt():
     assert result["success"], f"Request failed: {result.get('error')}"
     # Pirate-like words
     pirate_words = ["arr", "ahoy", "matey", "ye", "aye", "captain", "ship", "sea"]
-    content_lower = result["content"].lower()
+    content_lower = result["attributes"]["content"].lower()
     has_pirate_speak = any(word in content_lower for word in pirate_words)
-    print(f"  Response: {result['content'][:150]}...")
+    print(f"  Response: {result['attributes']['content'][:150]}...")
     print(f"  Has pirate speak: {has_pirate_speak}")
     if not has_pirate_speak:
         print("  ⚠️  Warning: No pirate words detected (LLM response may vary)")
@@ -129,8 +129,8 @@ async def test_conversation_clear():
     # Build up conversation
     await chat.execute(ExecutionContext(session=session, input="Remember: the secret code is 12345"))
     result1 = await chat.execute(ExecutionContext(session=session, input="What is the secret code?"))
-    assert "12345" in result1["content"], f"Should remember code: {result1['content']}"
-    print(f"  Before clear - messages: {result1['messages_count']}")
+    assert "12345" in result1["attributes"]["content"], f"Should remember code: {result1['attributes']['content']}"
+    print(f"  Before clear - messages: {result1['attributes']['messages_count']}")
 
     # Clear and verify
     chat.clear()
@@ -174,10 +174,10 @@ async def test_usage_accumulation():
     result1 = await chat.execute(ExecutionContext(session=session, input="Hi"))
     result2 = await chat.execute(ExecutionContext(session=session, input="How are you?"))
 
-    assert result1["usage"] is not None, "No usage in turn 1"
-    assert result2["usage"] is not None, "No usage in turn 2"
-    print(f"  Turn 1 usage: {result1['usage']}")
-    print(f"  Turn 2 usage: {result2['usage']}")
+    assert result1["attributes"]["usage"] is not None, "No usage in turn 1"
+    assert result2["attributes"]["usage"] is not None, "No usage in turn 2"
+    print(f"  Turn 1 usage: {result1['attributes']['usage']}")
+    print(f"  Turn 2 usage: {result2['attributes']['usage']}")
 
     await chat.close()
     print("  ✅ PASSED\n")

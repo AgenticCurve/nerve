@@ -242,9 +242,8 @@ class FunctionNode:
         # Validate node ID
         validate_name(self.id, "node")
 
-        # Check for duplicates
-        if self.id in self.session.nodes:
-            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        self.session.validate_unique_id(self.id, "node")
 
         # Auto-register with session
         self.session.nodes[self.id] = self
@@ -264,12 +263,15 @@ class FunctionNode:
             context: Execution context with input and upstream results.
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if function succeeded
             - error: str | None - Error message if failed, None if success
             - error_type: str | None - Error category (see base.py for types)
+            - node_type: str - "function"
+            - node_id: str - ID of this node
             - input: str - The input provided to the function
             - output: Any - The return value from the function (can be any type)
+            - attributes: dict - Empty dict (no additional attributes for FunctionNode)
         """
         from nerve.core.nodes.run_logging import log_complete, log_error, log_start
         from nerve.core.nodes.session_logging import get_execution_logger
@@ -280,8 +282,11 @@ class FunctionNode:
                 "success": False,
                 "error": "Node is stopped",
                 "error_type": "node_stopped",
+                "node_type": "function",
+                "node_id": self.id,
                 "input": str(context.input) if context.input else "",
                 "output": None,
+                "attributes": {},
             }
 
         # Get logger and exec_id
@@ -307,8 +312,11 @@ class FunctionNode:
                 "success": True,
                 "error": None,
                 "error_type": None,
+                "node_type": "function",
+                "node_id": self.id,
                 "input": str(context.input) if context.input else "",
                 "output": result,
+                "attributes": {},
             }
         except Exception as e:
             duration = time.monotonic() - start_mono
@@ -324,8 +332,11 @@ class FunctionNode:
                 "success": False,
                 "error": f"{type(e).__name__}: {e}",
                 "error_type": "internal_error",
+                "node_type": "function",
+                "node_id": self.id,
                 "input": str(context.input) if context.input else "",
                 "output": None,
+                "attributes": {},
             }
         finally:
             self._current_task = None

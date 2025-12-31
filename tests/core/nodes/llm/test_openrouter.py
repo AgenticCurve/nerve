@@ -73,11 +73,11 @@ class TestOpenRouterNodeBasic:
             result = await openrouter_node.execute(context)
 
             assert result["success"] is True
-            assert result["content"] == "2 + 2 equals 4."
-            assert result["model"] == "anthropic/claude-3-haiku"
-            assert result["finish_reason"] == "stop"
+            assert result["attributes"]["content"] == "2 + 2 equals 4."
+            assert result["attributes"]["model"] == "anthropic/claude-3-haiku"
+            assert result["attributes"]["finish_reason"] == "stop"
             assert result["error"] is None
-            assert result["retries"] == 0
+            assert result["attributes"]["retries"] == 0
 
         await openrouter_node.close()
 
@@ -100,7 +100,7 @@ class TestOpenRouterNodeBasic:
             result = await openrouter_node.execute(context)
 
             assert result["success"] is True
-            assert result["content"] == "Hello there!"
+            assert result["attributes"]["content"] == "Hello there!"
 
         await openrouter_node.close()
 
@@ -155,10 +155,10 @@ class TestOpenRouterNodeResponses:
             context = ExecutionContext(session=session, input="Test")
             result = await openrouter_node.execute(context)
 
-            assert result["usage"] is not None
-            assert result["usage"]["prompt_tokens"] == 10
-            assert result["usage"]["completion_tokens"] == 5
-            assert result["usage"]["total_tokens"] == 15
+            assert result["attributes"]["usage"] is not None
+            assert result["attributes"]["usage"]["prompt_tokens"] == 10
+            assert result["attributes"]["usage"]["completion_tokens"] == 5
+            assert result["attributes"]["usage"]["total_tokens"] == 15
 
         await openrouter_node.close()
 
@@ -174,8 +174,8 @@ class TestOpenRouterNodeResponses:
             context = ExecutionContext(session=session, input="Hello!")
             result = await openrouter_node.execute(context)
 
-            assert result["request"]["model"] == "anthropic/claude-3-haiku"
-            assert len(result["request"]["messages"]) == 1
+            assert result["attributes"]["request"]["model"] == "anthropic/claude-3-haiku"
+            assert len(result["attributes"]["request"]["messages"]) == 1
 
         await openrouter_node.close()
 
@@ -237,7 +237,7 @@ class TestOpenRouterNodeErrors:
 
             assert result["success"] is False
             assert result["error_type"] == "rate_limit_error"
-            assert result["retries"] == 2  # max_retries
+            assert result["attributes"]["retries"] == 2  # max_retries
 
         await openrouter_node.close()
 
@@ -289,8 +289,8 @@ class TestOpenRouterNodeRetry:
             result = await openrouter_node.execute(context)
 
             assert result["success"] is True
-            assert result["content"] == "Success after retry!"
-            assert result["retries"] == 2
+            assert result["attributes"]["content"] == "Success after retry!"
+            assert result["attributes"]["retries"] == 2
 
         await openrouter_node.close()
 
@@ -313,7 +313,7 @@ class TestOpenRouterNodeRetry:
             result = await openrouter_node.execute(context)
 
             assert result["success"] is True
-            assert result["retries"] == 1
+            assert result["attributes"]["retries"] == 1
 
         await openrouter_node.close()
 
@@ -331,7 +331,7 @@ class TestOpenRouterNodeRetry:
             result = await openrouter_node.execute(context)
 
             assert result["success"] is False
-            assert result["retries"] == 0  # No retries for 400
+            assert result["attributes"]["retries"] == 0  # No retries for 400
 
         await openrouter_node.close()
 
@@ -382,7 +382,7 @@ class TestOpenRouterNodeValidation:
         """Test that duplicate ID raises ValueError."""
         OpenRouterNode(id="node1", session=session, api_key="key", model="model")
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             OpenRouterNode(id="node1", session=session, api_key="key", model="model")
 
     def test_invalid_id_raises(self, session):

@@ -202,8 +202,8 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"]["output"] == "result_a"
-        assert results["b"]["output"] == "got_result_a"
+        assert results["attributes"]["steps"]["a"]["output"] == "result_a"
+        assert results["attributes"]["steps"]["b"]["output"] == "got_result_a"
 
     @pytest.mark.asyncio
     async def test_execute_with_static_input(self):
@@ -220,7 +220,7 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"]["output"] == "HELLO"
+        assert results["attributes"]["steps"]["a"]["output"] == "HELLO"
 
     @pytest.mark.asyncio
     async def test_execute_with_input_fn(self):
@@ -242,8 +242,8 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"]["output"] == {"data": "value"}
-        assert results["b"]["output"] == "VALUE"
+        assert results["attributes"]["steps"]["a"]["output"] == {"data": "value"}
+        assert results["attributes"]["steps"]["b"]["output"] == "VALUE"
 
     @pytest.mark.asyncio
     async def test_execute_with_node_ref(self):
@@ -257,7 +257,7 @@ class TestGraph:
         context = ExecutionContext(session=session)
         results = await graph.execute(context)
 
-        assert results["a"]["output"] == "from_session"
+        assert results["attributes"]["steps"]["a"]["output"] == "from_session"
 
     @pytest.mark.asyncio
     async def test_nested_graphs(self):
@@ -277,7 +277,7 @@ class TestGraph:
             FunctionNode(
                 id="outer-fn",
                 session=session2,
-                fn=lambda ctx: f"got_{ctx.upstream['nested']['inner_step']['output']}",
+                fn=lambda ctx: f"got_{ctx.upstream['nested']['attributes']['steps']['inner_step']['output']}",
             ),
             step_id="after",
             depends_on=["nested"],
@@ -286,8 +286,11 @@ class TestGraph:
         context = ExecutionContext(session=session2)
         results = await outer.execute(context)
 
-        assert results["nested"]["inner_step"]["output"] == "inner_result"
-        assert results["after"]["output"] == "got_inner_result"
+        assert (
+            results["attributes"]["steps"]["nested"]["attributes"]["steps"]["inner_step"]["output"]
+            == "inner_result"
+        )
+        assert results["attributes"]["steps"]["after"]["output"] == "got_inner_result"
 
     @pytest.mark.asyncio
     async def test_execute_stream(self):

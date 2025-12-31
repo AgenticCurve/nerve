@@ -46,9 +46,67 @@ async def cmd_help(commander: Commander, args: str) -> None:
 
 
 async def cmd_nodes(commander: Commander, args: str) -> None:
-    """Handle :nodes command - list available nodes."""
-    await commander._sync_nodes()
-    rendering.print_nodes(commander.console, commander.nodes)
+    """Handle :nodes command - list available nodes (excludes graphs)."""
+    await commander._sync_entities()
+    # Filter to show only nodes (not graphs)
+    nodes_only = {
+        entity_id: entity.node_type
+        for entity_id, entity in commander.entities.items()
+        if entity.type == "node"
+    }
+    rendering.print_nodes(commander.console, nodes_only)
+
+
+async def cmd_graphs(commander: Commander, args: str) -> None:
+    """Handle :graphs command - list available graphs."""
+    await commander._sync_entities()
+    # Filter to show only graphs
+    graphs = {
+        entity_id: entity
+        for entity_id, entity in commander.entities.items()
+        if entity.type == "graph"
+    }
+    rendering.print_graphs(commander.console, graphs)
+
+
+async def cmd_entities(commander: Commander, args: str) -> None:
+    """Handle :entities command - list all entities (nodes and graphs)."""
+    await commander._sync_entities()
+    rendering.print_entities(commander.console, commander.entities)
+
+
+async def cmd_info(commander: Commander, args: str) -> None:
+    """Handle :info command - show detailed info about a block or entity.
+
+    Usage:
+        :info 3         # Show info about block 3
+        :info pipeline  # Show info about entity 'pipeline'
+    """
+    if not args:
+        commander.console.print("[error]Usage: :info <block-number | entity-name>[/]")
+        return
+
+    # Try as block number first
+    try:
+        block_num = int(args)
+        if 0 <= block_num < len(commander.timeline.blocks):
+            block = commander.timeline.blocks[block_num]
+            rendering.print_block_info(commander.console, block)
+            return
+        else:
+            commander.console.print(f"[error]Block {block_num} not found[/]")
+            return
+    except ValueError:
+        pass
+
+    # Try as entity name
+    entity_id = args.strip()
+    await commander._sync_entities()
+    if entity_id in commander.entities:
+        entity = commander.entities[entity_id]
+        rendering.print_entity_info(commander.console, entity)
+    else:
+        commander.console.print(f"[error]Unknown block or entity: {args}[/]")
 
 
 async def cmd_timeline(commander: Commander, args: str) -> None:
@@ -91,7 +149,7 @@ async def cmd_clean(commander: Commander, args: str) -> None:
 
 async def cmd_refresh(commander: Commander, args: str) -> None:
     """Handle :refresh command - sync nodes and re-render."""
-    await commander._sync_nodes()
+    await commander._sync_entities()
     rendering.refresh_view(
         commander.console,
         commander.timeline,
@@ -141,6 +199,9 @@ COMMANDS: dict[str, CommandHandler] = {
     "back": cmd_back,
     "help": cmd_help,
     "nodes": cmd_nodes,
+    "graphs": cmd_graphs,
+    "entities": cmd_entities,
+    "info": cmd_info,
     "timeline": cmd_timeline,
     "clear": cmd_clear,
     "clean": cmd_clean,

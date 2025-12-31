@@ -61,14 +61,18 @@ ADDITIONAL_CONTEXT = ""
 
 def extract_text_response(response_data: dict) -> str:
     """Extract text content from response."""
-    sections = response_data.get("sections", [])
+    sections = response_data.get("attributes", {}).get("sections", [])
     text_parts = []
     for section in sections:
         if section.get("type") == "text":
             content = section.get("content", "").strip()
             if content:
                 text_parts.append(content)
-    return "\n".join(text_parts) if text_parts else response_data.get("raw", "")[:500]
+    return (
+        "\n".join(text_parts)
+        if text_parts
+        else response_data.get("attributes", {}).get("raw", "")[:500]
+    )
 
 
 def log_to_file(log_file: str, label: str, content: str) -> None:

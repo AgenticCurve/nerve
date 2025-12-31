@@ -163,9 +163,8 @@ class StatelessLLMNode:
         # Validate node ID
         validate_name(self.id, "node")
 
-        # Check for duplicates
-        if self.id in self.session.nodes:
-            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        self.session.validate_unique_id(self.id, "node")
 
         # Auto-register with session
         self.session.nodes[self.id] = self
@@ -198,19 +197,15 @@ class StatelessLLMNode:
                 - dict: Full request with "messages" key and optional params
 
         Returns:
-            Dict with fields:
+            Dict with standardized fields:
             - success: bool - True if LLM request succeeded
             - error: str | None - Error message if failed, None if success
             - error_type: str | None - Error category (rate_limit_error, api_error, etc.)
+            - node_type: str - "llm"
+            - node_id: str - ID of this node
             - input: str - The input provided to the node
             - output: str - Primary output: content if available, "[Tool calls: ...]" format, or ""
-            - content: str | None - Text response from LLM
-            - tool_calls: list[dict] | None - Tool calls requested by LLM
-            - model: str | None - Model that generated response
-            - finish_reason: str | None - Why generation stopped ("stop", "length", "tool_calls")
-            - usage: dict | None - Token usage stats {prompt_tokens, completion_tokens, total_tokens}
-            - request: dict - Request params (truncated for logging)
-            - retries: int - Number of retries attempted
+            - attributes: dict - Contains content, tool_calls, model, finish_reason, usage, request, retries
 
         Note:
             This method never raises exceptions - all errors are returned
@@ -224,15 +219,19 @@ class StatelessLLMNode:
                 "success": False,
                 "error": "Node is stopped",
                 "error_type": "node_stopped",
+                "node_type": "llm",
+                "node_id": self.id,
                 "input": str(context.input) if context.input else "",
                 "output": None,
-                "content": None,
-                "tool_calls": None,
-                "model": None,
-                "finish_reason": None,
-                "usage": None,
-                "request": {},
-                "retries": 0,
+                "attributes": {
+                    "content": None,
+                    "tool_calls": None,
+                    "model": None,
+                    "finish_reason": None,
+                    "usage": None,
+                    "request": {},
+                    "retries": 0,
+                },
             }
 
         # Get logger and exec_id (fallback to context.exec_id for consistency)
@@ -244,15 +243,19 @@ class StatelessLLMNode:
             "success": False,
             "error": None,
             "error_type": None,
+            "node_type": "llm",
+            "node_id": self.id,
             "input": str(context.input) if context.input else "",
             "output": None,
-            "content": None,
-            "tool_calls": None,  # For tool use
-            "model": None,
-            "finish_reason": None,
-            "usage": None,
-            "request": {},
-            "retries": 0,
+            "attributes": {
+                "content": None,
+                "tool_calls": None,
+                "model": None,
+                "finish_reason": None,
+                "usage": None,
+                "request": {},
+                "retries": 0,
+            },
         }
 
         trace_id: str | None = None
@@ -280,10 +283,11 @@ class StatelessLLMNode:
             self._tracer.save_debug(trace_id, "request.json", request_body)
 
             # Store request info for debugging (truncated)
-            result["request"] = {
+            request_dict = {
                 "model": self.model,
                 "messages": _truncate_messages(messages),
             }
+            result["attributes"]["request"] = request_dict
 
             # Log API request start
             log_start(
@@ -298,7 +302,7 @@ class StatelessLLMNode:
 
             # Execute with retry
             response_data, retries = await self._execute_with_retry(request_body)
-            result["retries"] = retries
+            result["attributes"]["retries"] = retries
 
             # Log raw response body
             self._tracer.save_debug(trace_id, "response.json", response_data)
@@ -307,33 +311,43 @@ class StatelessLLMNode:
             if "choices" in response_data and response_data["choices"]:
                 choice = response_data["choices"][0]
                 message = choice.get("message", {})
-                result["content"] = message.get("content")
-                result["tool_calls"] = message.get("tool_calls")  # For tool use
-                result["finish_reason"] = choice.get("finish_reason")
+                content = message.get("content")
+                tool_calls = message.get("tool_calls")
+                finish_reason = choice.get("finish_reason")
 
-            result["model"] = response_data.get("model", self.model)
+                result["attributes"]["content"] = content
+                result["attributes"]["tool_calls"] = tool_calls
+                result["attributes"]["finish_reason"] = finish_reason
+
+            model_str = response_data.get("model", self.model)
+            result["attributes"]["model"] = model_str
 
             if "usage" in response_data:
-                result["usage"] = {
+                usage_dict = {
                     "prompt_tokens": response_data["usage"].get("prompt_tokens", 0),
                     "completion_tokens": response_data["usage"].get("completion_tokens", 0),
                     "total_tokens": response_data["usage"].get("total_tokens", 0),
                 }
+                result["attributes"]["usage"] = usage_dict
 
             result["success"] = True
 
             # Set output field
-            if result["content"]:
-                result["output"] = result["content"]
-            elif result["tool_calls"]:
-                tool_names = [tc["function"]["name"] for tc in result["tool_calls"]]
+            if result["attributes"]["content"]:
+                result["output"] = result["attributes"]["content"]
+            elif result["attributes"]["tool_calls"]:
+                tool_names = [tc["function"]["name"] for tc in result["attributes"]["tool_calls"]]
                 result["output"] = f"[Tool calls: {', '.join(tool_names)}]"
             else:
                 result["output"] = ""
 
             # Log successful completion
             duration = time.monotonic() - start_mono
-            total_tokens = result["usage"]["total_tokens"] if result["usage"] else 0
+            total_tokens = (
+                result["attributes"]["usage"]["total_tokens"]
+                if result["attributes"]["usage"]
+                else 0
+            )
             log_complete(
                 log_ctx.logger,
                 self.id,
@@ -342,13 +356,13 @@ class StatelessLLMNode:
                 exec_id=exec_id,
                 tokens=total_tokens,
                 retries=retries,
-                finish_reason=result["finish_reason"],
+                finish_reason=result["attributes"]["finish_reason"],
             )
 
         except _UpstreamError as e:
             result["error"] = e.message
             result["error_type"] = e.error_type
-            result["retries"] = e.retries
+            result["attributes"]["retries"] = e.retries
             if trace_id:
                 self._tracer.save_debug(
                     trace_id,
