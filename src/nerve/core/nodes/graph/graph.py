@@ -71,12 +71,12 @@ class Graph:
             max_parallel: Maximum concurrent step executions (default 1 = sequential).
 
         Raises:
-            ValueError: If graph_id is empty or already exists in session.
+            ValueError: If graph_id is empty or conflicts with existing node/graph.
         """
         if not id or not id.strip():
             raise ValueError("graph_id cannot be empty")
-        if id in session.graphs:
-            raise ValueError(f"Graph '{id}' already exists in session '{session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        session.validate_unique_id(id, "graph")
 
         self._id = id
         self._session = session
@@ -440,8 +440,8 @@ class Graph:
                 step = self._steps[step_id]
                 node = self._resolve_node(step, context.session)
 
-                # Resolve input
-                step_input = self._resolve_input(step, results)
+                # Resolve input (pass graph input for {input} template expansion)
+                step_input = self._resolve_input(step, results, context.input)
 
                 # Create step context
                 step_context = context.with_input(step_input).with_upstream(results)
@@ -677,7 +677,8 @@ class Graph:
                 step = self._steps[step_id]
                 node = self._resolve_node(step, context.session)
 
-                step_input = self._resolve_input(step, results)
+                # Resolve input (pass graph input for {input} template expansion)
+                step_input = self._resolve_input(step, results, context.input)
                 step_context = context.with_input(step_input).with_upstream(results)
                 if step.parser:
                     step_context = step_context.with_parser(step.parser)
@@ -835,18 +836,21 @@ class Graph:
 
         raise ValueError("Step has neither node nor node_ref")
 
-    def _resolve_input(self, step: Step, upstream: dict[str, Any]) -> Any:
+    def _resolve_input(self, step: Step, upstream: dict[str, Any], graph_input: Any = None) -> Any:
         """Resolve step input from static value or dynamic function.
 
         Args:
             step: The step with input configuration.
             upstream: Results from upstream steps.
+            graph_input: The original input passed to the graph (for {input} templates).
 
         Returns:
             Resolved input value.
         """
         if step.input_fn is not None:
-            return step.input_fn(upstream)
+            # Include graph input under "input" key for template expansion
+            data = {**upstream, "input": graph_input}
+            return step.input_fn(data)
         return step.input
 
     async def _execute_with_policy(

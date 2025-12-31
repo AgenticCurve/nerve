@@ -131,8 +131,8 @@ class PTYNode:
 
         # Validate
         validate_name(id, "node")
-        if id in session.nodes:
-            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        session.validate_unique_id(id, "node")
 
         # Normalize command
         if command is None:

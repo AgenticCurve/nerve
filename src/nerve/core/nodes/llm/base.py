@@ -163,9 +163,8 @@ class StatelessLLMNode:
         # Validate node ID
         validate_name(self.id, "node")
 
-        # Check for duplicates
-        if self.id in self.session.nodes:
-            raise ValueError(f"Node '{self.id}' already exists in session '{self.session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        self.session.validate_unique_id(self.id, "node")
 
         # Auto-register with session
         self.session.nodes[self.id] = self

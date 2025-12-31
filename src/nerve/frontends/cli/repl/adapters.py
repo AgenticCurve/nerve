@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Graph
@@ -196,6 +196,48 @@ class LocalSessionAdapter:
     async def get_graph(self, graph_id: str) -> Graph | None:
         result: Graph | None = self.session.get_graph(graph_id)
         return result
+
+    async def execute_graph(self, graph_id: str, input: Any = None) -> dict[str, Any]:
+        """Execute a registered graph in local session.
+
+        Args:
+            graph_id: ID of the graph to execute.
+            input: Optional input data for the graph.
+
+        Returns:
+            Dict with success, output, error, error_type, attributes fields
+            (matches node execution format for seamless transparency).
+        """
+        from nerve.core.nodes.context import ExecutionContext
+
+        graph = self.session.get_graph(graph_id)
+        if not graph:
+            return {
+                "success": False,
+                "error": f"Graph not found: {graph_id}",
+                "error_type": "not_found",
+                "node_type": "graph",
+                "node_id": graph_id,
+                "input": input,
+                "output": None,
+            }
+
+        ctx = ExecutionContext(session=self.session, input=input)
+
+        try:
+            result = await graph.execute(ctx)
+            # Graph.execute() already returns standardized dict
+            return cast(dict[str, Any], result)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"{type(e).__name__}: {e}",
+                "error_type": "execution_error",
+                "node_type": "graph",
+                "node_id": graph_id,
+                "input": input,
+                "output": None,
+            }
 
     async def delete_node(self, node_id: str) -> bool:
         result: bool = await self.session.delete_node(node_id)
@@ -407,6 +449,41 @@ class RemoteSessionAdapter:
         Returns None to indicate graphs are not accessible client-side.
         """
         return None
+
+    async def execute_graph(self, graph_id: str, input: Any = None) -> dict[str, Any]:
+        """Execute a registered graph on the server.
+
+        Args:
+            graph_id: ID of the graph to execute.
+            input: Optional input data for the graph.
+
+        Returns:
+            Dict with success, output, error, error_type, attributes fields
+            (matches node execution format for seamless transparency).
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.RUN_GRAPH,
+                params=self._add_session_id({"graph_id": graph_id, "input": input}),
+            ),
+            timeout=3600.0,  # Graphs can be long-running (1 hour timeout)
+        )
+
+        if result.success:
+            # Server returns {"response": {...}} with Graph.execute() standardized dict
+            return cast(dict[str, Any], result.data.get("response", {}))
+        else:
+            return {
+                "success": False,
+                "error": result.error or "Graph execution failed",
+                "error_type": "execution_error",
+                "node_type": "graph",
+                "node_id": graph_id,
+                "input": input,
+                "output": None,
+            }
 
     async def delete_node(self, node_id: str) -> bool:
         """Delete node on server."""

@@ -57,7 +57,7 @@ async def handle_loop(commander: Commander, args: str) -> None:
     nodes, start_prompt, until_phrase, max_rounds, templates = parsed
 
     # Validate nodes exist
-    await commander._sync_nodes()
+    await commander._sync_entities()
     for node_id in nodes:
         if node_id not in commander.nodes:
             commander.console.print(f"[error]Node not found: {node_id}[/]")

@@ -197,6 +197,27 @@ class Session:
 
         return result
 
+    def validate_unique_id(self, entity_id: str, entity_type: str) -> None:
+        """Validate that an ID is unique across both nodes and graphs.
+
+        Args:
+            entity_id: The ID to validate.
+            entity_type: Either "node" or "graph" (for error message).
+
+        Raises:
+            ValueError: If ID already exists as a node or graph.
+        """
+        if entity_id in self.nodes:
+            raise ValueError(
+                f"{entity_type.capitalize()} '{entity_id}' conflicts with existing node "
+                f"in session '{self.name}'"
+            )
+        if entity_id in self.graphs:
+            raise ValueError(
+                f"{entity_type.capitalize()} '{entity_id}' conflicts with existing graph "
+                f"in session '{self.name}'"
+            )
+
     def get_node_info(self) -> dict[str, NodeInfo]:
         """Get info for all nodes.
 

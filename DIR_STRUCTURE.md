@@ -1,8 +1,4 @@
 ./
-├── docs/
-│   └── plans/
-│       ├── [L:1338] graph-execution-in-commander.md
-│       └── [L: 359] standardized-output-api.md
 ├── docs_for_agents/
 │   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
@@ -43,11 +39,13 @@
 │   ├── embedded/
 │   │   └── [L:  86] in_process.py
 │   ├── [L: 180] graph_chain_test.py
+│   ├── [L: 139] GRAPH_COMMANDER_TEST.md
 │   ├── [L: 328] number_loop.py
 │   ├── remote/
 │   │   ├── [L:  54] client.py
 │   │   └── [L:  40] server.py
-│   └── [L:  32] sample_graph.py
+│   ├── [L:  32] sample_graph.py
+│   └── [L: 108] test_graph_in_commander.py
 ├── features/
 │   ├── glm/
 │   │   ├── [L: 214] glm_chat_node.py
@@ -94,8 +92,8 @@
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
-│       │   │   ├── [L: 378] base.py
-│       │   │   ├── [L: 469] bash.py
+│       │   │   ├── [L: 377] base.py
+│       │   │   ├── [L: 468] bash.py
 │       │   │   ├── [L: 190] budget.py
 │       │   │   ├── [L: 101] cancellation.py
 │       │   │   ├── [L: 256] context.py
@@ -103,14 +101,14 @@
 │       │   │   │   ├── [L:  21] __init__.py
 │       │   │   │   ├── [L: 151] builder.py
 │       │   │   │   ├── [L:  29] events.py
-│       │   │   │   ├── [L:1052] graph.py
+│       │   │   │   ├── [L:1056] graph.py
 │       │   │   │   └── [L:  59] step.py
 │       │   │   ├── [L: 562] history.py
-│       │   │   ├── [L: 166] identity.py
+│       │   │   ├── [L: 165] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  68] __init__.py
-│       │   │   │   ├── [L: 714] base.py
-│       │   │   │   ├── [L: 596] chat.py
+│       │   │   │   ├── [L: 713] base.py
+│       │   │   │   ├── [L: 595] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   └── [L: 105] openrouter.py
 │       │   │   ├── [L: 109] policies.py
@@ -118,7 +116,7 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 736] claude_wezterm_node.py
+│       │   │   │   ├── [L: 737] claude_wezterm_node.py
 │       │   │   │   ├── [L: 779] pty_node.py
 │       │   │   │   └── [L: 872] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
@@ -144,7 +142,7 @@
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 137] manager.py
 │       │   │   ├── [L: 257] persistence.py
-│       │   │   └── [L: 380] session.py
+│       │   │   └── [L: 401] session.py
 │       │   ├── [L: 172] types.py
 │       │   └── [L:  64] validation.py
 │       ├── frontends/
@@ -156,7 +154,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 581] adapters.py
+│       │   │   │   ├── [L: 658] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -182,14 +180,14 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 279] blocks.py
-│       │           ├── [L: 480] commander.py
-│       │           ├── [L: 174] commands.py
-│       │           ├── [L: 411] executor.py
+│       │           ├── [L: 284] blocks.py
+│       │           ├── [L: 543] commander.py
+│       │           ├── [L: 235] commands.py
+│       │           ├── [L: 464] executor.py
 │       │           ├── [L: 356] loop.py
 │       │           ├── [L: 690] monitor.py
-│       │           ├── [L: 350] rendering.py
-│       │           ├── [L: 146] themes.py
+│       │           ├── [L: 463] rendering.py
+│       │           ├── [L: 151] themes.py
 │       │           └── [L: 543] variables.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
@@ -216,7 +214,7 @@
 │       │   │   └── [L: 322] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  29] __init__.py
-│       │   │   ├── [L: 346] graph_handler.py
+│       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
 │       │   │   ├── [L: 432] node_lifecycle_handler.py
 │       │   │   ├── [L: 251] python_executor.py
@@ -267,7 +265,7 @@
     │   │   ├── [L: 942] test_terminal.py
     │   │   ├── [L: 308] test_tools.py
     │   │   ├── [L: 317] test_trace.py
-    │   │   └── [L: 332] test_unified_api.py
+    │   │   └── [L: 354] test_unified_api.py
     │   ├── session/
     │   │   ├── [L:   0] __init__.py
     │   │   └── [L: 103] test_session_factory.py
@@ -302,10 +300,11 @@
     │   ├── [L: 516] test_engine.py
     │   ├── [L: 287] test_engine_proxy.py
     │   ├── [L: 302] test_engine_sessions.py
+    │   ├── [L: 445] test_graph_handler.py
     │   ├── [L: 284] test_proxy_manager.py
     │   ├── [L: 195] test_session_registry.py
     │   └── [L: 204] test_validation.py
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 243 files, 57,975 total lines
+64 directories, 244 files, 57,546 total lines

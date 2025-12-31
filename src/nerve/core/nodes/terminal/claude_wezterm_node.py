@@ -137,8 +137,8 @@ class ClaudeWezTermNode:
 
         # Validate
         validate_name(id, "node")
-        if id in session.nodes:
-            raise ValueError(f"Node '{id}' already exists in session '{session.name}'")
+        # Validate uniqueness across both nodes and graphs
+        session.validate_unique_id(id, "node")
 
         if "claude" not in command.lower():
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
@@ -328,7 +328,8 @@ class ClaudeWezTermNode:
 
             # Override output with Claude-specific logic: extract last text section
             # This filters out thinking blocks and returns only the final text response
-            sections = result.get("sections", [])
+            # Note: sections are in result["attributes"]["sections"], not result["sections"]
+            sections = result.get("attributes", {}).get("sections", [])
             text_sections = [s for s in sections if s.get("type") == "text"]
             result["output"] = text_sections[-1]["content"] if text_sections else ""
 

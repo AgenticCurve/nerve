@@ -382,7 +382,7 @@ class TestOpenRouterNodeValidation:
         """Test that duplicate ID raises ValueError."""
         OpenRouterNode(id="node1", session=session, api_key="key", model="model")
 
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(ValueError, match="conflicts with existing"):
             OpenRouterNode(id="node1", session=session, api_key="key", model="model")
 
     def test_invalid_id_raises(self, session):

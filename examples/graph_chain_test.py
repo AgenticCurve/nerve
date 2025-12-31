@@ -11,7 +11,7 @@ Tests the full end-to-end flow:
 Usage:
     # First start server and create node:
     nerve server start graph-test
-    nerve server node create claude --server graph-test --backend claude-wezterm --command claude
+    nerve server node create claude --server graph-test --type ClaudeWezTermNode --command claude
 
     # Then run this script:
     python examples/graph_chain_test.py
