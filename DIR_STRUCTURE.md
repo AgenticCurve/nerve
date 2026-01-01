@@ -166,7 +166,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 793] adapters.py
+│       │   │   │   ├── [L: 836] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -193,13 +193,14 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 286] blocks.py
-│       │           ├── [L: 912] commander.py
-│       │           ├── [L: 407] commands.py
+│       │           ├── [L: 335] blocks.py
+│       │           ├── [L: 918] commander.py
+│       │           ├── [L: 513] commands.py
 │       │           ├── [L: 624] executor.py
 │       │           ├── [L: 364] loop.py
 │       │           ├── [L: 690] monitor.py
-│       │           ├── [L: 520] rendering.py
+│       │           ├── [L: 277] persistence.py
+│       │           ├── [L: 525] rendering.py
 │       │           ├── [L: 151] themes.py
 │       │           ├── [L: 543] variables.py
 │       │           └── [L:1093] workflow_runner.py
@@ -326,4 +327,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 261 files, 63,196 total lines
+66 directories, 262 files, 63,682 total lines

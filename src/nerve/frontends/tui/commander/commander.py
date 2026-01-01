@@ -335,14 +335,20 @@ class Commander:
             return
 
         try:
-            # Fetch nodes
-            node_list = await self._adapter.list_nodes()
+            # Fetch nodes with full metadata (includes command, backend, etc.)
+            await self._adapter.list_nodes()  # Populates cache
+            nodes_info = await self._adapter.get_nodes_info()
             self.entities.clear()
-            for node_id, node_type in node_list:
+            for info in nodes_info:
+                node_id = info.get("id", "")
+                node_type = info.get("type", "unknown")
+                # Extract all metadata fields except id, type, state
+                metadata = {k: v for k, v in info.items() if k not in ("id", "type", "state")}
                 self.entities[node_id] = EntityInfo(
                     id=node_id,
                     type="node",
                     node_type=node_type,
+                    metadata=metadata,
                 )
 
             # Fetch graphs

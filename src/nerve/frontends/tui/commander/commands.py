@@ -287,6 +287,110 @@ async def cmd_loop(commander: Commander, args: str) -> None:
     await handle_loop(commander, args)
 
 
+async def cmd_export(commander: Commander, args: str) -> None:
+    """Handle :export command - export session state to JSON file.
+
+    Usage:
+        :export session.json       # Export to session.json
+        :export                    # Error - filename required
+
+    Exports:
+        - Timeline blocks (completed only)
+        - Entity definitions (nodes, graphs, workflows)
+
+    Limitations:
+        - Workflows can't be serialized (Python functions)
+        - Graph input_fn lambdas can't be serialized
+        - Node conversation history is not preserved
+    """
+    import json
+
+    from nerve.frontends.tui.commander.persistence import save_session_state
+
+    if not args:
+        commander.console.print("[error]Usage: :export <filename.json>[/]")
+        return
+
+    filename = args.strip()
+    if not filename.endswith(".json"):
+        filename += ".json"
+
+    try:
+        state = await save_session_state(commander)
+        Path(filename).write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+        # Count items
+        node_count = len(state.get("entities", {}).get("nodes", []))
+        graph_count = len(state.get("entities", {}).get("graphs", []))
+        workflow_count = len(state.get("entities", {}).get("workflows", []))
+        block_count = len(state.get("blocks", []))
+
+        commander.console.print(f"[green]✓[/] Exported to [bold]{filename}[/]")
+        commander.console.print(
+            f"[dim]  {block_count} blocks, {node_count} nodes, "
+            f"{graph_count} graphs, {workflow_count} workflows[/]"
+        )
+    except Exception as e:
+        commander.console.print(f"[error]Export failed: {e}[/]")
+
+
+async def cmd_import(commander: Commander, args: str) -> None:
+    """Handle :import command - import session state from JSON file.
+
+    Usage:
+        :import session.json       # Import from session.json
+        :import                    # Error - filename required
+
+    Restores:
+        - Timeline blocks (as completed blocks for display)
+        - Entity definitions (nodes, graphs recreated)
+
+    Limitations:
+        - Workflows must be reloaded with :load
+        - Node state is not preserved (fresh instances)
+    """
+    import json
+
+    from nerve.frontends.tui.commander.persistence import restore_session_state
+
+    if not args:
+        commander.console.print("[error]Usage: :import <filename.json>[/]")
+        return
+
+    filename = args.strip()
+    path = Path(filename)
+
+    if not path.exists():
+        commander.console.print(f"[error]File not found: {filename}[/]")
+        return
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        stats = await restore_session_state(commander, data)
+
+        commander.console.print(f"[green]✓[/] Imported from [bold]{filename}[/]")
+        commander.console.print(
+            f"[dim]  {stats['blocks_restored']} blocks restored, "
+            f"{stats['nodes_created']} nodes created, "
+            f"{stats['graphs_created']} graphs created[/]"
+        )
+
+        if stats["workflows_skipped"]:
+            commander.console.print(
+                f"[yellow]  {stats['workflows_skipped']} workflows skipped "
+                f"(use :load to reload workflow files)[/]"
+            )
+
+        if stats["errors"]:
+            for error in stats["errors"]:
+                commander.console.print(f"[error]  {error}[/]")
+
+    except json.JSONDecodeError as e:
+        commander.console.print(f"[error]Invalid JSON: {e}[/]")
+    except Exception as e:
+        commander.console.print(f"[error]Import failed: {e}[/]")
+
+
 async def cmd_load(commander: Commander, args: str) -> None:
     """Handle :load command - load workflow(s) from Python file(s).
 
@@ -381,6 +485,8 @@ COMMANDS: dict[str, CommandHandler] = {
     "world": cmd_world,
     "loop": cmd_loop,
     "load": cmd_load,
+    "export": cmd_export,
+    "import": cmd_import,
 }
 
 

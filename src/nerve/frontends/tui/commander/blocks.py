@@ -284,3 +284,52 @@ class Timeline:
     def __contains__(self, number: int) -> bool:
         """Check if block number exists: 1 in timeline."""
         return self.get(number) is not None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize timeline to dict for export.
+
+        Only includes completed blocks (not pending/waiting).
+
+        Returns:
+            Dict with "blocks" list ready for JSON serialization.
+        """
+        return {"blocks": [b.to_dict() for b in self.blocks if b.status == "completed"]}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Timeline:
+        """Restore timeline from dict.
+
+        Creates a new Timeline with blocks restored from saved data.
+        Blocks are marked as completed (display only, not re-executed).
+
+        Args:
+            data: Dict with "blocks" list from to_dict() or export file.
+
+        Returns:
+            New Timeline instance with restored blocks.
+        """
+        timeline = cls()
+        for block_data in data.get("blocks", []):
+            # Handle timestamp with fallback for missing values
+            timestamp_str = block_data.get("timestamp")
+            timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
+
+            block = Block(
+                block_type=block_data.get("type", "unknown"),
+                node_id=block_data.get("node"),
+                input_text=block_data.get("input", ""),
+                output_text=block_data.get("output", ""),
+                error=block_data.get("error"),
+                raw=block_data.get("raw", {}),
+                timestamp=timestamp,
+                duration_ms=block_data.get("duration_ms"),
+                status="completed",
+            )
+            block.number = block_data.get("number", 0)
+            timeline.blocks.append(block)
+
+        # Set next number based on highest block number
+        if timeline.blocks:
+            timeline._next_number = max(b.number for b in timeline.blocks) + 1
+
+        return timeline
