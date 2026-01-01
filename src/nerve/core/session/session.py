@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from nerve.core.nodes.base import Node, NodeInfo
     from nerve.core.nodes.graph import Graph
     from nerve.core.nodes.session_logging import SessionLogger
+    from nerve.core.workflow import Workflow, WorkflowRun, WorkflowRunInfo, WorkflowState
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,10 @@ class Session:
     # Registries (renamed from _nodes to nodes for public access)
     nodes: dict[str, Node] = field(default_factory=dict)
     graphs: dict[str, Graph] = field(default_factory=dict)
+    workflows: dict[str, Workflow] = field(default_factory=dict)
+
+    # Workflow runs (internal)
+    _workflow_runs: dict[str, WorkflowRun] = field(default_factory=dict, repr=False)
 
     # Node creation configuration
     server_name: str = "default"
@@ -176,6 +181,109 @@ class Session:
         """
         return list(self.graphs.keys())
 
+    def get_workflow(self, workflow_id: str) -> Workflow | None:
+        """Get a workflow by ID.
+
+        Args:
+            workflow_id: Workflow identifier.
+
+        Returns:
+            The workflow, or None if not found.
+        """
+        return self.workflows.get(workflow_id)
+
+    def list_workflows(self) -> list[str]:
+        """List all workflow IDs.
+
+        Returns:
+            List of workflow IDs.
+        """
+        return list(self.workflows.keys())
+
+    def delete_workflow(self, workflow_id: str) -> bool:
+        """Delete a workflow.
+
+        Args:
+            workflow_id: ID of workflow to delete.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        deleted = self.workflows.pop(workflow_id, None) is not None
+        logger.debug(
+            "[%s] delete_workflow: workflow_id=%s, found=%s",
+            self.name,
+            workflow_id,
+            deleted,
+        )
+        return deleted
+
+    def get_workflow_run(self, run_id: str) -> WorkflowRun | None:
+        """Get a workflow run by ID.
+
+        Args:
+            run_id: Run identifier.
+
+        Returns:
+            The workflow run, or None if not found.
+        """
+        return self._workflow_runs.get(run_id)
+
+    def list_workflow_runs(
+        self,
+        workflow_id: str | None = None,
+        state: WorkflowState | None = None,
+    ) -> list[WorkflowRunInfo]:
+        """List workflow runs with optional filters.
+
+        Args:
+            workflow_id: Optional filter by workflow ID.
+            state: Optional filter by state.
+
+        Returns:
+            List of workflow run info objects.
+        """
+        runs = []
+        for run in self._workflow_runs.values():
+            if workflow_id and run.workflow_id != workflow_id:
+                continue
+            if state and run.state != state:
+                continue
+            runs.append(run.to_info())
+        return runs
+
+    def register_workflow_run(self, run: WorkflowRun) -> None:
+        """Register a workflow run (internal use).
+
+        Args:
+            run: The workflow run to register.
+        """
+        self._workflow_runs[run.run_id] = run
+        logger.debug(
+            "[%s] register_workflow_run: run_id=%s, workflow_id=%s",
+            self.name,
+            run.run_id,
+            run.workflow_id,
+        )
+
+    def unregister_workflow_run(self, run_id: str) -> bool:
+        """Unregister a workflow run (internal use).
+
+        Args:
+            run_id: The run ID to unregister.
+
+        Returns:
+            True if unregistered, False if not found.
+        """
+        removed = self._workflow_runs.pop(run_id, None) is not None
+        if removed:
+            logger.debug(
+                "[%s] unregister_workflow_run: run_id=%s",
+                self.name,
+                run_id,
+            )
+        return removed
+
     def list_ready_nodes(self) -> list[str]:
         """List names of nodes in READY or BUSY state (non-stopped).
 
@@ -198,14 +306,14 @@ class Session:
         return result
 
     def validate_unique_id(self, entity_id: str, entity_type: str) -> None:
-        """Validate that an ID is unique across both nodes and graphs.
+        """Validate that an ID is unique across nodes, graphs, and workflows.
 
         Args:
             entity_id: The ID to validate.
-            entity_type: Either "node" or "graph" (for error message).
+            entity_type: Either "node", "graph", or "workflow" (for error message).
 
         Raises:
-            ValueError: If ID already exists as a node or graph.
+            ValueError: If ID already exists as a node, graph, or workflow.
         """
         if entity_id in self.nodes:
             raise ValueError(
@@ -215,6 +323,11 @@ class Session:
         if entity_id in self.graphs:
             raise ValueError(
                 f"{entity_type.capitalize()} '{entity_id}' conflicts with existing graph "
+                f"in session '{self.name}'"
+            )
+        if entity_id in self.workflows:
+            raise ValueError(
+                f"{entity_type.capitalize()} '{entity_id}' conflicts with existing workflow "
                 f"in session '{self.name}'"
             )
 
@@ -308,26 +421,48 @@ class Session:
         logger.debug("[%s] session_started: persistent_nodes=%d", self.name, len(persistent_nodes))
 
     async def stop(self) -> None:
-        """Stop all nodes and clear registries."""
+        """Stop all nodes, cancel workflows, and clear registries."""
         node_count = len(self.nodes)
         graph_count = len(self.graphs)
+        workflow_run_count = len(self._workflow_runs)
         duration_s = None
         if self._start_time:
             duration_s = time.time() - self._start_time
 
         logger.debug(
-            "[%s] session_stop: nodes=%d, graphs=%d",
+            "[%s] session_stop: nodes=%d, graphs=%d, workflow_runs=%d",
             self.name,
             node_count,
             graph_count,
+            workflow_run_count,
         )
+
+        # Cancel any running workflows
+        for run in self._workflow_runs.values():
+            if not run.is_complete:
+                try:
+                    await run.cancel()
+                except Exception as e:
+                    # Best effort - log but don't fail stop on cancel errors
+                    logger.debug(
+                        "[%s] workflow cancel error during stop: run_id=%s, error=%s",
+                        self.name,
+                        run.run_id,
+                        e,
+                    )
+
         for node in self._collect_persistent_nodes():
             if hasattr(node, "stop"):
                 await node.stop()
         self.nodes.clear()
         self.graphs.clear()
+        self._workflow_runs.clear()
         logger.debug(
-            "[%s] session_stopped: nodes=%d, graphs=%d", self.name, node_count, graph_count
+            "[%s] session_stopped: nodes=%d, graphs=%d, workflow_runs=%d",
+            self.name,
+            node_count,
+            graph_count,
+            workflow_run_count,
         )
 
         # Log to session logger and close it
@@ -380,6 +515,7 @@ class Session:
             "metadata": self.metadata,
             "nodes": nodes_dict,
             "graphs": list(self.graphs.keys()),
+            "workflows": list(self.workflows.keys()),
         }
 
     # =========================================================================
@@ -395,7 +531,9 @@ class Session:
     def __repr__(self) -> str:
         node_names = ", ".join(self.nodes.keys())
         graph_names = ", ".join(self.graphs.keys())
+        workflow_names = ", ".join(self.workflows.keys())
         return (
             f"Session(id={self.id!r}, name={self.name!r}, "
-            f"nodes=[{node_names}], graphs=[{graph_names}])"
+            f"nodes=[{node_names}], graphs=[{graph_names}], "
+            f"workflows=[{workflow_names}])"
         )

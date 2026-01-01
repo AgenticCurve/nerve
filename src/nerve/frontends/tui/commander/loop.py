@@ -279,13 +279,21 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     # Wait for dependencies if any (will render "waiting" status)
     if dependencies:
         await commander._executor.wait_for_dependencies(block)
+
+        # If dependency wait failed (timeout or invalid refs), stop here
+        if block.status == "error":
+            print_block(commander.console, block)
+            return None
     else:
         # No dependencies - render the pending block immediately
         commander.timeline.render_last(commander.console)
 
     # Expand variables AFTER dependencies are ready
     # This ensures :::-1 and other refs have completed values
-    expanded_prompt = expand_variables(commander.timeline, prompt, commander._get_nodes_by_type())
+    # exclude_block_from prevents :::-1 from referencing this block itself
+    expanded_prompt = expand_variables(
+        commander.timeline, prompt, commander._get_nodes_by_type(), exclude_block_from=block.number
+    )
 
     # Execute
     start_time = time.monotonic()

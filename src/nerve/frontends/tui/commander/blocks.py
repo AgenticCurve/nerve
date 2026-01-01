@@ -114,13 +114,15 @@ class Block:
             if is_pending:
                 style = "pending"
             else:
-                # Use theme-specific styles for bash, llm, and graph blocks
+                # Use theme-specific styles for bash, llm, graph, and workflow blocks
                 style = (
                     f"node.{self.block_type}"
-                    if self.block_type in ("bash", "llm", "graph")
+                    if self.block_type in ("bash", "llm", "graph", "workflow")
                     else "bold"
                 )
-            header.append(f"@{self.node_id} ", style=style)
+            # Use % prefix for workflows, @ for nodes/graphs
+            prefix = "%" if self.block_type == "workflow" else "@"
+            header.append(f"{prefix}{self.node_id} ", style=style)
         else:
             header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")
 

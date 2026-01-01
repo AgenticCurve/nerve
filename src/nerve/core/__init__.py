@@ -125,6 +125,18 @@ from nerve.core.types import (
     SessionState,
 )
 
+# Workflow
+from nerve.core.workflow import (
+    GateInfo,
+    Workflow,
+    WorkflowContext,
+    WorkflowEvent,
+    WorkflowInfo,
+    WorkflowRun,
+    WorkflowRunInfo,
+    WorkflowState,
+)
+
 __all__ = [
     # Node abstraction
     "Node",
@@ -169,6 +181,15 @@ __all__ = [
     "SessionMetadata",
     "SessionStore",
     "get_default_store",
+    # Workflow
+    "Workflow",
+    "WorkflowContext",
+    "WorkflowRun",
+    "WorkflowInfo",
+    "WorkflowRunInfo",
+    "GateInfo",
+    "WorkflowEvent",
+    "WorkflowState",
     # Backends
     "Backend",
     "BackendConfig",

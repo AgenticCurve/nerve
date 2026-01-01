@@ -39,6 +39,29 @@ class EventType(Enum):
     GRAPH_CREATED = auto()
     GRAPH_DELETED = auto()
 
+    # Workflow execution
+    WORKFLOW_STARTED = auto()
+    WORKFLOW_COMPLETED = auto()
+    WORKFLOW_FAILED = auto()
+    WORKFLOW_CANCELLED = auto()
+    WORKFLOW_GATE_WAITING = auto()
+    WORKFLOW_GATE_ANSWERED = auto()
+    WORKFLOW_GATE_TIMEOUT = auto()
+    WORKFLOW_GATE_CANCELLED = auto()
+    WORKFLOW_NODE_STARTED = auto()
+    WORKFLOW_NODE_COMPLETED = auto()
+    WORKFLOW_NODE_ERROR = auto()
+    WORKFLOW_NODE_TIMEOUT = auto()
+    WORKFLOW_GRAPH_STARTED = auto()
+    WORKFLOW_GRAPH_COMPLETED = auto()
+    WORKFLOW_GRAPH_ERROR = auto()
+    WORKFLOW_GRAPH_TIMEOUT = auto()
+    WORKFLOW_NESTED_STARTED = auto()
+    WORKFLOW_NESTED_COMPLETED = auto()
+    WORKFLOW_NESTED_ERROR = auto()
+    WORKFLOW_NESTED_TIMEOUT = auto()
+    WORKFLOW_NESTED_CANCELLED = auto()
+
     # Errors
     ERROR = auto()
 
@@ -79,6 +102,14 @@ class CommandType(Enum):
     LIST_GRAPHS = auto()
     GET_GRAPH = auto()
     RUN_GRAPH = auto()  # Execute a registered graph
+
+    # Workflow management
+    EXECUTE_WORKFLOW = auto()
+    LIST_WORKFLOWS = auto()
+    GET_WORKFLOW_RUN = auto()
+    LIST_WORKFLOW_RUNS = auto()
+    ANSWER_GATE = auto()
+    CANCEL_WORKFLOW = auto()
 
     # Query
     GET_BUFFER = auto()

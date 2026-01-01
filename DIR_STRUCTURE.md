@@ -1,6 +1,4 @@
 ./
-├── docs_for_agents/
-│   └── [L: 223] coderabbit-review-guide.md
 ├── examples/
 │   ├── agents/
 │   │   ├── [L:  11] __init__.py
@@ -45,7 +43,13 @@
 │   │   ├── [L:  54] client.py
 │   │   └── [L:  40] server.py
 │   ├── [L:  32] sample_graph.py
-│   └── [L: 108] test_graph_in_commander.py
+│   ├── [L: 108] test_graph_in_commander.py
+│   └── workflows/
+│       ├── [L:   7] __init__.py
+│       ├── [L: 333] basic_workflow.py
+│       ├── [L: 316] code_review_workflow.py
+│       ├── [L: 199] multi_step_demo.py
+│       └── [L:  58] simple_loadable.py
 ├── features/
 │   ├── glm/
 │   │   ├── [L: 214] glm_chat_node.py
@@ -88,7 +92,7 @@
 │       ├── [L:   3] __version__.py
 │       ├── [L: 231] compose.py
 │       ├── core/
-│       │   ├── [L: 194] __init__.py
+│       │   ├── [L: 215] __init__.py
 │       │   ├── [L: 242] logging_config.py
 │       │   ├── nodes/
 │       │   │   ├── [L: 160] __init__.py
@@ -142,9 +146,15 @@
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 137] manager.py
 │       │   │   ├── [L: 257] persistence.py
-│       │   │   └── [L: 401] session.py
+│       │   │   └── [L: 539] session.py
 │       │   ├── [L: 172] types.py
-│       │   └── [L:  64] validation.py
+│       │   ├── [L:  64] validation.py
+│       │   └── workflow/
+│       │       ├── [L:  48] __init__.py
+│       │       ├── [L: 453] context.py
+│       │       ├── [L:  74] events.py
+│       │       ├── [L: 427] run.py
+│       │       └── [L: 134] workflow.py
 │       ├── frontends/
 │       │   ├── [L:  15] __init__.py
 │       │   ├── cli/
@@ -154,7 +164,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 658] adapters.py
+│       │   │   │   ├── [L: 793] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -167,7 +177,8 @@
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
 │       │   │   │   ├── [L: 911] node.py
-│       │   │   │   └── [L: 206] session.py
+│       │   │   │   ├── [L: 206] session.py
+│       │   │   │   └── [L: 193] workflow.py
 │       │   │   ├── [L: 363] utils.py
 │       │   │   └── [L: 209] wezterm.py
 │       │   ├── mcp/
@@ -180,15 +191,16 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 284] blocks.py
-│       │           ├── [L: 543] commander.py
-│       │           ├── [L: 235] commands.py
-│       │           ├── [L: 464] executor.py
-│       │           ├── [L: 356] loop.py
+│       │           ├── [L: 286] blocks.py
+│       │           ├── [L: 801] commander.py
+│       │           ├── [L: 407] commands.py
+│       │           ├── [L: 624] executor.py
+│       │           ├── [L: 364] loop.py
 │       │           ├── [L: 690] monitor.py
-│       │           ├── [L: 463] rendering.py
+│       │           ├── [L: 520] rendering.py
 │       │           ├── [L: 151] themes.py
-│       │           └── [L: 543] variables.py
+│       │           ├── [L: 543] variables.py
+│       │           └── [L:1093] workflow_runner.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -208,20 +220,21 @@
 │       │       └── [L: 197] validation.py
 │       ├── server/
 │       │   ├── [L:  65] __init__.py
-│       │   ├── [L: 297] engine.py
+│       │   ├── [L: 313] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
 │       │   │   └── [L: 322] node_factory.py
 │       │   ├── handlers/
-│       │   │   ├── [L:  29] __init__.py
+│       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
 │       │   │   ├── [L: 432] node_lifecycle_handler.py
-│       │   │   ├── [L: 251] python_executor.py
+│       │   │   ├── [L: 255] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
-│       │   │   └── [L: 190] session_handler.py
-│       │   ├── [L: 167] protocols.py
+│       │   │   ├── [L: 190] session_handler.py
+│       │   │   └── [L: 306] workflow_handler.py
+│       │   ├── [L: 198] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -272,7 +285,11 @@
     │   ├── [L: 549] test_history.py
     │   ├── [L: 415] test_managers.py
     │   ├── [L: 538] test_parsers.py
-    │   └── [L:  90] test_validation.py
+    │   ├── [L:  90] test_validation.py
+    │   └── workflow/
+    │       ├── [L:   1] __init__.py
+    │       ├── [L: 728] test_run.py
+    │       └── [L: 178] test_workflow.py
     ├── frontends/
     │   ├── [L:   1] __init__.py
     │   ├── sdk/
@@ -307,4 +324,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-64 directories, 244 files, 57,546 total lines
+66 directories, 259 files, 62,876 total lines

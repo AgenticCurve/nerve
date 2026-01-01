@@ -52,6 +52,7 @@ def print_help(console: Console) -> None:
     console.print()
     console.print("[bold]Commands:[/]")
     console.print("  [bold]@entity message[/]  Send message to node or graph")
+    console.print("  [bold]%workflow input[/]  Execute a workflow (with gate support)")
     console.print("  [bold]>>> code[/]         Execute Python code")
     console.print("  [bold]Ctrl+C[/]           Interrupt running command")
     console.print()
@@ -69,8 +70,10 @@ def print_help(console: Console) -> None:
     console.print("  [bold]:::bash[0]['input'][/]    First bash block's input")
     console.print()
     console.print("[bold]Colon Commands:[/]")
+    console.print("  [bold]:world[/]         Show worlds + backgrounded workflows")
     console.print("  [bold]:world bash[/]    Enter bash world (no @ prefix needed)")
     console.print("  [bold]:world python[/]  Enter python world (no >>> needed)")
+    console.print("  [bold]:world <id>[/]    Resume backgrounded workflow by run_id")
     console.print("  [bold]:back[/]          Exit current world")
     console.print("  [bold]:timeline[/]      Show timeline (filtered in world)")
     console.print("  [bold]:refresh[/]       Clear screen and re-render view")
@@ -79,8 +82,15 @@ def print_help(console: Console) -> None:
     console.print("[bold]Entity Discovery:[/]")
     console.print("  [bold]:nodes[/]         List nodes only")
     console.print("  [bold]:graphs[/]        List graphs only")
-    console.print("  [bold]:entities[/]      List all (nodes + graphs)")
+    console.print("  [bold]:workflows[/]     List workflows only")
+    console.print("  [bold]:entities[/]      List all (nodes + graphs + workflows)")
     console.print("  [bold]:info <name>[/]   Show entity or block details")
+    console.print()
+    console.print("[bold]Workflow Loading:[/]")
+    console.print("  [bold]:load file.py[/]        Load workflow(s) from Python file")
+    console.print("  [bold]:load *.py[/]           Load multiple files (glob)")
+    console.print("  [bold]:load f1.py f2.py[/]    Load multiple files")
+    console.print("  [bold]Tab[/] (in workflow)    Background workflow, return later")
     console.print()
     console.print("[bold]Other:[/]")
     console.print("  [bold]:theme name[/]    Switch theme")
@@ -142,7 +152,7 @@ def print_graphs(console: Console, graphs: dict[str, Any]) -> None:
 
 
 def print_entities(console: Console, entities: dict[str, Any]) -> None:
-    """Print all entities (nodes and graphs).
+    """Print all entities (nodes, graphs, and workflows).
 
     Args:
         console: Rich console for output.
@@ -161,8 +171,39 @@ def print_entities(console: Console, entities: dict[str, Any]) -> None:
         table.add_column("Kind", style="dim")
 
         for entity_id, entity in entities.items():
-            type_badge = "📊" if entity.type == "graph" else "⚙️"
+            if entity.type == "graph":
+                type_badge = "📊"
+            elif entity.type == "workflow":
+                type_badge = "🔄"
+            else:
+                type_badge = "⚙️"
             table.add_row(entity_id, f"{type_badge} {entity.type}", entity.node_type)
+
+        console.print(table)
+    console.print()
+
+
+def print_workflows(console: Console, workflows: dict[str, Any]) -> None:
+    """Print available workflows.
+
+    Args:
+        console: Rich console for output.
+        workflows: Dict of workflow_id -> EntityInfo.
+    """
+    from rich.table import Table
+
+    console.print()
+    console.print("[bold]Available Workflows:[/]")
+    if not workflows:
+        console.print("  [dim]No workflows registered[/]")
+    else:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("ID", style="cyan")
+        table.add_column("Description", style="dim")
+
+        for wf_id, entity in workflows.items():
+            desc = entity.metadata.get("description", "") if entity.metadata else ""
+            table.add_row(wf_id, desc[:60] + "..." if len(desc) > 60 else desc)
 
         console.print(table)
     console.print()
@@ -308,6 +349,7 @@ def show_world(
     nodes: dict[str, str],
     current_world: str | None,
     node_id: str,
+    active_workflows: dict[str, Any] | None = None,
 ) -> str | None:
     """Show world info or enter a world.
 
@@ -316,6 +358,7 @@ def show_world(
         nodes: Dict of node_id -> node_type.
         current_world: Currently active world (if any).
         node_id: World to enter (empty to show current/available).
+        active_workflows: Dict of run_id -> workflow info (for backgrounded workflows).
 
     Returns:
         Node ID to enter world for, or None if no change.
@@ -333,6 +376,20 @@ def show_world(
             for nid in nodes:
                 console.print(f"  [bold]{nid}[/]")
             console.print("  [bold]python[/]")
+
+        # Show backgrounded workflows if any
+        if active_workflows:
+            console.print()
+            console.print("[dim]Backgrounded workflows:[/]")
+            for run_id, wf_info in active_workflows.items():
+                workflow_id = wf_info.get("workflow_id", "?")
+                block_num = wf_info.get("block_number", "?")
+                has_gate = wf_info.get("pending_gate") is not None
+                gate_indicator = " [yellow]⏸ gate[/]" if has_gate else ""
+                console.print(
+                    f"  [cyan]{run_id[:8]}[/] │ {workflow_id} │ block #{block_num}{gate_indicator}"
+                )
+            console.print("[dim]  Use :world <run_id> to resume[/]")
         return None
 
     if node_id not in nodes:

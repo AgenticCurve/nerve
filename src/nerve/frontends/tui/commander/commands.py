@@ -7,7 +7,9 @@ Commander instance and optional arguments.
 
 from __future__ import annotations
 
+import glob
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from nerve.frontends.tui.commander import rendering
@@ -70,9 +72,21 @@ async def cmd_graphs(commander: Commander, args: str) -> None:
 
 
 async def cmd_entities(commander: Commander, args: str) -> None:
-    """Handle :entities command - list all entities (nodes and graphs)."""
+    """Handle :entities command - list all entities (nodes, graphs, workflows)."""
     await commander._sync_entities()
     rendering.print_entities(commander.console, commander.entities)
+
+
+async def cmd_workflows(commander: Commander, args: str) -> None:
+    """Handle :workflows command - list available workflows."""
+    await commander._sync_entities()
+    # Filter to show only workflows
+    workflows = {
+        entity_id: entity
+        for entity_id, entity in commander.entities.items()
+        if entity.type == "workflow"
+    }
+    rendering.print_workflows(commander.console, workflows)
 
 
 async def cmd_info(commander: Commander, args: str) -> None:
@@ -169,12 +183,92 @@ async def cmd_theme(commander: Commander, args: str) -> None:
 
 
 async def cmd_world(commander: Commander, args: str) -> None:
-    """Handle :world command - enter/show world."""
+    """Handle :world command - enter/show world or resume workflow.
+
+    Usage:
+        :world              # Show current world + backgrounded workflows
+        :world <node>       # Enter node world
+        :world python       # Enter python world
+        :world <run_id>     # Resume backgrounded workflow (prefix match)
+    """
+    from nerve.frontends.tui.commander.workflow_runner import resume_workflow_tui
+
+    # Check if arg matches a backgrounded workflow run_id
+    if args and commander._active_workflows:
+        run_id_prefix = args.strip()
+        matching_run_ids = [
+            run_id for run_id in commander._active_workflows if run_id.startswith(run_id_prefix)
+        ]
+
+        # Handle ambiguous matches
+        if len(matching_run_ids) > 1:
+            commander.console.print(
+                f"[yellow]Ambiguous prefix '{run_id_prefix}' matches {len(matching_run_ids)} workflows:[/]"
+            )
+            for run_id in matching_run_ids:
+                wf_info = commander._active_workflows[run_id]
+                workflow_id = wf_info.get("workflow_id", "?")
+                commander.console.print(f"  [dim]{run_id[:12]}[/] ({workflow_id})")
+            commander.console.print("[dim]Use a longer prefix to disambiguate.[/]")
+            return
+
+        if matching_run_ids:
+            matching_run_id = matching_run_ids[0]
+            # Resume the workflow
+            wf_info = commander._active_workflows[matching_run_id]
+            workflow_id = wf_info.get("workflow_id", "")
+            block_number = wf_info.get("block_number")
+
+            commander.console.print(f"[dim]Resuming workflow {workflow_id}...[/]")
+
+            result = await resume_workflow_tui(
+                commander._adapter,  # type: ignore[arg-type]
+                wf_info,
+            )
+
+            # Update the original block
+            if block_number is not None and 0 <= block_number < len(commander.timeline.blocks):
+                block = commander.timeline.blocks[block_number]
+                block.duration_ms = result.get("duration_ms", 0)
+
+                if result.get("backgrounded"):
+                    block.status = "pending"
+                    block.output_text = "(backgrounded - use :world to resume)"
+                    commander._active_workflows[matching_run_id] = {
+                        **wf_info,
+                        "events": result.get("events", []),
+                        "pending_gate": result.get("pending_gate"),
+                    }
+                    commander.console.print(
+                        f"[dim]Workflow backgrounded. Use :world {matching_run_id[:8]} to resume[/]"
+                    )
+                elif result.get("state") == "completed":
+                    block.status = "completed"
+                    block.output_text = str(result.get("result", ""))
+                    block.raw = result
+                    commander._active_workflows.pop(matching_run_id, None)
+                    rendering.print_block(commander.console, block)
+                elif result.get("state") == "cancelled":
+                    block.status = "error"
+                    block.error = "Workflow cancelled"
+                    block.raw = result
+                    commander._active_workflows.pop(matching_run_id, None)
+                    rendering.print_block(commander.console, block)
+                else:
+                    block.status = "error"
+                    block.error = result.get("error", "Workflow failed")
+                    block.raw = result
+                    commander._active_workflows.pop(matching_run_id, None)
+                    rendering.print_block(commander.console, block)
+            return
+
+    # Show world info or enter a world (with backgrounded workflows)
     world_to_enter = rendering.show_world(
         commander.console,
         commander.nodes,
         commander._current_world,
         args,
+        commander._active_workflows,  # Pass active workflows for display
     )
     if world_to_enter:
         commander._current_world = world_to_enter
@@ -193,6 +287,82 @@ async def cmd_loop(commander: Commander, args: str) -> None:
     await handle_loop(commander, args)
 
 
+async def cmd_load(commander: Commander, args: str) -> None:
+    """Handle :load command - load workflow(s) from Python file(s).
+
+    Usage:
+        :load workflow.py              # Load single file
+        :load file1.py file2.py        # Load multiple files
+        :load workflows/*.py           # Load with glob pattern
+
+    The file should define workflow functions and register them using
+    the Workflow class. The `session` variable is available in scope.
+
+    Example workflow file:
+        from nerve.core.workflow import Workflow, WorkflowContext
+
+        async def my_workflow(ctx: WorkflowContext) -> str:
+            return f"Hello, {ctx.input}!"
+
+        Workflow(id="my-workflow", session=session, fn=my_workflow)
+    """
+    if not args:
+        commander.console.print("[error]Usage: :load <file.py> [file2.py ...][/]")
+        commander.console.print("[dim]Supports glob patterns: :load workflows/*.py[/]")
+        return
+
+    # Expand glob patterns and collect all files
+    file_patterns = args.split()
+    files_to_load: list[Path] = []
+
+    for pattern in file_patterns:
+        # Expand glob patterns
+        matches = glob.glob(pattern)
+        if matches:
+            for match in matches:
+                path = Path(match)
+                if path.is_file() and path.suffix == ".py":
+                    files_to_load.append(path)
+        else:
+            # Try as literal path
+            path = Path(pattern)
+            if path.is_file():
+                files_to_load.append(path)
+            else:
+                commander.console.print(f"[warning]File not found: {pattern}[/]")
+
+    if not files_to_load:
+        commander.console.print("[error]No Python files found to load[/]")
+        return
+
+    # Load each file
+    loaded_count = 0
+    for file_path in files_to_load:
+        try:
+            code = file_path.read_text()
+            output, error = await commander._adapter.execute_python(code, {})  # type: ignore[union-attr]
+
+            if error:
+                commander.console.print(f"[error]Error loading {file_path.name}: {error}[/]")
+            else:
+                loaded_count += 1
+                commander.console.print(f"[green]✓[/] Loaded [bold]{file_path.name}[/]")
+                if output and output.strip():
+                    commander.console.print(f"[dim]{output.strip()}[/]")
+
+        except Exception as e:
+            commander.console.print(f"[error]Failed to load {file_path.name}: {e}[/]")
+
+    # Refresh entities to pick up new workflows
+    if loaded_count > 0:
+        await commander._sync_entities()
+        # Count workflows
+        workflow_count = sum(1 for e in commander.entities.values() if e.type == "workflow")
+        commander.console.print(
+            f"[dim]Loaded {loaded_count} file(s). {workflow_count} workflow(s) registered.[/]"
+        )
+
+
 # Command registry - maps command names to handlers
 COMMANDS: dict[str, CommandHandler] = {
     "exit": cmd_exit,
@@ -200,6 +370,7 @@ COMMANDS: dict[str, CommandHandler] = {
     "help": cmd_help,
     "nodes": cmd_nodes,
     "graphs": cmd_graphs,
+    "workflows": cmd_workflows,
     "entities": cmd_entities,
     "info": cmd_info,
     "timeline": cmd_timeline,
@@ -209,6 +380,7 @@ COMMANDS: dict[str, CommandHandler] = {
     "theme": cmd_theme,
     "world": cmd_world,
     "loop": cmd_loop,
+    "load": cmd_load,
 }
 
 
