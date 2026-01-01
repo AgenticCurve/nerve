@@ -761,6 +761,7 @@ class Commander:
                     "events": result.get("events", []),
                     "pending_gate": result.get("pending_gate"),
                     "start_time": result.get("start_time", 0),
+                    "steps": result.get("steps", []),
                 }
             self.console.print(
                 f"[dim]Workflow backgrounded. Use :world to list or :world {run_id[:8]} to resume[/]"

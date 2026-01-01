@@ -238,6 +238,7 @@ async def cmd_world(commander: Commander, args: str) -> None:
                         **wf_info,
                         "events": result.get("events", []),
                         "pending_gate": result.get("pending_gate"),
+                        "steps": result.get("steps", []),
                     }
                     commander.console.print(
                         f"[dim]Workflow backgrounded. Use :world {matching_run_id[:8]} to resume[/]"
