@@ -474,6 +474,12 @@ class Commander:
                                 continue
 
                         if not user_input or not user_input.strip():
+                            # Clear the ghost text that prompt_toolkit printed with empty input
+                            # \033[A = move cursor up one line (to the ghost text line)
+                            # \r = move to start of line
+                            # \033[K = clear from cursor to end of line
+                            # Then reprint just the prompt to show empty input was submitted
+                            print(f"\033[A\r\033[K{prompt}", flush=True)
                             continue
 
                         await self._handle_input(user_input.strip())
