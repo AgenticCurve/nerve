@@ -68,13 +68,36 @@ async def restore_session_state(commander: Commander, data: dict[str, Any]) -> d
         - errors: List of error messages
     """
     nodes_created = 0
+    nodes_skipped = 0
     graphs_created = 0
+    graphs_skipped = 0
     errors: list[str] = []
 
     entities = data.get("entities", {})
 
-    # Generate Python code to recreate entities
-    code = _generate_restore_code(entities)
+    # First sync to get current entities in session
+    await commander._sync_entities()
+    existing_ids = set(commander.entities.keys())
+
+    # Filter out entities that already exist
+    nodes_to_create = [n for n in entities.get("nodes", []) if n["id"] not in existing_ids]
+    graphs_to_create = [g for g in entities.get("graphs", []) if g["id"] not in existing_ids]
+
+    nodes_skipped = len(entities.get("nodes", [])) - len(nodes_to_create)
+    graphs_skipped = len(entities.get("graphs", [])) - len(graphs_to_create)
+
+    # Check which workflows already exist vs need reloading
+    workflows_in_export = [w["id"] for w in entities.get("workflows", []) if "id" in w]
+    workflows_existing = [wid for wid in workflows_in_export if wid in existing_ids]
+    workflows_missing = [wid for wid in workflows_in_export if wid not in existing_ids]
+
+    # Generate Python code only for entities that don't exist
+    filtered_entities = {
+        "nodes": nodes_to_create,
+        "graphs": graphs_to_create,
+        "workflows": [],  # Workflows can't be recreated programmatically
+    }
+    code = _generate_restore_code(filtered_entities)
 
     if code.strip() and commander._adapter is not None:
         # Execute on server
@@ -90,8 +113,9 @@ async def restore_session_state(commander: Commander, data: dict[str, Any]) -> d
                     elif "Created graph:" in line:
                         graphs_created += 1
 
-    # Count skipped workflows
-    workflows_skipped = len(entities.get("workflows", []))
+    # Workflows that exist vs need manual reload
+    workflows_already_exist = len(workflows_existing)
+    workflows_need_reload = len(workflows_missing)
 
     # Sync entities to pick up new ones
     await commander._sync_entities()
@@ -108,8 +132,11 @@ async def restore_session_state(commander: Commander, data: dict[str, Any]) -> d
 
     return {
         "nodes_created": nodes_created,
+        "nodes_skipped": nodes_skipped,
         "graphs_created": graphs_created,
-        "workflows_skipped": workflows_skipped,
+        "graphs_skipped": graphs_skipped,
+        "workflows_exist": workflows_already_exist,
+        "workflows_need_reload": workflows_need_reload,
         "blocks_restored": blocks_restored,
         "errors": errors,
     }
@@ -215,8 +242,15 @@ def _generate_restore_code(entities: dict[str, Any]) -> str:
         entities: Dict with nodes, graphs, workflows lists.
 
     Returns:
-        Python code string to execute on server.
+        Python code string to execute on server. Empty string if nothing to create.
     """
+    nodes = entities.get("nodes", [])
+    graphs = entities.get("graphs", [])
+
+    # Return empty if nothing to create
+    if not nodes and not graphs:
+        return ""
+
     lines = []
 
     # Import statements

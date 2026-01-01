@@ -180,7 +180,7 @@ class Block:
         return ["input", "output", "error", "type", "node", "raw"]
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert block to dictionary."""
+        """Convert block to dictionary for JSON serialization."""
         return {
             "number": self.number,
             "type": self.block_type,
@@ -188,10 +188,52 @@ class Block:
             "input": self.input_text,
             "output": self.output_text,
             "error": self.error,
-            "raw": self.raw,
+            "raw": _serialize_raw(self.raw),
             "timestamp": self.timestamp.isoformat(),
             "duration_ms": self.duration_ms,
         }
+
+
+def _serialize_raw(raw: dict[str, Any]) -> dict[str, Any]:
+    """Safely serialize raw dict, converting non-serializable objects to strings.
+
+    The raw field may contain objects like TUIWorkflowEvent that aren't
+    JSON-serializable. This function converts them to string representations.
+    Handles circular references by tracking visited objects.
+    """
+    import json
+
+    def convert(obj: Any, seen: set[int] | None = None) -> Any:
+        if seen is None:
+            seen = set()
+        if obj is None or isinstance(obj, (bool, int, float, str)):
+            return obj
+        # Check for circular references
+        obj_id = id(obj)
+        if obj_id in seen:
+            return "<circular reference>"
+        seen = seen | {obj_id}
+        if isinstance(obj, dict):
+            return {k: convert(v, seen) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [convert(item, seen) for item in obj]
+        # For non-serializable objects, try to get a useful representation
+        if hasattr(obj, "to_dict"):
+            return convert(obj.to_dict(), seen)
+        if hasattr(obj, "__dict__"):
+            return convert(obj.__dict__, seen)
+        # Fall back to string representation
+        return str(obj)
+
+    try:
+        # First try direct serialization (fast path)
+        json.dumps(raw)
+        return raw
+    except (TypeError, ValueError):
+        # Convert non-serializable objects
+        result = convert(raw)
+        # convert() always returns a dict when given a dict
+        return result if isinstance(result, dict) else {}
 
 
 @dataclass

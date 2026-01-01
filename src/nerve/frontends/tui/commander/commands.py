@@ -369,17 +369,26 @@ async def cmd_import(commander: Commander, args: str) -> None:
         stats = await restore_session_state(commander, data)
 
         commander.console.print(f"[green]✓[/] Imported from [bold]{filename}[/]")
-        commander.console.print(
-            f"[dim]  {stats['blocks_restored']} blocks restored, "
-            f"{stats['nodes_created']} nodes created, "
-            f"{stats['graphs_created']} graphs created[/]"
-        )
+        commander.console.print(f"[dim]  {stats['blocks_restored']} blocks restored[/]")
 
-        if stats["workflows_skipped"]:
-            commander.console.print(
-                f"[yellow]  {stats['workflows_skipped']} workflows skipped "
-                f"(use :load to reload workflow files)[/]"
-            )
+        # Show node/graph creation status
+        node_msg = f"{stats['nodes_created']} nodes created"
+        if stats.get("nodes_skipped"):
+            node_msg += f", {stats['nodes_skipped']} already exist"
+        graph_msg = f"{stats['graphs_created']} graphs created"
+        if stats.get("graphs_skipped"):
+            graph_msg += f", {stats['graphs_skipped']} already exist"
+        commander.console.print(f"[dim]  {node_msg}[/]")
+        commander.console.print(f"[dim]  {graph_msg}[/]")
+
+        # Show workflow status
+        if stats.get("workflows_exist") or stats.get("workflows_need_reload"):
+            wf_parts = []
+            if stats.get("workflows_exist"):
+                wf_parts.append(f"{stats['workflows_exist']} already exist")
+            if stats.get("workflows_need_reload"):
+                wf_parts.append(f"{stats['workflows_need_reload']} need :load")
+            commander.console.print(f"[dim]  workflows: {', '.join(wf_parts)}[/]")
 
         if stats["errors"]:
             for error in stats["errors"]:
