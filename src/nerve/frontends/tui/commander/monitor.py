@@ -41,6 +41,8 @@ from prompt_toolkit.widgets import Frame, TextArea
 from rich.console import Console
 from rich.markdown import Markdown
 
+from nerve.frontends.tui.commander.status_indicators import get_status_emoji
+
 if TYPE_CHECKING:
     from nerve.frontends.tui.commander.blocks import Block, Timeline
 
@@ -498,12 +500,7 @@ class MonitorApp:
         border_style = "reverse" if selected else ""
 
         # Header: :::N @node status (duration)
-        status_emoji = {
-            "pending": "⏳",
-            "waiting": "⏸️",
-            "completed": "✓",
-            "error": "✗",
-        }.get(block.status, "?")
+        status_emoji = get_status_emoji(block.status, compact=True)
         node_display = f"@{block.node_id}" if block.node_id else "python"
         duration = f" ({block.duration_ms:.1f}ms)" if block.duration_ms else ""
 
@@ -572,12 +569,7 @@ class MonitorApp:
         lines = []
 
         # Header
-        status_emoji = {
-            "pending": "⏳",
-            "waiting": "⏸️",
-            "completed": "✓",
-            "error": "✗",
-        }.get(block.status, "?")
+        status_emoji = get_status_emoji(block.status, compact=True)
         node_display = f"@{block.node_id}" if block.node_id else "python"
         duration = f" ({block.duration_ms:.1f}ms)" if block.duration_ms else ""
 

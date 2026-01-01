@@ -17,12 +17,11 @@ from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 
-from nerve.frontends.tui.commander.blocks import Block, Timeline
+from nerve.frontends.tui.commander.blocks import Block, BlockType, Timeline
 from nerve.frontends.tui.commander.rendering import print_block
+from nerve.frontends.tui.commander.result_handler import update_block_from_result
 
 if TYPE_CHECKING:
-    from prompt_toolkit import PromptSession
-
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
 
 
@@ -114,10 +113,10 @@ class CommandExecutor:
 
                 # Create wrapper that waits for dependencies then executes
                 async def wait_and_execute() -> None:
-                    await self.wait_for_dependencies(block)
+                    dependencies_ready = await self.wait_for_dependencies(block)
 
-                    # If dependency wait failed (validation error or timeout), stop here
-                    if block.status == "error":
+                    # If dependency wait failed (returned False), stop here
+                    if not dependencies_ready:
                         return
 
                     # Dependencies ready - now execute
@@ -151,7 +150,7 @@ class CommandExecutor:
             # Queue the ongoing task for the executor to monitor
             await self._command_queue.put((block, exec_task))
 
-    async def wait_for_dependencies(self, block: Block) -> None:
+    async def wait_for_dependencies(self, block: Block) -> bool:
         """Wait for all dependency blocks to complete.
 
         Polls every 100ms until all referenced blocks are in 'completed'
@@ -161,6 +160,10 @@ class CommandExecutor:
 
         Args:
             block: The block waiting for dependencies.
+
+        Returns:
+            True if dependencies are ready (status set to "pending"),
+            False if an error occurred (status set to "error").
         """
         # Validate dependencies: no self-reference or forward references
         invalid_refs = [dep for dep in block.depends_on if dep >= block.number]
@@ -172,7 +175,7 @@ class CommandExecutor:
                 f"(valid range: :::0 to :::{block.number - 1})"
             )
             self.timeline.render_last(self.console)
-            return
+            return False
 
         # Check if dependencies are already ready BEFORE showing waiting status
         all_ready = True
@@ -192,7 +195,7 @@ class CommandExecutor:
         # If already ready, just set to pending and return (no render needed)
         if all_ready:
             block.status = "pending"
-            return
+            return True
 
         # Show waiting status ONLY if we actually need to wait
         block.status = "waiting"
@@ -212,7 +215,7 @@ class CommandExecutor:
                     f"Waited {timeout_seconds}s but dependencies did not complete."
                 )
                 self.timeline.render_last(self.console)
-                return
+                return False
 
             all_ready = True
             for dep_num in block.depends_on:
@@ -230,7 +233,7 @@ class CommandExecutor:
             if all_ready:
                 # All dependencies ready - reset to pending for execution
                 block.status = "pending"
-                return
+                return True
 
             # Wait 100ms before checking again
             await asyncio.sleep(0.1)
@@ -289,7 +292,7 @@ class CommandExecutor:
         print_block(self.console, block)
 
 
-def get_block_type(node_type: str) -> str:
+def get_block_type(node_type: str) -> BlockType:
     """Determine block type from node/graph/workflow type string.
 
     Args:
@@ -364,24 +367,15 @@ async def execute_node_command(
         return
 
     # Update block with results
-    if result.get("success"):
-        block.status = "completed"
-        block.output_text = str(result.get("output", "")).strip()
-        block.raw = result
-        block.error = None
-        # Add metadata for debugging: which node produced this result
-        block.metadata["executed_node_id"] = node_id
-        block.metadata["executed_pane_id"] = result.get("_executed_on_pane_id", "unknown")
-    else:
-        block.status = "error"
-        error_msg = result.get("error", "Unknown error")
-        error_type = result.get("error_type", "unknown")
-        block.error = f"[{error_type}] {error_msg}"
-        block.raw = result
-        block.metadata["executed_node_id"] = node_id
-        block.metadata["executed_pane_id"] = result.get("_executed_on_pane_id", "unknown")
-
-    block.duration_ms = duration_ms
+    update_block_from_result(
+        block,
+        result,
+        duration_ms,
+        metadata={
+            "executed_node_id": node_id,
+            "executed_pane_id": result.get("_executed_on_pane_id", "unknown"),
+        },
+    )
 
 
 async def execute_graph_command(
@@ -417,22 +411,12 @@ async def execute_graph_command(
     duration_ms = (time.monotonic() - start_time) * 1000
 
     # Update block with results (identical to node handling for transparency)
-    if result.get("success"):
-        block.status = "completed"
-        # CRITICAL: Show only final output (not step details) for transparency
-        block.output_text = str(result.get("output", "")).strip()
-        block.raw = result  # Full dict available for power users (:::N['attributes'])
-        block.error = None
-        block.metadata["executed_graph_id"] = graph_id
-    else:
-        block.status = "error"
-        error_msg = result.get("error", "Unknown error")
-        error_type = result.get("error_type", "unknown")
-        block.error = f"[{error_type}] {error_msg}"
-        block.raw = result  # Includes partial results in attributes
-        block.metadata["executed_graph_id"] = graph_id
-
-    block.duration_ms = duration_ms
+    update_block_from_result(
+        block,
+        result,
+        duration_ms,
+        metadata={"executed_graph_id": graph_id},
+    )
 
 
 async def execute_python_command(
@@ -467,158 +451,3 @@ async def execute_python_command(
         block.output_text = output.strip() if output else ""
 
     block.duration_ms = duration_ms
-
-
-async def execute_workflow_command(
-    adapter: RemoteSessionAdapter,
-    block: Block,
-    workflow_id: str,
-    input_text: str,
-    start_time: float,
-    console: Console,
-    prompt_session: PromptSession[str],
-) -> None:
-    """Execute a workflow and update the block with results.
-
-    Handles workflow execution including:
-    - Starting the workflow
-    - Polling for status changes
-    - Prompting user at gates
-    - Updating block with final result
-
-    Args:
-        adapter: Session adapter for server communication.
-        block: The block to update with results.
-        workflow_id: ID of the workflow to execute.
-        input_text: Input text for the workflow.
-        start_time: When execution started (for duration calculation).
-        console: Rich console for output.
-        prompt_session: Prompt session for gate input.
-    """
-
-    # Start workflow (non-blocking)
-    try:
-        result = await adapter.execute_workflow(workflow_id, input_text, wait=False)
-    except Exception as e:
-        block.status = "error"
-        block.error = f"{type(e).__name__}: {e}"
-        block.duration_ms = (time.monotonic() - start_time) * 1000
-        return
-
-    if not result.get("run_id"):
-        block.status = "error"
-        block.error = result.get("error", "Failed to start workflow")
-        block.duration_ms = (time.monotonic() - start_time) * 1000
-        return
-
-    run_id = result["run_id"]
-    block.metadata["run_id"] = run_id
-    console.print(f"[dim]Workflow started: {run_id[:8]}...[/]")
-
-    # Poll for completion, handling gates
-    poll_interval = 0.2  # seconds
-    timeout = 3600  # 1 hour timeout
-    poll_start = time.monotonic()
-
-    while True:
-        # Check timeout
-        elapsed = time.monotonic() - poll_start
-        if elapsed > timeout:
-            block.status = "error"
-            block.error = f"Workflow timed out after {timeout}s"
-            block.duration_ms = (time.monotonic() - start_time) * 1000
-            return
-
-        try:
-            run_info = await adapter.get_workflow_run(run_id)
-        except Exception as e:
-            block.status = "error"
-            block.error = f"Failed to get workflow status: {e}"
-            block.duration_ms = (time.monotonic() - start_time) * 1000
-            return
-
-        state = run_info.get("state", "unknown")
-
-        if state == "completed":
-            block.status = "completed"
-            block.output_text = str(run_info.get("result", "")).strip()
-            block.raw = run_info
-            block.duration_ms = (time.monotonic() - start_time) * 1000
-            return
-
-        elif state == "failed":
-            block.status = "error"
-            block.error = run_info.get("error", "Workflow failed")
-            block.raw = run_info
-            block.duration_ms = (time.monotonic() - start_time) * 1000
-            return
-
-        elif state == "cancelled":
-            block.status = "error"
-            block.error = "Workflow was cancelled"
-            block.raw = run_info
-            block.duration_ms = (time.monotonic() - start_time) * 1000
-            return
-
-        elif state == "waiting":
-            # Handle gate
-            gate = run_info.get("pending_gate")
-            if gate:
-                await _handle_workflow_gate(adapter, run_id, gate, console, prompt_session)
-
-        # Still running or waiting - poll again
-        await asyncio.sleep(poll_interval)
-
-
-async def _handle_workflow_gate(
-    adapter: RemoteSessionAdapter,
-    run_id: str,
-    gate: dict[str, Any],
-    console: Console,
-    prompt_session: PromptSession[str],
-) -> None:
-    """Handle a workflow gate by prompting user for input.
-
-    Args:
-        adapter: Session adapter for server communication.
-        run_id: The workflow run ID.
-        gate: Gate info dict with prompt and optional choices.
-        console: Rich console for output.
-        prompt_session: Prompt session for user input (unused, kept for API compat).
-    """
-    prompt = gate.get("prompt", "Input required:")
-    choices = gate.get("choices")
-
-    # Display prompt
-    console.print()
-    console.print(f"[bold yellow]⏸ Gate:[/] {prompt}")
-
-    if choices:
-        for i, choice in enumerate(choices, 1):
-            console.print(f"  [dim]{i}.[/] {choice}")
-
-    try:
-        # Get user input using asyncio.to_thread to avoid nested prompt_toolkit issue
-        # We can't use prompt_session.prompt_async() because it conflicts with
-        # the main Commander prompt loop
-        answer = await asyncio.to_thread(input, "gate> ")
-        answer = answer.strip()
-
-        # Convert number to choice if applicable
-        if choices and answer.isdigit():
-            idx = int(answer) - 1
-            if 0 <= idx < len(choices):
-                answer = choices[idx]
-
-        # Send answer to workflow
-        result = await adapter.answer_gate(run_id, answer)
-        if not result.get("success"):
-            console.print(f"[error]Failed to answer gate: {result.get('error')}[/]")
-
-    except (KeyboardInterrupt, EOFError):
-        console.print("[dim]Gate input cancelled[/]")
-        # Try to cancel the workflow
-        try:
-            await adapter.cancel_workflow(run_id)
-        except Exception:
-            pass

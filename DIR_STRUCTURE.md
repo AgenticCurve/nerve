@@ -193,17 +193,23 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 377] blocks.py
+│       │           ├── [L: 379] blocks.py
+│       │           ├── [L:  65] clipboard.py
 │       │           ├── [L: 919] commander.py
 │       │           ├── [L: 523] commands.py
-│       │           ├── [L: 624] executor.py
-│       │           ├── [L: 364] loop.py
-│       │           ├── [L: 690] monitor.py
+│       │           ├── [L: 453] executor.py
+│       │           ├── [L: 354] loop.py
+│       │           ├── [L: 682] monitor.py
 │       │           ├── [L: 311] persistence.py
-│       │           ├── [L: 525] rendering.py
-│       │           ├── [L: 151] themes.py
+│       │           ├── [L: 533] rendering.py
+│       │           ├── [L:  60] result_handler.py
+│       │           ├── [L: 128] status_indicators.py
+│       │           ├── [L: 154] text_builder.py
+│       │           ├── [L: 156] themes.py
 │       │           ├── [L: 543] variables.py
-│       │           └── [L:1093] workflow_runner.py
+│       │           ├── [L: 804] workflow_runner.py
+│       │           ├── [L:  42] workflow_state.py
+│       │           └── [L: 294] workflow_ui.py
 │       ├── gateway/
 │       │   ├── [L:  54] __init__.py
 │       │   ├── [L: 639] anthropic_proxy.py
@@ -327,4 +333,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 262 files, 63,769 total lines
+66 directories, 268 files, 64,049 total lines

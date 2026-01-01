@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from nerve.frontends.tui.commander.blocks import Block
 from nerve.frontends.tui.commander.executor import get_block_type
 from nerve.frontends.tui.commander.rendering import print_block
+from nerve.frontends.tui.commander.result_handler import update_block_from_result
 from nerve.frontends.tui.commander.variables import expand_variables
 
 if TYPE_CHECKING:
@@ -313,18 +314,7 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     duration_ms = (time.monotonic() - start_time) * 1000
 
     # Update block with results
-    if result.get("success"):
-        block.status = "completed"
-        block.output_text = str(result.get("output", "")).strip()
-        block.raw = result
-    else:
-        block.status = "error"
-        error_msg = result.get("error", "Unknown error")
-        error_type = result.get("error_type", "unknown")
-        block.error = f"[{error_type}] {error_msg}"
-        block.raw = result
-
-    block.duration_ms = duration_ms
+    update_block_from_result(block, result, duration_ms)
 
     # Print the completed block
     print_block(commander.console, block)

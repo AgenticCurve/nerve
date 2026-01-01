@@ -121,13 +121,21 @@ def print_nodes(console: Console, nodes: dict[str, str]) -> None:
         console: Rich console for output.
         nodes: Dict of node_id -> node_type.
     """
+    from rich.table import Table
+
     console.print()
     console.print("[bold]Available Nodes:[/]")
     if not nodes:
         console.print("  [dim]No nodes in session[/]")
     else:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("ID", style="cyan")
+        table.add_column("Type", style="dim")
+
         for node_id, node_type in nodes.items():
-            console.print(f"  [bold]{node_id}[/] ({node_type})")
+            table.add_row(node_id, node_type)
+
+        console.print(table)
     console.print()
 
 
