@@ -79,6 +79,7 @@ class Commander:
     session_name: str = "default"
     theme_name: str = "default"
     bottom_gutter: int = 3  # Lines of space between prompt and screen bottom
+    config_path: str | None = None  # Workspace config file to load at startup
     async_threshold_ms: float = 200  # Show pending if execution exceeds this
 
     # State (initialized in __post_init__ or run)
@@ -271,6 +272,10 @@ class Commander:
         # Print welcome
         print_welcome(self.console, self.server_name, self.session_name, self.nodes)
 
+        # Load workspace config if provided
+        if self.config_path:
+            await self._load_workspace_config()
+
         # Start background executor
         await self._executor.start()
 
@@ -364,6 +369,109 @@ class Commander:
             # Handle known network/transport errors gracefully
             self.console.print(f"[warning]Failed to fetch entities: {e}[/]")
             logger.warning("Entity sync failed: %s", e, exc_info=True)
+
+    async def _load_workspace_config(self) -> None:
+        """Load workspace config file at startup.
+
+        Reads a Python file that sets up nodes, graphs, and workflows.
+        Also looks for a `startup_commands` list to execute initial commands.
+
+        The config file should:
+        - Create nodes, graphs, workflows (these are executed server-side)
+        - Optionally define `startup_commands = ["@node1 hello", ...]`
+
+        Note: Startup commands are dispatched sequentially but execute
+        asynchronously via the executor. They may complete out of order
+        if some exceed async_threshold_ms, and may still be running after
+        this method returns.
+
+        Example workspace.py:
+            from nerve.core.workflow import Workflow, WorkflowContext
+
+            # Setup code runs on server (session is available)
+            # ... node creation, workflow registration ...
+
+            # Startup commands run in commander after setup
+            startup_commands = [
+                "@claude1 You are a helpful assistant",
+                "@claude2 You are a code reviewer",
+            ]
+        """
+        import ast
+        import re
+        from pathlib import Path
+
+        if self._adapter is None or self.config_path is None:
+            return
+
+        config_file = Path(self.config_path)
+        if not config_file.is_file():
+            self.console.print(f"[error]Config file not found: {self.config_path}[/]")
+            return
+
+        self.console.print(f"[dim]Loading workspace config: {config_file.name}...[/]")
+
+        try:
+            code = config_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as e:
+            self.console.print(f"[error]Failed to read config file: {e}[/]")
+            return
+
+        # Extract startup_commands from the config file (client-side parsing)
+        # Look for: startup_commands = ["...", "..."]
+        startup_commands: list[str] = []
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == "startup_commands":
+                            if isinstance(node.value, ast.List):
+                                for elt in node.value.elts:
+                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                        startup_commands.append(elt.value)
+        except SyntaxError:
+            # If AST parsing fails, fall back to regex
+            match = re.search(r"startup_commands\s*=\s*\[(.*?)\]", code, re.DOTALL)
+            if match:
+                # Extract quoted strings
+                startup_commands = re.findall(r'["\']([^"\']+)["\']', match.group(1))
+
+        # Execute the config code on the server (creates nodes, graphs, workflows)
+        output, error = await self._adapter.execute_python(code, {})
+
+        if error:
+            self.console.print(f"[error]Config error: {error}[/]")
+            return
+
+        if output and output.strip():
+            self.console.print(f"[dim]{output.strip()}[/]")
+
+        # Sync entities to pick up newly created nodes/graphs/workflows
+        await self._sync_entities()
+
+        # Count entities
+        node_count = sum(1 for e in self.entities.values() if e.type == "node")
+        graph_count = sum(1 for e in self.entities.values() if e.type == "graph")
+        workflow_count = sum(1 for e in self.entities.values() if e.type == "workflow")
+
+        self.console.print(
+            f"[green]✓[/] Workspace loaded: "
+            f"[bold]{node_count}[/] nodes, "
+            f"[bold]{graph_count}[/] graphs, "
+            f"[bold]{workflow_count}[/] workflows"
+        )
+
+        # Execute startup commands
+        if startup_commands:
+            self.console.print(f"[dim]Running {len(startup_commands)} startup command(s)...[/]")
+            for cmd in startup_commands:
+                cmd = cmd.strip()
+                if cmd:
+                    self.console.print(f"[dim]  → {cmd}[/]")
+                    await self._handle_input(cmd)
+
+            self.console.print("[green]✓[/] Startup commands complete")
 
     def _get_nodes_by_type(self) -> dict[str, str]:
         """Build reverse mapping from node type to node ID.
@@ -783,6 +891,7 @@ async def run_commander(
     session_name: str = "default",
     theme: str = "default",
     bottom_gutter: int = 3,
+    config_path: str | None = None,
 ) -> None:
     """Run the commander TUI.
 
@@ -791,11 +900,13 @@ async def run_commander(
         session_name: Session to use (default: "default").
         theme: Theme name (default, nord, dracula, mono).
         bottom_gutter: Lines of space between prompt and screen bottom (default: 3).
+        config_path: Optional workspace config file (.py) to load at startup.
     """
     commander = Commander(
         server_name=server_name,
         session_name=session_name,
         theme_name=theme,
         bottom_gutter=bottom_gutter,
+        config_path=config_path,
     )
     await commander.run()
