@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.application import Application
@@ -41,43 +40,20 @@ from prompt_toolkit.layout import (
 )
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
+from nerve.frontends.tui.commander.clipboard import copy_to_clipboard
+from nerve.frontends.tui.commander.workflow_state import (
+    StepInfo,
+    TUIWorkflowEvent,
+    ViewMode,
+)
+from nerve.frontends.tui.commander.workflow_ui import WorkflowUIRendererMixin
+
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
 
 
-class ViewMode(Enum):
-    """Current view mode of the TUI."""
-
-    MAIN = "main"
-    FULL_SCREEN = "full_screen"
-    EVENTS = "events"
-
-
 @dataclass
-class StepInfo:
-    """Information about a workflow step (node execution)."""
-
-    node_id: str
-    input_text: str = ""
-    output_text: str = ""
-    status: str = "running"  # running, completed, error
-    error: str | None = None
-
-
-@dataclass
-class TUIWorkflowEvent:
-    """A local workflow event for TUI display (not the core WorkflowEvent).
-
-    Uses monotonic timestamp for elapsed time display in the TUI.
-    """
-
-    timestamp: float  # time.monotonic() value
-    event_type: str
-    data: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class WorkflowRunnerApp:
+class WorkflowRunnerApp(WorkflowUIRendererMixin):
     """Full-screen TUI for running a workflow with step visualization."""
 
     adapter: RemoteSessionAdapter
@@ -107,6 +83,7 @@ class WorkflowRunnerApp:
     _app: Application[None] | None = field(default=None, init=False)
     _pending_answer: str | None = field(default=None, init=False)
     _status_message: str = ""  # Temporary status message (e.g., "Copied!")
+    _status_message_consumed: bool = True  # Flag to track if message was shown
 
     def __post_init__(self) -> None:
         """Initialize the workflow runner UI."""
@@ -364,31 +341,8 @@ class WorkflowRunnerApp:
         step = self.steps[self.selected_step_index]
         text = f"=== INPUT ===\n{step.input_text}\n\n=== OUTPUT ===\n{step.output_text}"
 
-        try:
-            import subprocess
-
-            process = subprocess.Popen(
-                ["pbcopy"], stdin=subprocess.PIPE, env={"LANG": "en_US.UTF-8"}
-            )
-            process.communicate(text.encode("utf-8"), timeout=5)
-            self._status_message = "Copied to clipboard!"
-        except subprocess.TimeoutExpired:
-            process.kill()
-            self._status_message = "Copy timed out"
-        except Exception:
-            # Try xclip as fallback (Linux)
-            try:
-                process = subprocess.Popen(
-                    ["xclip", "-selection", "clipboard"],
-                    stdin=subprocess.PIPE,
-                )
-                process.communicate(text.encode("utf-8"), timeout=5)
-                self._status_message = "Copied to clipboard!"
-            except subprocess.TimeoutExpired:
-                process.kill()
-                self._status_message = "Copy timed out"
-            except Exception:
-                self._status_message = "Copy failed (no clipboard tool)"
+        _, self._status_message = copy_to_clipboard(text)
+        self._status_message_consumed = False  # Reset so message shows
 
     def _create_layout(self) -> Layout:
         """Create the TUI layout with view switching."""
@@ -504,249 +458,6 @@ class WorkflowRunnerApp:
         )
 
         return Layout(root)
-
-    def _get_header(self) -> FormattedText:
-        """Render header with workflow info."""
-        elapsed = time.monotonic() - self.start_time
-        state_emoji = {
-            "pending": "⏳",
-            "running": "▶️",
-            "waiting": "⏸️",
-            "completed": "✅",
-            "failed": "❌",
-            "cancelled": "🚫",
-        }.get(self.state, "?")
-
-        step_info = f"{len(self.steps)} step{'s' if len(self.steps) != 1 else ''}"
-
-        lines = [
-            ("bold", f"Workflow: {self.workflow_id}"),
-            ("", f" │ {state_emoji} {self.state.upper()} │ {step_info} │ {elapsed:.1f}s\n"),
-            ("dim", "─" * 80 + "\n"),
-        ]
-        return FormattedText(lines)
-
-    def _get_steps_list(self) -> FormattedText:
-        """Render the steps list (left panel)."""
-        lines: list[tuple[str, str]] = []
-
-        # Show focus indicator when gate is present
-        if self._has_gate():
-            if self._is_steps_focused():
-                lines.append(("bold ansigreen", "▌STEPS (focused)\n"))
-            else:
-                lines.append(("dim", "▌STEPS\n"))
-            lines.append(("dim", "─" * 28 + "\n"))
-
-        if not self.steps:
-            lines.append(("dim", " (no steps yet)\n"))
-            return FormattedText(lines)
-
-        for i, step in enumerate(self.steps):
-            is_selected = i == self.selected_step_index
-
-            # Status indicator
-            status_icon = {
-                "running": "⏳",
-                "completed": "✅",
-                "error": "❌",
-            }.get(step.status, "○")
-
-            # Selection indicator
-            prefix = "▶ " if is_selected else "  "
-
-            # Style
-            if is_selected:
-                style = "bold"
-            elif step.status == "error":
-                style = "ansired"
-            elif step.status == "completed":
-                style = ""
-            else:
-                style = "dim"
-
-            lines.append((style, f"{prefix}{status_icon} {step.node_id}\n"))
-
-        return FormattedText(lines)
-
-    def _get_step_preview(self) -> FormattedText:
-        """Render step preview (right panel)."""
-        if not self.steps:
-            return FormattedText([("dim", "(select a step to preview)")])
-
-        if self.selected_step_index >= len(self.steps):
-            return FormattedText([("dim", "(no step selected)")])
-
-        step = self.steps[self.selected_step_index]
-        lines: list[tuple[str, str]] = []
-
-        # Input section
-        lines.append(("bold", "INPUT\n"))
-        lines.append(("dim", "─" * 40 + "\n"))
-        input_preview = step.input_text[:500] if step.input_text else "(no input)"
-        if len(step.input_text) > 500:
-            input_preview += "..."
-        lines.append(("", input_preview + "\n\n"))
-
-        # Output section
-        lines.append(("bold", "OUTPUT\n"))
-        lines.append(("dim", "─" * 40 + "\n"))
-        if step.status == "running":
-            lines.append(("dim", "(running...)\n"))
-        elif step.error:
-            lines.append(("ansired", f"Error: {step.error}\n"))
-        else:
-            output_preview = step.output_text[:500] if step.output_text else "(no output)"
-            if len(step.output_text) > 500:
-                output_preview += "..."
-            lines.append(("", output_preview + "\n"))
-
-        return FormattedText(lines)
-
-    def _get_gate_prompt(self) -> FormattedText:
-        """Render gate prompt."""
-        if not self.pending_gate:
-            return FormattedText([])
-
-        prompt = self.pending_gate.get("prompt", "Input required:")
-        choices = self.pending_gate.get("choices")
-
-        lines: list[tuple[str, str]] = []
-
-        # Focus indicator
-        if self._is_gate_focused():
-            lines.append(("bold ansigreen", "▌GATE (focused)\n"))
-        else:
-            lines.append(("dim", "▌GATE\n"))
-
-        lines.append(("bold", f"⏸ {prompt}\n"))
-
-        if choices:
-            for i, choice in enumerate(choices, 1):
-                lines.append(("", f"  {i}. {choice}\n"))
-            lines.append(("dim", "Enter number or value: "))
-        else:
-            lines.append(("dim", "Enter value: "))
-
-        return FormattedText(lines)
-
-    def _get_status_bar(self) -> FormattedText:
-        """Render status bar for main view."""
-        parts = []
-
-        if self._status_message:
-            parts.append(("ansigreen", f" {self._status_message} │"))
-            self._status_message = ""  # Clear after showing
-
-        if self._has_gate():
-            # Show focus indicator and context-appropriate keys
-            focus_indicator = "[GATE]" if self._is_gate_focused() else "[STEPS]"
-            parts.append(("bold", f" {focus_indicator} "))
-            if self._is_gate_focused():
-                parts.append(("", "│ [Enter] Submit │ [Tab] Switch │ [Ctrl-Z] Bg │ [Esc] Cancel"))
-            else:
-                parts.append(
-                    (
-                        "",
-                        "│ [↑/↓] Navigate │ [Enter] Full View │ [Tab] Switch │ [Ctrl-Z] Bg │ [q] Cancel",
-                    )
-                )
-        elif self._is_workflow_done():
-            parts.append(("", " [Enter] Full View │ [e] Events │ [c] Copy │ [q] Exit"))
-        else:
-            parts.append(
-                (
-                    "",
-                    " [↑/↓] Navigate │ [Enter] Full View │ [e] Events │ [c] Copy │ [Ctrl-Z] Bg │ [q] Cancel",
-                )
-            )
-
-        return FormattedText(parts)
-
-    def _get_full_screen_header(self) -> FormattedText:
-        """Render full screen view header."""
-        if not self.steps or self.selected_step_index >= len(self.steps):
-            return FormattedText([("", "No step selected")])
-
-        step = self.steps[self.selected_step_index]
-        status_icon = {"running": "⏳", "completed": "✅", "error": "❌"}.get(step.status, "○")
-
-        return FormattedText(
-            [
-                ("bold", f"Step: {step.node_id}"),
-                ("", f" │ {status_icon} {step.status}"),
-                ("dim", f"  [{self.selected_step_index + 1}/{len(self.steps)}]\n"),
-            ]
-        )
-
-    def _get_full_screen_content(self) -> FormattedText:
-        """Render full screen step content with scrolling."""
-        if not self.steps or self.selected_step_index >= len(self.steps):
-            return FormattedText([("dim", "(no step selected)")])
-
-        step = self.steps[self.selected_step_index]
-        lines: list[tuple[str, str]] = []
-
-        # Input section
-        lines.append(("bold", "INPUT\n"))
-        lines.append(("dim", "─" * 60 + "\n"))
-        lines.append(("", (step.input_text or "(no input)") + "\n\n"))
-
-        # Output section
-        lines.append(("bold", "OUTPUT\n"))
-        lines.append(("dim", "─" * 60 + "\n"))
-        if step.status == "running":
-            lines.append(("dim", "(running...)\n"))
-        elif step.error:
-            lines.append(("ansired", f"Error: {step.error}\n"))
-        else:
-            lines.append(("", (step.output_text or "(no output)") + "\n"))
-
-        return FormattedText(lines)
-
-    def _get_full_screen_status(self) -> FormattedText:
-        """Render full screen status bar."""
-        return FormattedText(
-            [
-                (
-                    "",
-                    " [↑/↓] Scroll │ [←/→ or h/l] Prev/Next Step │ [e] Events │ [c] Copy │ [q/Esc] Back",
-                )
-            ]
-        )
-
-    def _get_events_content(self) -> FormattedText:
-        """Render events list."""
-        if not self.events:
-            return FormattedText([("dim", "(no events yet)")])
-
-        lines: list[tuple[str, str]] = []
-        for event in self.events:
-            elapsed = event.timestamp - self.start_time
-
-            # Color based on event type
-            if "error" in event.event_type or "failed" in event.event_type:
-                style = "ansired"
-            elif "completed" in event.event_type:
-                style = "ansigreen"
-            elif "gate" in event.event_type:
-                style = "ansiyellow"
-            elif "started" in event.event_type:
-                style = "ansicyan"
-            else:
-                style = ""
-
-            lines.append((style, f"[{elapsed:6.2f}s] {event.event_type}"))
-
-            # Show data preview
-            if event.data:
-                data_str = str(event.data)
-                if len(data_str) > 80:
-                    data_str = data_str[:77] + "..."
-                lines.append(("dim", f"  {data_str}"))
-            lines.append(("", "\n"))
-
-        return FormattedText(lines)
 
     def _add_event(self, event_type: str, data: dict[str, Any] | None = None) -> None:
         """Add a local event."""

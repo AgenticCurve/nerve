@@ -8,10 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from rich.console import Console, Group, RenderableType
 from rich.text import Text
+
+from nerve.frontends.tui.commander.status_indicators import get_status_indicator
+
+# Type aliases for constrained string fields
+BlockType = Literal["bash", "llm", "python", "graph", "workflow", "node", "error"]
+BlockStatus = Literal["pending", "completed", "error", "waiting"]
 
 
 @dataclass
@@ -23,7 +29,7 @@ class Block:
     """
 
     # Block identity
-    block_type: str  # "bash", "llm", "python", "error"
+    block_type: BlockType
     node_id: str | None  # None for python blocks
     timestamp: datetime = field(default_factory=datetime.now)
 
@@ -38,8 +44,8 @@ class Block:
     duration_ms: float | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    # Execution status: "pending", "completed", "error", "waiting"
-    status: str = "pending"
+    # Execution status
+    status: BlockStatus = "pending"
     # Track if this block was executed asynchronously (exceeded threshold)
     was_async: bool = False
     # Track which blocks this one depends on (for dependency-aware execution)
@@ -127,13 +133,9 @@ class Block:
             header.append(f"{self.block_type} ", style="pending" if is_pending else "bold")
 
         # Status indicator for pending/waiting/async-completed
-        if self.status == "pending":
-            header.append("⏳ ", style="pending")
-        elif self.status == "waiting":
-            header.append("⏸️ ", style="dim")
-        elif self.status == "completed" and self.was_async:
-            # Show ⚡ for blocks that completed asynchronously
-            header.append("⚡ ", style="success")
+        if self.status in ("pending", "waiting") or (self.status == "completed" and self.was_async):
+            indicator = get_status_indicator(self.status, was_async=self.was_async)
+            header.append(f"{indicator.emoji} ", style=indicator.style)
 
         # Timestamp and duration
         time_str = self.timestamp.strftime("%H:%M:%S")
@@ -357,7 +359,7 @@ class Timeline:
             timestamp = datetime.fromisoformat(timestamp_str) if timestamp_str else datetime.now()
 
             block = Block(
-                block_type=block_data.get("type", "unknown"),
+                block_type=block_data.get("type", "node"),
                 node_id=block_data.get("node"),
                 input_text=block_data.get("input", ""),
                 output_text=block_data.get("output", ""),

@@ -724,10 +724,10 @@ class Commander:
             from nerve.frontends.tui.commander.rendering import print_block
 
             print_block(self.console, block)
-            await self._executor.wait_for_dependencies(block)
+            dependencies_ready = await self._executor.wait_for_dependencies(block)
 
-            # If dependency wait failed, stop here
-            if block.status == "error":
+            # If dependency wait failed (returned False), stop here
+            if not dependencies_ready:
                 print_block(self.console, block)
                 return
 
