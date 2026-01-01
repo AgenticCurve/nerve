@@ -21,6 +21,11 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.document import Document
+from prompt_toolkit.filters import Condition
+from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
@@ -47,6 +52,22 @@ if TYPE_CHECKING:
     from nerve.transport import UnixSocketClient
 
 logger = logging.getLogger(__name__)
+
+
+class PrefixAutoSuggest(AutoSuggest):
+    """Auto-suggest that shows remaining text when buffer is a prefix of suggestion."""
+
+    def __init__(self, get_suggestion: callable) -> None:
+        """Initialize with a callable that returns the current suggestion."""
+        self._get_suggestion = get_suggestion
+
+    def get_suggestion(self, buffer: Buffer, document: Document) -> Suggestion | None:
+        """Return remaining suggestion if current text is a prefix."""
+        text = document.text
+        suggestion = self._get_suggestion()
+        if text and suggestion.startswith(text) and text != suggestion:
+            return Suggestion(suggestion[len(text) :])
+        return None
 
 
 @dataclass
@@ -97,6 +118,15 @@ class Commander:
     _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
     _open_monitor_requested: bool = field(default=False, init=False)  # Ctrl-Y pressed
+    _suggestions: list[str] = field(
+        default_factory=lambda: [
+            "@claude What can you help me with today?",
+            ":help workflows nodes graphs",
+            ":timeline --last 10 --status completed",
+        ],
+        init=False,
+    )  # Placeholder suggestions to cycle through
+    _suggestion_idx: int = field(default=0, init=False)  # Current suggestion index
 
     # Execution engine
     _executor: CommandExecutor = field(init=False)
@@ -112,14 +142,25 @@ class Commander:
         theme = get_theme(self.theme_name)
         # force_terminal=True ensures ANSI codes work with patch_stdout()
         self.console = Console(theme=theme, force_terminal=True)
+
         # Create dynamic status bar (uses terminal's default colors)
         prompt_style = Style.from_dict(
             {
                 "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
+                "placeholder": "fg:ansigray italic",  # Ghost text when empty
+                "auto-suggestion": "fg:ansigray italic",  # Ghost text while typing
             }
         )
         # Create key bindings for prompt session
         kb = KeyBindings()
+
+        def _current_suggestion() -> str:
+            """Get the current suggestion based on index."""
+            return self._suggestions[self._suggestion_idx]
+
+        def _get_placeholder() -> HTML:
+            """Get placeholder HTML for current suggestion."""
+            return HTML(f"<placeholder>{_current_suggestion()}</placeholder>")
 
         @kb.add("c-y")
         def open_monitor(event: KeyPressEvent) -> None:
@@ -127,11 +168,72 @@ class Commander:
             self._open_monitor_requested = True
             event.app.exit()
 
+        def _is_suggestion_active() -> bool:
+            """Check if current text is empty or a prefix of the suggestion."""
+            if self._prompt_session.app is None:
+                return False
+            text = self._prompt_session.app.current_buffer.text
+            suggestion = _current_suggestion()
+            return suggestion.startswith(text) and text != suggestion
+
+        def _is_buffer_empty() -> bool:
+            """Check if buffer is empty (for cycling suggestions)."""
+            if self._prompt_session.app is None:
+                return False
+            return not self._prompt_session.app.current_buffer.text
+
+        # Tab cycles to next suggestion (only when buffer is empty)
+        @kb.add("tab", filter=Condition(_is_buffer_empty))
+        def next_suggestion(event: KeyPressEvent) -> None:
+            """Cycle to next suggestion with Tab."""
+            self._suggestion_idx = (self._suggestion_idx + 1) % len(self._suggestions)
+
+        # Shift+Tab cycles to previous suggestion (only when buffer is empty)
+        @kb.add("s-tab", filter=Condition(_is_buffer_empty))
+        def prev_suggestion(event: KeyPressEvent) -> None:
+            """Cycle to previous suggestion with Shift+Tab."""
+            self._suggestion_idx = (self._suggestion_idx - 1) % len(self._suggestions)
+
+        def _get_next_word() -> str:
+            """Get the next word from suggestion to insert."""
+            text = self._prompt_session.app.current_buffer.text
+            suggestion = _current_suggestion()
+            remaining = suggestion[len(text) :]
+            # Find next word boundary (space or end)
+            space_idx = remaining.find(" ")
+            if space_idx == -1:
+                return remaining  # Rest of suggestion
+            return remaining[: space_idx + 1]  # Include the space
+
+        # Right arrow accepts suggestion word by word
+        @kb.add("right", filter=Condition(_is_suggestion_active))
+        def accept_suggestion_word(event: KeyPressEvent) -> None:
+            """Accept next word from placeholder suggestion with Right Arrow."""
+            next_word = _get_next_word()
+            if next_word:
+                event.app.current_buffer.insert_text(next_word)
+
+        def _get_remaining() -> str:
+            """Get all remaining text from suggestion."""
+            text = self._prompt_session.app.current_buffer.text
+            return _current_suggestion()[len(text) :]
+
+        # Cmd+Right (or End) accepts entire remaining suggestion
+        @kb.add("end", filter=Condition(_is_suggestion_active))
+        @kb.add("c-e", filter=Condition(_is_suggestion_active))  # Ctrl+E (end of line)
+        def accept_suggestion_all(event: KeyPressEvent) -> None:
+            """Accept entire remaining suggestion."""
+            remaining = _get_remaining()
+            if remaining:
+                event.app.current_buffer.insert_text(remaining)
+
         self._prompt_session = PromptSession(
             history=InMemoryHistory(),
             bottom_toolbar=self._get_status_bar,
             style=prompt_style,
             key_bindings=kb,
+            placeholder=_get_placeholder,  # Callable for dynamic placeholder
+            auto_suggest=PrefixAutoSuggest(_current_suggestion),
         )
         # Initialize executor for threshold-based async execution
         self._executor = CommandExecutor(

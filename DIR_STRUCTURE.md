@@ -195,7 +195,7 @@
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 379] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L: 919] commander.py
+│       │           ├── [L:1018] commander.py
 │       │           ├── [L: 523] commands.py
 │       │           ├── [L: 453] executor.py
 │       │           ├── [L: 354] loop.py
@@ -333,4 +333,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 268 files, 64,049 total lines
+66 directories, 268 files, 64,148 total lines
