@@ -47,6 +47,7 @@ class NodeFactory:
         "openrouter",
         "glm",
         "llm-chat",
+        "suggestion",
     )
 
     async def create(
@@ -119,7 +120,7 @@ class NodeFactory:
         # Deferred imports to avoid circular dependencies and for testability
         from nerve.core.nodes.bash import BashNode
         from nerve.core.nodes.identity import IdentityNode
-        from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode
+        from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode, SuggestionNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
             PTYNode,
@@ -135,6 +136,7 @@ class NodeFactory:
             | OpenRouterNode
             | GLMNode
             | StatefulLLMNode
+            | SuggestionNode
         )
 
         if backend == "pty":
@@ -315,6 +317,23 @@ class NodeFactory:
                 tool_executor=tool_executor,
                 tool_choice=tool_choice,
                 parallel_tool_calls=parallel_tool_calls,
+            )
+        elif backend == "suggestion":
+            # SuggestionNode is stateless - generates command suggestions via LLM
+            if not api_key:
+                raise ValueError("api_key is required for suggestion backend")
+            if not llm_model:
+                raise ValueError("llm_model is required for suggestion backend")
+
+            node = SuggestionNode(
+                id=str(node_id),
+                session=session,
+                api_key=api_key,
+                model=llm_model,
+                base_url=llm_base_url,  # None uses provider default
+                timeout=llm_timeout or 30.0,  # Faster timeout for suggestions
+                debug_dir=llm_debug_dir,
+                http_backend=http_backend,
             )
         else:
             raise ValueError(f"Unknown backend: '{backend}'. Valid backends: {self.VALID_BACKENDS}")

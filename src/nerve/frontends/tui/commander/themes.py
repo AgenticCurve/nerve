@@ -31,6 +31,8 @@ def create_theme(
     warning: str = "bold yellow",
     # Pending blocks (subdued appearance)
     pending: str = "bright_black",
+    # Ghost text (suggestions/placeholders) - prompt_toolkit compatible color
+    ghost_text: str = "#6e6e6e",
 ) -> Theme:
     """Create a theme with the given styles.
 
@@ -61,6 +63,8 @@ def create_theme(
             "warning": warning,
             # Pending blocks
             "pending": pending,
+            # Ghost text (for prompt_toolkit - stored here for theme consistency)
+            "ghost": ghost_text,
         }
     )
 
@@ -91,6 +95,7 @@ NORD_THEME = create_theme(
     success="#A3BE8C",
     warning="#EBCB8B",
     pending="#4C566A",  # Nord's comment color
+    ghost_text="#4C566A",  # Nord comment gray
 )
 
 # Dracula-inspired theme
@@ -112,6 +117,7 @@ DRACULA_THEME = create_theme(
     success="#50FA7B",
     warning="#FFB86C",
     pending="#6272A4",  # Dracula's comment color
+    ghost_text="#6272A4",  # Dracula comment purple-gray
 )
 
 # Minimal monochrome theme
@@ -133,6 +139,7 @@ MONO_THEME = create_theme(
     success="bold",
     warning="bold yellow",
     pending="bright_black",
+    ghost_text="#555555",  # Dark gray for mono
 )
 
 # Theme registry for easy lookup
@@ -154,3 +161,25 @@ def get_theme(name: str) -> Theme:
         The theme, or DEFAULT_THEME if not found.
     """
     return THEMES.get(name.lower(), DEFAULT_THEME)
+
+
+# Ghost text colors for prompt_toolkit (separate from Rich theme)
+# These must be prompt_toolkit compatible (hex colors work best)
+GHOST_TEXT_COLORS: dict[str, str] = {
+    "default": "#6e6e6e",  # Medium gray - visible but clearly different
+    "nord": "#4C566A",  # Nord comment gray
+    "dracula": "#6272A4",  # Dracula comment purple-gray
+    "mono": "#555555",  # Dark gray
+}
+
+
+def get_ghost_text_color(theme_name: str) -> str:
+    """Get the ghost text color for a theme.
+
+    Args:
+        theme_name: Theme name (default, nord, dracula, mono)
+
+    Returns:
+        Hex color string for ghost text, e.g. "#6e6e6e"
+    """
+    return GHOST_TEXT_COLORS.get(theme_name.lower(), GHOST_TEXT_COLORS["default"])

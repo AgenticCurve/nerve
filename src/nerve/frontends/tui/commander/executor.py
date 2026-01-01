@@ -50,6 +50,7 @@ class CommandExecutor:
     timeline: Timeline
     console: Console
     async_threshold_ms: float = 200
+    on_block_complete: Callable[[Block], None] | None = None  # Callback when any block completes
 
     # Internal queue for background tasks
     # Items: (block, task) where task is already running
@@ -140,6 +141,10 @@ class CommandExecutor:
 
             # Fast path: completed within threshold, render result
             self.timeline.render_last(self.console)
+
+            # Notify callback if set
+            if self.on_block_complete is not None:
+                self.on_block_complete(block)
 
         except TimeoutError:
             # Slow path: show pending and queue for background completion
@@ -290,6 +295,10 @@ class CommandExecutor:
 
         # Render the completed block (only render once at the end)
         print_block(self.console, block)
+
+        # Notify callback if set
+        if self.on_block_complete is not None:
+            self.on_block_complete(block)
 
 
 def get_block_type(node_type: str) -> BlockType:

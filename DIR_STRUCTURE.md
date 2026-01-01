@@ -112,11 +112,12 @@
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 165] identity.py
 │       │   │   ├── llm/
-│       │   │   │   ├── [L:  68] __init__.py
+│       │   │   │   ├── [L:  70] __init__.py
 │       │   │   │   ├── [L: 713] base.py
 │       │   │   │   ├── [L: 595] chat.py
 │       │   │   │   ├── [L: 141] glm.py
-│       │   │   │   └── [L: 105] openrouter.py
+│       │   │   │   ├── [L: 105] openrouter.py
+│       │   │   │   └── [L: 482] suggestion.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L: 302] run_logging.py
 │       │   │   ├── [L: 742] session_logging.py
@@ -178,7 +179,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 911] node.py
+│       │   │   │   ├── [L: 912] node.py
 │       │   │   │   ├── [L: 206] session.py
 │       │   │   │   └── [L: 193] workflow.py
 │       │   │   ├── [L: 363] utils.py
@@ -193,19 +194,20 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 379] blocks.py
+│       │           ├── [L: 381] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L:1018] commander.py
+│       │           ├── [L:1193] commander.py
 │       │           ├── [L: 523] commands.py
-│       │           ├── [L: 453] executor.py
+│       │           ├── [L: 462] executor.py
 │       │           ├── [L: 354] loop.py
 │       │           ├── [L: 682] monitor.py
 │       │           ├── [L: 311] persistence.py
 │       │           ├── [L: 533] rendering.py
-│       │           ├── [L:  60] result_handler.py
+│       │           ├── [L:  65] result_handler.py
 │       │           ├── [L: 128] status_indicators.py
+│       │           ├── [L: 174] suggestion_picker.py
 │       │           ├── [L: 154] text_builder.py
-│       │           ├── [L: 156] themes.py
+│       │           ├── [L: 185] themes.py
 │       │           ├── [L: 543] variables.py
 │       │           ├── [L: 804] workflow_runner.py
 │       │           ├── [L:  42] workflow_state.py
@@ -232,7 +234,7 @@
 │       │   ├── [L: 313] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 322] node_factory.py
+│       │   │   └── [L: 341] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
@@ -243,7 +245,7 @@
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   ├── [L: 190] session_handler.py
 │       │   │   └── [L: 306] workflow_handler.py
-│       │   ├── [L: 198] protocols.py
+│       │   ├── [L: 199] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -333,4 +335,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 268 files, 64,148 total lines
+66 directories, 270 files, 65,047 total lines

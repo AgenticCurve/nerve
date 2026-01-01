@@ -35,7 +35,12 @@ def update_block_from_result(
 
     if result.get("success"):
         block.status = "completed"
-        block.output_text = str(result.get("output", "")).strip()
+        output = result.get("output", "")
+        # Format list outputs nicely (e.g., suggestion lists)
+        if isinstance(output, list):
+            block.output_text = "\n".join(str(item) for item in output)
+        else:
+            block.output_text = str(output).strip()
         block.error = None
     else:
         block.status = "error"

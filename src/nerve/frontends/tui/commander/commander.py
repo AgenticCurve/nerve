@@ -14,8 +14,11 @@ This module is the main orchestrator, delegating to specialized modules:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -43,7 +46,7 @@ from nerve.frontends.tui.commander.executor import (
     get_block_type,
 )
 from nerve.frontends.tui.commander.rendering import print_welcome
-from nerve.frontends.tui.commander.themes import get_theme
+from nerve.frontends.tui.commander.themes import get_ghost_text_color, get_theme
 from nerve.frontends.tui.commander.variables import expand_variables
 from nerve.frontends.tui.commander.workflow_runner import run_workflow_tui
 
@@ -57,7 +60,7 @@ logger = logging.getLogger(__name__)
 class PrefixAutoSuggest(AutoSuggest):
     """Auto-suggest that shows remaining text when buffer is a prefix of suggestion."""
 
-    def __init__(self, get_suggestion: callable) -> None:
+    def __init__(self, get_suggestion: Callable[[], str]) -> None:
         """Initialize with a callable that returns the current suggestion."""
         self._get_suggestion = get_suggestion
 
@@ -118,15 +121,21 @@ class Commander:
     _active_node_id: str | None = field(default=None, init=False)  # Node currently executing
     _current_world: str | None = field(default=None, init=False)  # Focused node world
     _open_monitor_requested: bool = field(default=False, init=False)  # Ctrl-Y pressed
+    _open_suggestions_requested: bool = field(default=False, init=False)  # Ctrl-P pressed
+
+    # Suggestion system
+    _suggestion_node: str = field(
+        default="suggestions", init=False
+    )  # Node to fetch suggestions from
     _suggestions: list[str] = field(
-        default_factory=lambda: [
-            "@claude What can you help me with today?",
-            ":help workflows nodes graphs",
-            ":timeline --last 10 --status completed",
-        ],
-        init=False,
-    )  # Placeholder suggestions to cycle through
-    _suggestion_idx: int = field(default=0, init=False)  # Current suggestion index
+        default_factory=list, init=False
+    )  # Current suggestions (empty until fetched)
+    _suggestion_idx: int = field(
+        default=-1, init=False
+    )  # -1 means show hint, 0+ means show suggestion
+    _suggestion_task: asyncio.Task[None] | None = field(
+        default=None, init=False
+    )  # Background fetch task
 
     # Execution engine
     _executor: CommandExecutor = field(init=False)
@@ -143,23 +152,30 @@ class Commander:
         # force_terminal=True ensures ANSI codes work with patch_stdout()
         self.console = Console(theme=theme, force_terminal=True)
 
+        # Get ghost text color from theme
+        ghost_color = get_ghost_text_color(self.theme_name)
+
         # Create dynamic status bar (uses terminal's default colors)
         prompt_style = Style.from_dict(
             {
                 "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
-                "placeholder": "fg:ansigray italic",  # Ghost text when empty
-                "auto-suggestion": "fg:ansigray italic",  # Ghost text while typing
+                "placeholder": f"fg:{ghost_color} italic",  # Ghost text when empty
+                "auto-suggestion": f"fg:{ghost_color} italic",  # Ghost text while typing
             }
         )
         # Create key bindings for prompt session
         kb = KeyBindings()
 
         def _current_suggestion() -> str:
-            """Get the current suggestion based on index."""
+            """Get the current suggestion based on index, or empty if showing hint."""
+            if self._suggestion_idx < 0 or not self._suggestions:
+                return ""
             return self._suggestions[self._suggestion_idx]
 
         def _get_placeholder() -> HTML:
-            """Get placeholder HTML for current suggestion."""
+            """Get placeholder HTML - hint when no selection, suggestion otherwise."""
+            if self._suggestion_idx < 0 or not self._suggestions:
+                return HTML("<placeholder>Tab to cycle suggestions</placeholder>")
             return HTML(f"<placeholder>{_current_suggestion()}</placeholder>")
 
         @kb.add("c-y")
@@ -168,9 +184,17 @@ class Commander:
             self._open_monitor_requested = True
             event.app.exit()
 
+        @kb.add("c-p")
+        def open_suggestions(event: KeyPressEvent) -> None:
+            """Open full-screen suggestion picker with Ctrl-P."""
+            self._open_suggestions_requested = True
+            event.app.exit()
+
         def _is_suggestion_active() -> bool:
-            """Check if current text is empty or a prefix of the suggestion."""
+            """Check if a suggestion is selected and text is a prefix of it."""
             if self._prompt_session.app is None:
+                return False
+            if self._suggestion_idx < 0 or not self._suggestions:
                 return False
             text = self._prompt_session.app.current_buffer.text
             suggestion = _current_suggestion()
@@ -185,14 +209,28 @@ class Commander:
         # Tab cycles to next suggestion (only when buffer is empty)
         @kb.add("tab", filter=Condition(_is_buffer_empty))
         def next_suggestion(event: KeyPressEvent) -> None:
-            """Cycle to next suggestion with Tab."""
-            self._suggestion_idx = (self._suggestion_idx + 1) % len(self._suggestions)
+            """Cycle to next suggestion with Tab, or show first if available."""
+            if not self._suggestions:
+                return  # No suggestions available yet
+            # If showing hint (-1), go to first suggestion (0)
+            # Otherwise cycle to next
+            if self._suggestion_idx < 0:
+                self._suggestion_idx = 0
+            else:
+                self._suggestion_idx = (self._suggestion_idx + 1) % len(self._suggestions)
 
         # Shift+Tab cycles to previous suggestion (only when buffer is empty)
         @kb.add("s-tab", filter=Condition(_is_buffer_empty))
         def prev_suggestion(event: KeyPressEvent) -> None:
             """Cycle to previous suggestion with Shift+Tab."""
-            self._suggestion_idx = (self._suggestion_idx - 1) % len(self._suggestions)
+            if not self._suggestions:
+                return  # No suggestions available yet
+            # If showing hint (-1), go to last suggestion
+            # Otherwise cycle to previous
+            if self._suggestion_idx < 0:
+                self._suggestion_idx = len(self._suggestions) - 1
+            else:
+                self._suggestion_idx = (self._suggestion_idx - 1) % len(self._suggestions)
 
         def _get_next_word() -> str:
             """Get the next word from suggestion to insert."""
@@ -240,6 +278,7 @@ class Commander:
             timeline=self.timeline,
             console=self.console,
             async_threshold_ms=self.async_threshold_ms,
+            on_block_complete=self._on_block_complete,
         )
 
     @property
@@ -374,6 +413,9 @@ class Commander:
         # Print welcome
         print_welcome(self.console, self.server_name, self.session_name, self.nodes)
 
+        # Trigger initial suggestion fetch (runs in background)
+        self._trigger_suggestion_fetch()
+
         # Load workspace config if provided
         if self.config_path:
             await self._load_workspace_config()
@@ -416,7 +458,22 @@ class Commander:
                             await run_monitor(self.timeline)
                             continue
 
-                        if not user_input.strip():
+                        # Check if suggestion picker was requested via Ctrl-P
+                        if self._open_suggestions_requested:
+                            self._open_suggestions_requested = False
+                            from nerve.frontends.tui.commander.suggestion_picker import (
+                                run_suggestion_picker,
+                            )
+
+                            selected = await run_suggestion_picker(self._suggestions)
+                            if selected:
+                                # Use the selected suggestion as input
+                                user_input = selected
+                            else:
+                                # Cancelled - go back to prompt
+                                continue
+
+                        if not user_input or not user_input.strip():
                             continue
 
                         await self._handle_input(user_input.strip())
@@ -614,22 +671,27 @@ class Commander:
             pass  # Ignore errors during interrupt
 
     async def _handle_input(self, user_input: str) -> None:
-        """Handle user input and dispatch to appropriate handler."""
+        """Handle user input and dispatch to appropriate handler.
+
+        Note: Suggestion refresh is triggered via on_block_complete callback
+        for commands that create blocks (@node, %workflow, >>> python).
+        Only : commands need explicit trigger here since they don't create blocks.
+        """
         # Commands always start with : (works in any world)
         if user_input.startswith(":"):
             await dispatch_command(self, user_input[1:])
-            return
+            # : commands don't create blocks, so trigger suggestions manually
+            self._trigger_suggestion_fetch()
 
         # If in a world, route directly to that node
-        if self._current_world:
+        elif self._current_world:
             if self._current_world == "python":
                 await self._handle_python(user_input)
             else:
                 await self._handle_entity_message(f"{self._current_world} {user_input}")
-            return
 
         # Node/graph messages start with @
-        if user_input.startswith("@"):
+        elif user_input.startswith("@"):
             await self._handle_entity_message(user_input[1:])
 
         # Workflow execution starts with %
@@ -647,6 +709,102 @@ class Commander:
                 "%workflow for workflows, >>> for Python, or :help[/]"
             )
 
+    def _gather_suggestion_context(self) -> dict[str, Any]:
+        """Gather context for the suggestion node.
+
+        Collects:
+        - nodes: list of node IDs (excluding 'suggestions' node)
+        - graphs: list of graph IDs
+        - workflows: list of workflow IDs
+        - blocks: list of block dicts with input/output/success (excluding suggestion blocks)
+        - cwd: current working directory
+
+        Returns:
+            Context dict ready to send to SuggestionNode.
+        """
+        # Gather entities by type (exclude 'suggestions' node - AI shouldn't predict itself)
+        nodes = [e.id for e in self.entities.values() if e.type == "node" and e.id != "suggestions"]
+        graphs = [e.id for e in self.entities.values() if e.type == "graph"]
+        workflows = [e.id for e in self.entities.values() if e.type == "workflow"]
+
+        # Gather blocks from timeline (exclude suggestion blocks)
+        blocks = []
+        for block in self.timeline.blocks:
+            if block.status == "completed" and block.node_id != "suggestions":
+                blocks.append(
+                    {
+                        "input": block.input_text,
+                        "output": block.output_text,
+                        "success": block.error is None,
+                        "error": block.error,
+                    }
+                )
+
+        return {
+            "nodes": nodes,
+            "graphs": graphs,
+            "workflows": workflows,
+            "blocks": blocks,
+            "cwd": os.getcwd(),
+        }
+
+    async def _fetch_suggestions(self) -> None:
+        """Fetch suggestions from the suggestion node in background.
+
+        Updates _suggestions list with new suggestions from the LLM.
+        Falls back to default suggestions if node unavailable or errors.
+        """
+        if self._adapter is None:
+            return
+
+        # Check if suggestion node exists
+        if self._suggestion_node not in self.entities:
+            await self._sync_entities()
+            if self._suggestion_node not in self.entities:
+                return  # Node not available, keep current suggestions
+
+        try:
+            context = self._gather_suggestion_context()
+            result = await self._adapter.execute_on_node(self._suggestion_node, json.dumps(context))
+
+            if result.get("success"):
+                output = result.get("output", [])
+                if isinstance(output, list) and output:
+                    self._suggestions = output
+                    self._suggestion_idx = 0  # Show first suggestion immediately
+                    # Invalidate prompt to trigger redraw with new suggestion
+                    if self._prompt_session.app is not None:
+                        self._prompt_session.app.invalidate()
+        except Exception as e:
+            # Keep existing suggestions on error
+            logger.debug("Failed to fetch suggestions: %s", e)
+
+    def _on_block_complete(self, block: Block) -> None:
+        """Callback when any block completes execution.
+
+        Triggers suggestion refresh unless it's a suggestion block.
+
+        Args:
+            block: The completed block.
+        """
+        # Skip suggestion refresh for suggestion blocks (avoid recursion)
+        if block.node_id == "suggestions":
+            return
+        self._trigger_suggestion_fetch()
+
+    def _trigger_suggestion_fetch(self) -> None:
+        """Trigger background fetch of suggestions.
+
+        Cancels any existing fetch and starts a new one.
+        Called after commands complete to refresh suggestions.
+        """
+        # Cancel existing task if running
+        if self._suggestion_task is not None and not self._suggestion_task.done():
+            self._suggestion_task.cancel()
+
+        # Start new fetch task
+        self._suggestion_task = asyncio.create_task(self._fetch_suggestions())
+
     async def _handle_entity_message(self, message: str) -> None:
         """Handle @entity_name message syntax for both nodes and graphs."""
         if self._adapter is None:
@@ -660,6 +818,11 @@ class Commander:
 
         entity_id = parts[0]
         text = parts[1] if len(parts) > 1 else ""
+
+        # Special handling for @suggestions - auto-gather context
+        if entity_id == "suggestions" and not text:
+            context = self._gather_suggestion_context()
+            text = json.dumps(context)
 
         if not text:
             self.console.print(f"[warning]No message provided for @{entity_id}[/]")
@@ -966,6 +1129,15 @@ class Commander:
     async def _cleanup(self) -> None:
         """Cleanup resources including active workflows."""
         await self._executor.stop()
+
+        # Cancel suggestion fetch task
+        if self._suggestion_task is not None and not self._suggestion_task.done():
+            self._suggestion_task.cancel()
+            try:
+                await self._suggestion_task
+            except asyncio.CancelledError:
+                pass
+            self._suggestion_task = None
 
         # Cancel workflow polling task
         if self._workflow_poll_task is not None and not self._workflow_poll_task.done():
