@@ -47,6 +47,14 @@ class SessionAdapter(Protocol):
         """List nodes as (name, info) tuples."""
         ...
 
+    async def get_nodes_info(self) -> list[dict[str, Any]]:
+        """Get full node info including metadata.
+
+        Returns:
+            List of dicts with id, type, state, and metadata fields.
+        """
+        ...
+
     async def list_graphs(self) -> list[str]:
         """List graph IDs."""
         ...
@@ -187,6 +195,33 @@ class LocalSessionAdapter:
             else:
                 info = type(node).__name__
             result.append((name, info))
+        return result
+
+    async def get_nodes_info(self) -> list[dict[str, Any]]:
+        """Get full node info including metadata."""
+        result = []
+        for name, node in self.session.nodes.items():
+            if hasattr(node, "to_info"):
+                info = node.to_info()
+                result.append(
+                    {
+                        "id": name,
+                        "type": info.node_type,
+                        "state": info.state.name,
+                        **info.metadata,
+                    }
+                )
+            else:
+                # Fallback for nodes without to_info() - try to get state if available
+                state = getattr(node, "state", None)
+                state_name = getattr(state, "name", "unknown") if state is not None else "unknown"
+                result.append(
+                    {
+                        "id": name,
+                        "type": type(node).__name__,
+                        "state": state_name,
+                    }
+                )
         return result
 
     async def list_graphs(self) -> list[str]:
@@ -425,6 +460,14 @@ class RemoteSessionAdapter:
             # Return (name, backend_type) tuples
             return [(info["id"], info.get("type", "UNKNOWN")) for info in nodes_info]
         return []
+
+    async def get_nodes_info(self) -> list[dict[str, Any]]:
+        """Get full node info including metadata.
+
+        Returns cached data from last list_nodes() call. Call list_nodes()
+        first to refresh the cache.
+        """
+        return self._cached_nodes_info
 
     async def list_graphs(self) -> list[str]:
         """List graphs from server."""
