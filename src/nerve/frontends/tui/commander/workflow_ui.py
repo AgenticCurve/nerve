@@ -1,7 +1,7 @@
 """UI rendering mixin for workflow runner TUI.
 
 Contains all _get_* methods that render FormattedText for the workflow
-runner's various panels and views.
+runner's various panels and views, plus layout construction.
 """
 
 from __future__ import annotations
@@ -9,7 +9,17 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
+from prompt_toolkit.filters import Condition
 from prompt_toolkit.formatted_text import FormattedText
+from prompt_toolkit.layout import (
+    ConditionalContainer,
+    HSplit,
+    Layout,
+    ScrollablePane,
+    VSplit,
+    Window,
+)
+from prompt_toolkit.layout.controls import FormattedTextControl
 
 from nerve.frontends.tui.commander.status_indicators import get_status_emoji
 from nerve.frontends.tui.commander.text_builder import FormattedTextBuilder
@@ -292,3 +302,140 @@ class WorkflowUIRendererMixin:
                 lines.append(("dim", f"  {data_str}\n"))
 
         return FormattedText(lines)
+
+
+def create_workflow_layout(app: Any) -> Layout:
+    """Create the TUI layout with view switching.
+
+    Creates a Layout with three conditional views:
+    - Main view: steps list + preview + optional gate input
+    - Full screen view: single step detail with scrolling
+    - Events view: workflow event log
+
+    Args:
+        app: WorkflowRunnerApp instance with required attributes/methods:
+            - _steps_focus_control: BufferControl for steps focus
+            - _steps_control: FormattedTextControl for steps list
+            - _gate_buffer_control: BufferControl for gate input
+            - _get_header, _get_step_preview, _get_gate_prompt, _get_status_bar
+            - _get_full_screen_header, _get_full_screen_content, _get_full_screen_status
+            - _get_events_content
+            - _is_main_view, _is_full_screen_view, _is_events_view
+            - _has_gate
+
+    Returns:
+        Layout configured for the workflow TUI.
+    """
+    # Main view layout
+    main_view = HSplit(
+        [
+            # Header
+            Window(content=FormattedTextControl(text=app._get_header), height=3),
+            # Main content: steps list + preview
+            VSplit(
+                [
+                    # Left: Steps list with hidden focus receiver
+                    HSplit(
+                        [
+                            # Hidden focus receiver (0 height, just for focus)
+                            Window(content=app._steps_focus_control, height=0),
+                            # Actual steps list
+                            Window(
+                                content=app._steps_control,
+                            ),
+                        ],
+                        width=30,
+                    ),
+                    # Separator
+                    Window(width=1, char="│", style="dim"),
+                    # Right: Step preview
+                    Window(
+                        content=FormattedTextControl(text=app._get_step_preview),
+                        wrap_lines=True,
+                    ),
+                ]
+            ),
+            # Gate input (conditional)
+            ConditionalContainer(
+                HSplit(
+                    [
+                        Window(height=1, char="─", style="dim"),
+                        ScrollablePane(
+                            Window(
+                                content=FormattedTextControl(text=app._get_gate_prompt),
+                                wrap_lines=True,
+                            ),
+                        ),
+                        Window(height=1, char="─", style="dim"),
+                        Window(content=app._gate_buffer_control, height=1),
+                    ],
+                    height=12,  # Give gate panel more viewport space
+                ),
+                filter=Condition(lambda: app._has_gate()),
+            ),
+            # Status bar
+            Window(
+                content=FormattedTextControl(text=app._get_status_bar),
+                height=1,
+                style="reverse",
+            ),
+        ]
+    )
+
+    # Full screen step view
+    full_screen_view = HSplit(
+        [
+            Window(content=FormattedTextControl(text=app._get_full_screen_header), height=2),
+            Window(height=1, char="─", style="dim"),
+            ScrollablePane(
+                Window(
+                    content=FormattedTextControl(text=app._get_full_screen_content),
+                    wrap_lines=True,
+                ),
+            ),
+            Window(
+                content=FormattedTextControl(text=app._get_full_screen_status),
+                height=1,
+                style="reverse",
+            ),
+        ]
+    )
+
+    # Events view
+    events_view = HSplit(
+        [
+            Window(
+                content=FormattedTextControl(
+                    text=lambda: FormattedText([("bold", "Workflow Events\n")])
+                ),
+                height=2,
+            ),
+            Window(height=1, char="─", style="dim"),
+            ScrollablePane(
+                Window(
+                    content=FormattedTextControl(text=app._get_events_content),
+                    wrap_lines=True,
+                ),
+            ),
+            Window(
+                content=FormattedTextControl(
+                    text=lambda: FormattedText([("", " [↑/↓] Scroll │ [q/Esc] Back")])
+                ),
+                height=1,
+                style="reverse",
+            ),
+        ]
+    )
+
+    # Root with conditional containers
+    root = HSplit(
+        [
+            ConditionalContainer(main_view, filter=Condition(lambda: app._is_main_view())),
+            ConditionalContainer(
+                full_screen_view, filter=Condition(lambda: app._is_full_screen_view())
+            ),
+            ConditionalContainer(events_view, filter=Condition(lambda: app._is_events_view())),
+        ]
+    )
+
+    return Layout(root)
