@@ -615,19 +615,9 @@ class StatefulLLMNode:
         """
         import copy
 
-        from nerve.core.nodes.llm.openrouter import OpenRouterNode
-
-        # Create new inner LLM node with same configuration
-        # The inner LLM is stateless, so we just need same config
-        new_llm = OpenRouterNode(
-            id=f"{new_id}-llm",
-            session=self.session,
-            api_key=self.llm.api_key,
-            model=self.llm.model,
-            base_url=self.llm.base_url,
-            timeout=self.llm.timeout,
-            debug_dir=self.llm.debug_dir,
-        )
+        # Fork the inner LLM node - preserves the concrete type (OpenRouterNode, GLMNode, etc.)
+        # and all type-specific configuration (e.g., GLMNode.thinking)
+        new_llm = self.llm.fork(f"{new_id}-llm")
 
         # Deep copy messages to ensure independence
         forked_messages = [

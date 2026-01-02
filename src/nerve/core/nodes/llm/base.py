@@ -153,6 +153,49 @@ class StatelessLLMNode:
         """
         return {}
 
+    def fork(self, new_id: str) -> StatelessLLMNode:
+        """Fork this LLM node with a new ID.
+
+        Creates a new instance of the same LLM node type (OpenRouterNode, GLMNode, etc.)
+        with identical configuration. Since stateless LLM nodes don't have conversation
+        state, this just creates a clone with a new ID.
+
+        This method uses dataclass introspection to copy all fields, including
+        subclass-specific fields (e.g., GLMNode.thinking, OpenRouterNode.http_referer).
+
+        Args:
+            new_id: Unique identifier for the forked node.
+
+        Returns:
+            New instance of the same LLM node type with copied configuration.
+
+        Example:
+            >>> llm = GLMNode(id="glm", session=s, api_key="...", model="...", thinking=True)
+            >>> forked = llm.fork("glm-fork")
+            >>> assert type(forked) is GLMNode
+            >>> assert forked.thinking is True
+        """
+        from dataclasses import fields
+
+        # Get all init fields from the concrete class (includes subclass fields)
+        init_kwargs: dict[str, Any] = {}
+        for f in fields(self):
+            if not f.init:
+                continue  # Skip non-init fields like state, persistent, etc.
+            if f.name == "id":
+                init_kwargs["id"] = new_id
+            elif f.name == "metadata":
+                # Copy metadata and add fork info
+                init_kwargs["metadata"] = {
+                    **self.metadata,
+                    "forked_from": self.id,
+                }
+            else:
+                init_kwargs[f.name] = getattr(self, f.name)
+
+        # Instantiate the same concrete class (OpenRouterNode, GLMNode, etc.)
+        return self.__class__(**init_kwargs)
+
     def __post_init__(self) -> None:
         """Validate and register with session."""
         from nerve.core.validation import validate_name

@@ -122,8 +122,8 @@
 │       │   │   ├── [L: 165] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  70] __init__.py
-│       │   │   │   ├── [L: 713] base.py
-│       │   │   │   ├── [L: 670] chat.py
+│       │   │   │   ├── [L: 756] base.py
+│       │   │   │   ├── [L: 660] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   ├── [L: 105] openrouter.py
 │       │   │   │   └── [L: 526] suggestion.py
@@ -293,7 +293,7 @@
     │   │   ├── llm/
     │   │   │   ├── [L:   1] __init__.py
     │   │   │   ├── [L: 176] test_chat_node.py
-    │   │   │   ├── [L: 313] test_fork.py
+    │   │   │   ├── [L: 383] test_fork.py
     │   │   │   └── [L: 493] test_openrouter.py
     │   │   ├── [L: 213] test_base.py
     │   │   ├── [L: 210] test_bash.py
@@ -353,4 +353,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-70 directories, 284 files, 68,627 total lines
+70 directories, 284 files, 68,730 total lines

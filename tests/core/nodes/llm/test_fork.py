@@ -6,7 +6,7 @@ import copy
 
 import pytest
 
-from nerve.core.nodes.llm import OpenRouterNode, StatefulLLMNode
+from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode
 from nerve.core.nodes.llm.chat import Message
 from nerve.core.session.session import Session
 
@@ -257,6 +257,76 @@ class TestStatefulLLMNodeFork:
 
         # fork2's metadata should reference fork1
         assert fork2.metadata["forked_from"] == "fork1"
+
+
+class TestStatelessLLMNodeFork:
+    """Tests for StatelessLLMNode.fork() - ensures LLM type is preserved."""
+
+    async def test_fork_preserves_openrouter_type(self, session: Session) -> None:
+        """fork() should preserve OpenRouterNode type and fields."""
+        llm = OpenRouterNode(
+            id="openrouter",
+            session=session,
+            api_key="test-key",
+            model="anthropic/claude-3-haiku",
+            http_referer="https://test.com",
+            x_title="Test App",
+        )
+
+        forked = llm.fork("openrouter-fork")
+
+        assert type(forked) is OpenRouterNode
+        assert forked.id == "openrouter-fork"
+        assert forked.api_key == "test-key"
+        assert forked.model == "anthropic/claude-3-haiku"
+        assert forked.http_referer == "https://test.com"
+        assert forked.x_title == "Test App"
+
+    async def test_fork_preserves_glm_type_and_thinking(self, session: Session) -> None:
+        """fork() should preserve GLMNode type and thinking field."""
+        llm = GLMNode(
+            id="glm",
+            session=session,
+            api_key="test-key",
+            model="glm-4.7",
+            thinking=True,
+        )
+
+        forked = llm.fork("glm-fork")
+
+        assert type(forked) is GLMNode
+        assert forked.id == "glm-fork"
+        assert forked.api_key == "test-key"
+        assert forked.model == "glm-4.7"
+        assert forked.thinking is True
+
+    async def test_stateful_fork_preserves_glm_inner_type(self, session: Session) -> None:
+        """StatefulLLMNode.fork() should preserve GLMNode inner LLM type."""
+        inner_llm = GLMNode(
+            id="glm-inner",
+            session=session,
+            api_key="test-key",
+            model="glm-4.7",
+            thinking=True,
+        )
+
+        chat_node = StatefulLLMNode(
+            id="chat-glm",
+            session=session,
+            llm=inner_llm,
+            system="You are helpful.",
+        )
+        chat_node.messages.append(Message(role="user", content="Hello"))
+
+        forked = chat_node.fork("chat-glm-fork")
+
+        # Verify inner LLM type is preserved
+        assert type(forked.llm) is GLMNode
+        assert forked.llm.thinking is True
+        assert forked.llm.model == "glm-4.7"
+
+        # Verify messages are copied
+        assert len(forked.messages) == 1
 
 
 class TestForkEdgeCases:
