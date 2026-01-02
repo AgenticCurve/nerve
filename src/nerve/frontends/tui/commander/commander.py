@@ -413,12 +413,14 @@ class Commander:
         # Print welcome
         print_welcome(self.console, self.server_name, self.session_name, self.nodes)
 
-        # Trigger initial suggestion fetch (runs in background)
-        self._trigger_suggestion_fetch()
-
-        # Load workspace config if provided
+        # Load workspace config if provided (before initial suggestion fetch to avoid race condition)
         if self.config_path:
             await self._load_workspace_config()
+
+        # Trigger initial suggestion fetch (runs in background)
+        # This is done AFTER config loading so any block completions from startup commands
+        # don't race with this initial fetch
+        self._trigger_suggestion_fetch()
 
         # Start background executor
         await self._executor.start()
@@ -613,8 +615,11 @@ class Commander:
                 startup_commands = re.findall(r'["\']([^"\']+)["\']', match.group(1))
 
         # Execute the config code on the server (creates nodes, graphs, workflows)
+        # Inject __file__ so config can do relative imports
+        config_file_path = str(config_file.resolve())
+        code_with_file = f"__file__ = {config_file_path!r}\n{code}"
         try:
-            output, error = await self._adapter.execute_python(code, {})
+            output, error = await self._adapter.execute_python(code_with_file, {})
         except Exception as e:
             self.console.print(f"[error]Config execution failed: {e}[/]")
             return

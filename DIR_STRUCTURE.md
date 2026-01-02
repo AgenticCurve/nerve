@@ -52,7 +52,10 @@
 │   │   ├── [L: 199] multi_step_demo.py
 │   │   └── [L:  58] simple_loadable.py
 │   ├── workspace/
-│   │   └── [L:  69] driver_navigator.py
+│   │   └── driver_navigator/
+│   │       ├── [L: 125] main.py
+│   │       ├── [L: 145] workflow_bug_hunter.py
+│   │       └── [L: 151] workflow_verify_refactoring.py
 │   └── [L: 107] workspace_example.py
 ├── features/
 │   ├── glm/
@@ -71,6 +74,10 @@
 │               ├── [L: 379] sample_pane_03.txt
 │               └── [L:  57] sample_pane_04.txt
 ├── [L:  90] Makefile
+├── prompts/
+│   └── refactoring/
+│       ├── [L: 220] bug-hunter.md
+│       └── [L: 167] verify-refactoring.md
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
@@ -198,7 +205,7 @@
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 384] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L:1211] commander.py
+│       │           ├── [L:1216] commander.py
 │       │           ├── [L: 523] commands.py
 │       │           ├── [L: 481] executor.py
 │       │           ├── [L: 354] loop.py
@@ -256,8 +263,8 @@
 │           ├── [L: 380] http.py
 │           ├── [L: 125] in_process.py
 │           ├── [L:  67] protocol.py
-│           ├── [L: 412] tcp_socket.py
-│           └── [L: 419] unix_socket.py
+│           ├── [L: 414] tcp_socket.py
+│           └── [L: 421] unix_socket.py
 └── tests/
     ├── [L:   1] __init__.py
     ├── cli/
@@ -337,4 +344,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-67 directories, 271 files, 65,182 total lines
+70 directories, 275 files, 65,930 total lines
