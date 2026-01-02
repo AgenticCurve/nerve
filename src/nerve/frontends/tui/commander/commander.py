@@ -111,6 +111,8 @@ class Commander:
             entities=self._entities.entities,
             timeline=self.timeline,
             adapter=None,  # Set in run() after connection
+            session_name=self.session_name,
+            server_name=self.server_name,
         )
 
         # Initialize input dispatcher

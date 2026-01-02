@@ -5,17 +5,29 @@ Validates variable references and manages block creation and execution.
 
 This module extracts input-handling logic from commander.py for better
 separation of concerns and testability.
+
+Includes suggestion tracking integration:
+- Finalizes suggestion records when user submits input
+- Stores lightweight metadata in block.metadata
+- Appends full records to JSONL for ML training (async)
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from nerve.frontends.tui.commander.suggestion_history import (
+    append_to_history_async,
+    is_history_enabled,
+)
 
 if TYPE_CHECKING:
     from nerve.frontends.tui.commander.blocks import Block, BlockType
     from nerve.frontends.tui.commander.commander import Commander
+    from nerve.frontends.tui.commander.suggestion_record import SuggestionRecord
 
 
 @dataclass
@@ -33,6 +45,9 @@ class InputDispatcher:
     """
 
     commander: Commander
+
+    # Pending suggestion record to attach to next created block
+    _pending_suggestion_record: SuggestionRecord | None = field(default=None, init=False)
 
     def _validate_and_create_error_block(
         self, text: str, block_type: BlockType, node_id: str | None
@@ -71,6 +86,39 @@ class InputDispatcher:
         print_block(cmd.console, block)
         return block
 
+    def _store_suggestion_record(self, block: Block) -> None:
+        """Store suggestion record in block metadata and JSONL.
+
+        Called after a block is created to:
+        1. Update the record with the block number
+        2. Store lightweight data in block.metadata
+        3. Fire async append to JSONL if enabled
+
+        Args:
+            block: The block that was created from user input.
+        """
+        if self._pending_suggestion_record is None:
+            return
+
+        record = self._pending_suggestion_record
+        self._pending_suggestion_record = None
+
+        # Update record with block number
+        record.result_block_number = block.number
+
+        # Store lightweight metadata in block (no LLM data - keeps TUI fast)
+        block.metadata["suggestion"] = record.to_lightweight_dict()
+
+        # Fire-and-forget async append to JSONL
+        if is_history_enabled():
+            asyncio.create_task(
+                append_to_history_async(
+                    record,
+                    self.commander._suggestions.server_name,
+                    self.commander._suggestions.session_name,
+                )
+            )
+
     async def dispatch(self, user_input: str) -> None:
         """Handle user input and dispatch to appropriate handler.
 
@@ -90,6 +138,10 @@ class InputDispatcher:
         from nerve.frontends.tui.commander.commands import dispatch_command
 
         cmd = self.commander
+
+        # Finalize suggestion record BEFORE routing
+        # Returns None for : commands (we don't track those)
+        self._pending_suggestion_record = cmd._suggestions.finalize_record(user_input)
 
         # Commands always start with : (works in any world)
         if user_input.startswith(":"):
@@ -190,6 +242,9 @@ class InputDispatcher:
         )
         cmd.timeline.add(block)
 
+        # Store suggestion record in block metadata and JSONL
+        self._store_suggestion_record(block)
+
         # Execute with threshold handling
         start_time = time.monotonic()
 
@@ -262,6 +317,9 @@ class InputDispatcher:
             depends_on=dependencies,
         )
         cmd.timeline.add(block)
+
+        # Store suggestion record in block metadata and JSONL
+        self._store_suggestion_record(block)
 
         # Execute with threshold handling
         start_time = time.monotonic()
@@ -349,6 +407,9 @@ class InputDispatcher:
             depends_on=dependencies,
         )
         cmd.timeline.add(block)
+
+        # Store suggestion record in block metadata and JSONL
+        self._store_suggestion_record(block)
 
         # Wait for dependencies before expanding variables
         # This ensures :::N references see completed block data
