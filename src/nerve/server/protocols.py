@@ -77,6 +77,7 @@ class CommandType(Enum):
     DELETE_NODE = auto()
     LIST_NODES = auto()
     GET_NODE = auto()
+    FORK_NODE = auto()
 
     # Interaction
     RUN_COMMAND = auto()  # Fire and forget - start a program

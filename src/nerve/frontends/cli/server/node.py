@@ -808,6 +808,142 @@ async def node_interrupt(node_name: str, server_name: str) -> None:
             error_exit(result.error or "Unknown error")
 
 
+@node.command("fork")
+@click.argument("source")
+@click.argument("target", required=False)
+@click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")
+@click.option("--session", "session_id", default=None, help="Session ID (default: default session)")
+@click.option(
+    "--execute",
+    "-e",
+    "execute_text",
+    default=None,
+    help="Send a message to the forked node immediately after creation",
+)
+@click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
+@async_server_command
+async def node_fork(
+    source: str,
+    target: str | None,
+    server_name: str,
+    session_id: str | None,
+    execute_text: str | None,
+    json_output: bool,
+) -> None:
+    """Fork a node with copied state.
+
+    Creates a new node by copying the state from SOURCE node.
+    For StatefulLLMNode, this copies the entire conversation history,
+    allowing you to branch conversations.
+
+    **Arguments:**
+
+        SOURCE     The node to fork (e.g., 'claude')
+
+        TARGET     Name for the forked node (optional, auto-generated if not provided)
+
+    **Examples:**
+
+        nerve server node fork claude
+        # Creates claude_fork_1 with same conversation history
+
+        nerve server node fork claude researcher
+        # Creates 'researcher' with same conversation history
+
+        nerve server node fork claude researcher --execute "Now focus on security analysis"
+        # Fork and immediately send a message
+
+        nerve server node fork claude --session my-workspace
+        # Fork in specific session
+    """
+    import json
+
+    from nerve.server.protocols import Command, CommandType
+
+    async with server_connection(server_name) as client:
+        # Auto-generate target name if not provided
+        if not target:
+            # First, list nodes to find a unique name
+            params = build_params(session_id=session_id)
+            list_result = await client.send_command(
+                Command(type=CommandType.LIST_NODES, params=params)
+            )
+            existing_nodes = set()
+            if list_result.success and list_result.data:
+                existing_nodes = {info["id"] for info in list_result.data.get("nodes_info", [])}
+
+            # Generate unique name
+            base_name = f"{source}_fork"
+            counter = 1
+            target = f"{base_name}_{counter}"
+            while target in existing_nodes:
+                counter += 1
+                target = f"{base_name}_{counter}"
+
+        # Fork the node
+        fork_params = build_params(
+            source_id=source,
+            target_id=target,
+            session_id=session_id,
+        )
+
+        result = await client.send_command(
+            Command(
+                type=CommandType.FORK_NODE,
+                params=fork_params,
+            )
+        )
+
+        if not result.success:
+            error_exit(result.error or "Fork failed")
+            return
+
+        forked_id = result.data.get("node_id", target) if result.data else target
+        forked_from = result.data.get("forked_from", source) if result.data else source
+
+        # Execute message on forked node if requested
+        execute_result = None
+        execute_error = None
+        if execute_text:
+            exec_params = build_params(
+                node_id=forked_id,
+                text=execute_text,
+                session_id=session_id,
+            )
+            exec_result = await client.send_command(
+                Command(
+                    type=CommandType.EXECUTE_INPUT,
+                    params=exec_params,
+                )
+            )
+            if exec_result.success and exec_result.data:
+                execute_result = exec_result.data.get("response", {})
+            elif not exec_result.success:
+                # Fork succeeded but execute failed - report the error
+                execute_error = exec_result.error or "Execute failed"
+
+        # Output
+        if json_output:
+            output_data = {
+                "node_id": forked_id,
+                "forked_from": forked_from,
+            }
+            if execute_result:
+                output_data["execute_result"] = execute_result
+            if execute_error:
+                output_data["execute_error"] = execute_error
+            click.echo(json.dumps(output_data, indent=2))
+        else:
+            click.echo(f"Forked: {source} → {forked_id}")
+            if execute_error:
+                click.echo(f"Warning: Execute failed: {execute_error}", err=True)
+            elif execute_result:
+                # Show response output
+                output = execute_result.get("output", "")
+                if output:
+                    click.echo(f"\nResponse:\n{output}")
+
+
 @node.command("history")
 @click.argument("node_name")
 @click.option("--server", "-s", "server_name", default="local", help="Server name (default: local)")

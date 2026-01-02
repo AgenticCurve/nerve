@@ -401,6 +401,78 @@ async def cmd_import(commander: Commander, args: str) -> None:
         commander.console.print(f"[error]Import failed: {e}[/]")
 
 
+async def cmd_fork(commander: Commander, args: str) -> None:
+    """Handle :fork command - fork a node with copied state.
+
+    Usage:
+        :fork @claude researcher     # Fork @claude as @researcher
+        :fork @claude                # Fork @claude with auto-generated name
+
+    Creates a new node with the same state (e.g., conversation history).
+    Only nodes that support forking can be forked (e.g., StatefulLLMNode).
+    """
+    if not args:
+        commander.console.print("[error]Usage: :fork @node [new_name][/]")
+        commander.console.print("[dim]Example: :fork @claude researcher[/]")
+        return
+
+    parts = args.split(maxsplit=1)
+    source_arg = parts[0]
+
+    # Strip @ prefix if present
+    source_id = source_arg.lstrip("@")
+
+    # Determine target name
+    if len(parts) > 1:
+        target_id = parts[1].lstrip("@")
+    else:
+        # Auto-generate name: source_fork_N
+        base_name = f"{source_id}_fork"
+        counter = 1
+        target_id = f"{base_name}_{counter}"
+        while target_id in commander.entities:
+            counter += 1
+            target_id = f"{base_name}_{counter}"
+
+    # Check source exists
+    await commander._entities.sync()
+    if source_id not in commander.entities:
+        commander.console.print(f"[error]Node not found: {source_id}[/]")
+        return
+
+    entity = commander.entities[source_id]
+    if entity.type != "node":
+        commander.console.print(f"[error]'{source_id}' is a {entity.type}, not a node[/]")
+        return
+
+    # Check target doesn't exist
+    if target_id in commander.entities:
+        commander.console.print(f"[error]'{target_id}' already exists[/]")
+        return
+
+    try:
+        result = await commander._adapter.fork_node(source_id, target_id)  # type: ignore[union-attr]
+        forked_id = result.get("node_id", target_id)
+
+        # Refresh entities to pick up new node
+        await commander._entities.sync()
+
+        # Show success with fork info
+        commander.console.print(f"[green]✓[/] Forked [bold]@{source_id}[/] → [bold]@{forked_id}[/]")
+
+        # Show message count if available
+        if forked_id in commander.entities:
+            new_entity = commander.entities[forked_id]
+            if new_entity.metadata.get("messages_count"):
+                msg_count = new_entity.metadata["messages_count"]
+                commander.console.print(f"[dim]  {msg_count} messages copied[/]")
+
+    except ValueError as e:
+        commander.console.print(f"[error]{e}[/]")
+    except Exception as e:
+        commander.console.print(f"[error]Fork failed: {e}[/]")
+
+
 async def cmd_load(commander: Commander, args: str) -> None:
     """Handle :load command - load workflow(s) from Python file(s).
 
@@ -495,6 +567,7 @@ COMMANDS: dict[str, CommandHandler] = {
     "world": cmd_world,
     "loop": cmd_loop,
     "load": cmd_load,
+    "fork": cmd_fork,
     "export": cmd_export,
     "import": cmd_import,
 }

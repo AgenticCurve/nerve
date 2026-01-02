@@ -81,6 +81,79 @@ class TestRemoteNode:
         assert call_args.type.name == "DELETE_NODE"
         assert call_args.params["node_id"] == "test-node"
 
+    @pytest.mark.asyncio
+    async def test_remote_node_fork_success(self):
+        """Test RemoteNode.fork() method."""
+        mock_client = MagicMock()
+        mock_client._nodes = {}
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.data = {"node_id": "forked-node", "forked_from": "test-node"}
+        mock_client._send_command = AsyncMock(return_value=mock_result)
+
+        node = RemoteNode(id="test-node", command="claude", _client=mock_client)
+
+        forked = await node.fork("forked-node")
+
+        # Verify command was sent correctly
+        assert mock_client._send_command.called
+        call_args = mock_client._send_command.call_args[0][0]
+        assert call_args.type.name == "FORK_NODE"
+        assert call_args.params["source_id"] == "test-node"
+        assert call_args.params["target_id"] == "forked-node"
+
+        # Verify returned node
+        assert isinstance(forked, RemoteNode)
+        assert forked.id == "forked-node"
+        assert forked.command == "claude"  # Same command as source
+
+    @pytest.mark.asyncio
+    async def test_remote_node_fork_registers_in_client(self):
+        """Test that fork() registers the new node in client._nodes."""
+        mock_client = MagicMock()
+        mock_client._nodes = {}
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.data = {"node_id": "forked", "forked_from": "source"}
+        mock_client._send_command = AsyncMock(return_value=mock_result)
+
+        node = RemoteNode(id="source", command="test", _client=mock_client)
+
+        forked = await node.fork("forked")
+
+        assert "forked" in mock_client._nodes
+        assert mock_client._nodes["forked"] is forked
+
+    @pytest.mark.asyncio
+    async def test_remote_node_fork_error(self):
+        """Test RemoteNode.fork() handles errors."""
+        mock_client = MagicMock()
+        mock_client._nodes = {}
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error = "Node type does not support forking"
+        mock_client._send_command = AsyncMock(return_value=mock_result)
+
+        node = RemoteNode(id="test-node", command="bash", _client=mock_client)
+
+        with pytest.raises(RuntimeError, match="does not support forking"):
+            await node.fork("forked")
+
+    @pytest.mark.asyncio
+    async def test_remote_node_fork_target_exists_error(self):
+        """Test RemoteNode.fork() handles target exists error."""
+        mock_client = MagicMock()
+        mock_client._nodes = {}
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error = "Node 'forked' already exists"
+        mock_client._send_command = AsyncMock(return_value=mock_result)
+
+        node = RemoteNode(id="test-node", command="claude", _client=mock_client)
+
+        with pytest.raises(RuntimeError, match="already exists"):
+            await node.fork("forked")
+
 
 class TestNerveClientStandalone:
     """Tests for NerveClient in standalone mode.
