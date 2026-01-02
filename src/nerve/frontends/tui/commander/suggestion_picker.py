@@ -125,7 +125,8 @@ class SuggestionPickerApp:
         @kb.add("g")
         def go_top(event: KeyPressEvent) -> None:
             """Go to first suggestion."""
-            self.selected_index = 0
+            if self.suggestions:
+                self.selected_index = 0
 
         @kb.add("end")
         @kb.add("G")

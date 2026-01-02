@@ -468,12 +468,13 @@ class Commander:
                             )
 
                             selected = await run_suggestion_picker(self._suggestions)
+                            # Clear the ghost text line from when Ctrl-P was pressed
+                            print(f"\033[A\r\033[K{prompt}", flush=True)
                             if selected:
                                 # Use the selected suggestion as input
                                 user_input = selected
                             else:
-                                # Cancelled - clear the ghost text line and go back to prompt
-                                print(f"\033[A\r\033[K{prompt}", flush=True)
+                                # Cancelled - go back to prompt
                                 continue
 
                         if not user_input or not user_input.strip():

@@ -66,7 +66,11 @@ def _build_directory_tree(root_path: str) -> list[str]:
     # Collect all entries with their relative paths for sorting
     entries: list[tuple[Path, bool]] = []  # (path, is_dir)
 
-    for dirpath, dirnames, filenames in os.walk(root):
+    # Use onerror to skip directories we can't access (PermissionError, etc.)
+    def on_error(err: OSError) -> None:
+        logger.debug("Skipping directory due to error: %s", err)
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=on_error):
         current = Path(dirpath)
         rel_path = current.relative_to(root)
 
