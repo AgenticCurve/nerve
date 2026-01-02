@@ -48,11 +48,12 @@ from nerve.core.nodes.llm.openrouter import OpenRouterNode
 logger = logging.getLogger(__name__)
 
 
-def _build_directory_tree(root_path: str) -> list[str]:
+def _build_directory_tree(root_path: str, max_depth: int = 3) -> list[str]:
     """Build a directory tree structure using os.walk.
 
     Args:
         root_path: Root directory path to walk.
+        max_depth: Maximum directory depth to traverse (default: 3).
 
     Returns:
         List of formatted tree lines.
@@ -73,6 +74,12 @@ def _build_directory_tree(root_path: str) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, onerror=on_error):
         current = Path(dirpath)
         rel_path = current.relative_to(root)
+
+        # Enforce depth limit to avoid performance issues on large repos
+        depth = len(rel_path.parts)
+        if depth >= max_depth:
+            dirnames.clear()  # Don't descend further
+            continue
 
         # Skip hidden directories and common non-essential directories
         dirnames[:] = [
@@ -475,6 +482,9 @@ class SuggestionNode(OpenRouterNode):
             raw_output = result["output"]
             suggestions = self._parse_suggestions(raw_output)
             result["output"] = suggestions
+            # Defensive: ensure attributes dict exists (parent should always set it)
+            if "attributes" not in result:
+                result["attributes"] = {}
             result["attributes"]["raw_response"] = raw_output
 
             logger.debug("SuggestionNode: parsed %d suggestions from response", len(suggestions))

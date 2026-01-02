@@ -163,8 +163,14 @@ def get_theme(name: str) -> Theme:
     return THEMES.get(name.lower(), DEFAULT_THEME)
 
 
-# Ghost text colors for prompt_toolkit (separate from Rich theme)
-# These must be prompt_toolkit compatible (hex colors work best)
+# Ghost text colors for prompt_toolkit (intentionally separate from Rich theme).
+#
+# Why duplicated? Rich Theme stores Style objects with complex attributes (bold,
+# italic, color, bgcolor, etc.), but prompt_toolkit needs simple hex color strings.
+# Extracting hex from Rich Style objects is fragile (color may be named, RGB tuple,
+# or None). Maintaining explicit hex values here ensures prompt_toolkit compatibility.
+#
+# These values MUST match the ghost_text parameter in each theme's create_theme() call.
 GHOST_TEXT_COLORS: dict[str, str] = {
     "default": "#6e6e6e",  # Medium gray - visible but clearly different
     "nord": "#4C566A",  # Nord comment gray
@@ -174,7 +180,11 @@ GHOST_TEXT_COLORS: dict[str, str] = {
 
 
 def get_ghost_text_color(theme_name: str) -> str:
-    """Get the ghost text color for a theme.
+    """Get the ghost text color for a theme (prompt_toolkit compatible).
+
+    Note: This returns a hex color string for prompt_toolkit, which requires
+    simple color values. Rich Theme stores Style objects which aren't directly
+    compatible with prompt_toolkit's style system.
 
     Args:
         theme_name: Theme name (default, nord, dracula, mono)

@@ -117,7 +117,7 @@
 │       │   │   │   ├── [L: 595] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   ├── [L: 105] openrouter.py
-│       │   │   │   └── [L: 487] suggestion.py
+│       │   │   │   └── [L: 497] suggestion.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L: 302] run_logging.py
 │       │   │   ├── [L: 742] session_logging.py
@@ -196,7 +196,7 @@
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 381] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L:1207] commander.py
+│       │           ├── [L:1211] commander.py
 │       │           ├── [L: 523] commands.py
 │       │           ├── [L: 472] executor.py
 │       │           ├── [L: 354] loop.py
@@ -207,7 +207,7 @@
 │       │           ├── [L: 128] status_indicators.py
 │       │           ├── [L: 175] suggestion_picker.py
 │       │           ├── [L: 154] text_builder.py
-│       │           ├── [L: 185] themes.py
+│       │           ├── [L: 195] themes.py
 │       │           ├── [L: 543] variables.py
 │       │           ├── [L: 804] workflow_runner.py
 │       │           ├── [L:  42] workflow_state.py
@@ -335,4 +335,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 270 files, 65,077 total lines
+66 directories, 270 files, 65,101 total lines

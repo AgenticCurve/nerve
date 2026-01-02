@@ -815,6 +815,10 @@ class Commander:
         # Cancel existing task if running
         if self._suggestion_task is not None and not self._suggestion_task.done():
             self._suggestion_task.cancel()
+            # Suppress CancelledError - task is intentionally being replaced
+            self._suggestion_task.add_done_callback(
+                lambda t: t.exception() if not t.cancelled() else None
+            )
 
         # Start new fetch task
         self._suggestion_task = asyncio.create_task(self._fetch_suggestions())
