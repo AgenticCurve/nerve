@@ -122,6 +122,59 @@ class RemoteNode:
             )
         )
 
+    async def fork(self, new_id: str) -> RemoteNode:
+        """Fork this node with a new ID.
+
+        Creates a new node by copying the state from this node.
+        For StatefulLLMNode, this copies the entire conversation history,
+        allowing you to branch conversations.
+
+        Args:
+            new_id: ID for the new forked node.
+
+        Returns:
+            RemoteNode proxy for the forked node.
+
+        Raises:
+            RuntimeError: If fork fails (e.g., node type doesn't support forking).
+
+        Example:
+            >>> # Original node with conversation history
+            >>> node = await client.get_node("claude")
+            >>> await node.send("Hello!")
+            >>> await node.send("What's 2+2?")
+            >>>
+            >>> # Fork to create a branch
+            >>> researcher = await node.fork("researcher")
+            >>> await researcher.send("Now focus on security analysis")
+            >>>
+            >>> # Original continues its own path
+            >>> await node.send("What's 3+3?")
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self._client._send_command(
+            Command(
+                type=CommandType.FORK_NODE,
+                params={
+                    "source_id": self.id,
+                    "target_id": new_id,
+                },
+            )
+        )
+
+        if not result.success:
+            raise RuntimeError(result.error or "Fork failed")
+
+        # Create proxy for the forked node
+        forked = RemoteNode(
+            id=new_id,
+            command=self.command,  # Same command as source
+            _client=self._client,
+        )
+        self._client._nodes[new_id] = forked
+        return forked
+
 
 @dataclass
 class NerveClient:

@@ -103,6 +103,24 @@ class SessionAdapter(Protocol):
         """
         ...
 
+    async def fork_node(self, source_id: str, target_id: str) -> dict[str, Any]:
+        """Fork a node with a new ID.
+
+        Creates a copy of the source node with the same state (e.g., conversation
+        history for StatefulLLMNode). The forked node is independent.
+
+        Args:
+            source_id: ID of the node to fork.
+            target_id: ID for the new forked node.
+
+        Returns:
+            Dict with node_id and forked_from fields.
+
+        Raises:
+            ValueError: If source node not found or doesn't support forking.
+        """
+        ...
+
     async def show_graph(
         self, graph_id: str | None = None, fallback_graph: Graph | None = None
     ) -> str:
@@ -340,6 +358,38 @@ class LocalSessionAdapter:
         if not hasattr(node, "stop"):
             raise ValueError(f"Node '{node_id}' does not support stop")
         await node.stop()
+
+    async def fork_node(self, source_id: str, target_id: str) -> dict[str, Any]:
+        """Fork a node with a new ID.
+
+        Args:
+            source_id: ID of the node to fork.
+            target_id: ID for the new forked node.
+
+        Returns:
+            Dict with node_id and forked_from fields.
+
+        Raises:
+            ValueError: If source node not found or doesn't support forking.
+        """
+        node = self.session.get_node(source_id)
+        if not node:
+            raise ValueError(f"Node not found: {source_id}")
+
+        # Check if target_id already exists
+        if self.session.get_node(target_id):
+            raise ValueError(f"Node '{target_id}' already exists")
+
+        # Try to fork - let the node decide if it supports forking
+        if not hasattr(node, "fork"):
+            raise ValueError(f"Node type '{type(node).__name__}' does not support forking")
+
+        try:
+            forked = node.fork(target_id)
+        except NotImplementedError as e:
+            raise ValueError(str(e)) from None
+
+        return {"node_id": forked.id, "forked_from": source_id}
 
     def _resolve_graph(self, graph_id: str | None, fallback_graph: Any | None) -> Any:
         """Resolve graph from ID or fallback."""
@@ -637,6 +687,38 @@ class RemoteSessionAdapter:
     async def stop_node(self, node_id: str) -> None:
         """Stop a node - not supported in remote mode."""
         raise NotImplementedError("stop_node not available in server mode")
+
+    async def fork_node(self, source_id: str, target_id: str) -> dict[str, Any]:
+        """Fork a node on the server.
+
+        Args:
+            source_id: ID of the node to fork.
+            target_id: ID for the new forked node.
+
+        Returns:
+            Dict with node_id and forked_from fields.
+
+        Raises:
+            ValueError: If fork fails.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.FORK_NODE,
+                params=self._add_session_id(
+                    {
+                        "source_id": source_id,
+                        "target_id": target_id,
+                    }
+                ),
+            )
+        )
+
+        if result.success:
+            return cast(dict[str, Any], result.data or {})
+        else:
+            raise ValueError(result.error or "Fork failed")
 
     async def show_graph(
         self, graph_id: str | None = None, fallback_graph: Any | None = None

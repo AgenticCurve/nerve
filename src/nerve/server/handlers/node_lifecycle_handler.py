@@ -399,6 +399,75 @@ class NodeLifecycleHandler:
                 )
         return nodes_info
 
+    async def fork_node(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Fork an existing node with a new ID.
+
+        Creates a new node by copying state from the source node.
+        Supports both sync fork (StatefulLLMNode) and async fork (ClaudeWezTermNode).
+
+        Parameters:
+            source_id: ID of the node to fork (required)
+            target_id: ID for the new forked node (required)
+
+        Returns:
+            {"node_id": str, "forked_from": str}
+
+        Raises:
+            ValueError: If source node doesn't exist or doesn't support forking.
+        """
+        session = self.session_registry.get_session(params.get("session_id"))
+
+        source_id = self.validation.require_param(params, "source_id")
+        target_id = self.validation.require_param(params, "target_id")
+
+        # Get source node
+        source = self.validation.get_node(session, source_id)
+
+        # Validate target_id is unique
+        if target_id in session.nodes:
+            raise ValueError(f"Node '{target_id}' already exists")
+
+        # Try to fork - let the node decide if it supports forking
+        # Handle both sync fork (StatefulLLMNode) and async fork (ClaudeWezTermNode)
+        try:
+            fork_method = getattr(source, "fork", None)
+            if fork_method is None:
+                raise ValueError(f"Node type '{type(source).__name__}' does not support forking")
+
+            # Call fork - handle both sync and async
+            result = fork_method(target_id)
+            if asyncio.iscoroutine(result):
+                forked = await result
+            else:
+                forked = result
+        except AttributeError:
+            raise ValueError(
+                f"Node type '{type(source).__name__}' does not support forking"
+            ) from None
+        except NotImplementedError as e:
+            raise ValueError(str(e)) from None
+
+        logger.debug(
+            "node_forked: source_id=%s, target_id=%s, type=%s",
+            source_id,
+            target_id,
+            type(source).__name__,
+        )
+
+        # Emit event
+        await self.event_sink.emit(
+            Event(
+                type=EventType.NODE_CREATED,
+                node_id=forked.id,
+                data={
+                    "forked_from": str(source_id),
+                    "persistent": forked.persistent,
+                },
+            )
+        )
+
+        return {"node_id": forked.id, "forked_from": str(source_id)}
+
     async def _monitor_node(self, node: Any) -> None:
         """Monitor node for state changes.
 

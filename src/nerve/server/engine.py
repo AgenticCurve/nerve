@@ -175,6 +175,7 @@ class NerveEngine:
             CommandType.DELETE_NODE: self.node_lifecycle_handler.delete_node,
             CommandType.LIST_NODES: self.node_lifecycle_handler.list_nodes,
             CommandType.GET_NODE: self.node_lifecycle_handler.get_node,
+            CommandType.FORK_NODE: self.node_lifecycle_handler.fork_node,
             # Node interaction
             CommandType.RUN_COMMAND: self.node_interaction_handler.run_command,
             CommandType.EXECUTE_INPUT: self.node_interaction_handler.execute_input,

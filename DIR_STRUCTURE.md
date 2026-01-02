@@ -79,7 +79,7 @@
 │       ├── [L: 220] bug-hunter.md
 │       └── [L: 167] verify-refactoring.md
 ├── [L:  93] pyproject.toml
-├── [L:   1] README.md
+├── [L:  30] README.md
 ├── scripts/
 │   ├── [L:  52] bump.py
 │   ├── proxy/
@@ -122,8 +122,8 @@
 │       │   │   ├── [L: 165] identity.py
 │       │   │   ├── llm/
 │       │   │   │   ├── [L:  70] __init__.py
-│       │   │   │   ├── [L: 713] base.py
-│       │   │   │   ├── [L: 595] chat.py
+│       │   │   │   ├── [L: 756] base.py
+│       │   │   │   ├── [L: 660] chat.py
 │       │   │   │   ├── [L: 141] glm.py
 │       │   │   │   ├── [L: 105] openrouter.py
 │       │   │   │   └── [L: 526] suggestion.py
@@ -132,7 +132,7 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 737] claude_wezterm_node.py
+│       │   │   │   ├── [L: 929] claude_wezterm_node.py
 │       │   │   │   ├── [L: 779] pty_node.py
 │       │   │   │   └── [L: 872] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
@@ -176,7 +176,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 836] adapters.py
+│       │   │   │   ├── [L: 918] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -188,7 +188,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 912] node.py
+│       │   │   │   ├── [L:1048] node.py
 │       │   │   │   ├── [L: 206] session.py
 │       │   │   │   └── [L: 193] workflow.py
 │       │   │   ├── [L: 363] utils.py
@@ -198,7 +198,7 @@
 │       │   │   └── [L: 213] server.py
 │       │   ├── sdk/
 │       │   │   ├── [L:  27] __init__.py
-│       │   │   └── [L: 364] client.py
+│       │   │   └── [L: 417] client.py
 │       │   └── tui/
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
@@ -206,7 +206,7 @@
 │       │           ├── [L: 384] blocks.py
 │       │           ├── [L:  65] clipboard.py
 │       │           ├── [L: 616] commander.py
-│       │           ├── [L: 523] commands.py
+│       │           ├── [L: 596] commands.py
 │       │           ├── [L: 167] entity_manager.py
 │       │           ├── [L: 481] executor.py
 │       │           ├── [L: 481] input_dispatcher.py
@@ -247,21 +247,21 @@
 │       │       └── [L: 197] validation.py
 │       ├── server/
 │       │   ├── [L:  65] __init__.py
-│       │   ├── [L: 313] engine.py
+│       │   ├── [L: 314] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 341] node_factory.py
+│       │   │   └── [L: 345] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
-│       │   │   ├── [L: 432] node_lifecycle_handler.py
+│       │   │   ├── [L: 501] node_lifecycle_handler.py
 │       │   │   ├── [L: 255] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   ├── [L: 190] session_handler.py
 │       │   │   └── [L: 306] workflow_handler.py
-│       │   ├── [L: 199] protocols.py
+│       │   ├── [L: 200] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -293,7 +293,10 @@
     │   │   ├── llm/
     │   │   │   ├── [L:   1] __init__.py
     │   │   │   ├── [L: 176] test_chat_node.py
+    │   │   │   ├── [L: 383] test_fork.py
     │   │   │   └── [L: 493] test_openrouter.py
+    │   │   ├── terminal/
+    │   │   │   └── [L: 700] test_claude_wezterm_fork.py
     │   │   ├── [L: 213] test_base.py
     │   │   ├── [L: 210] test_bash.py
     │   │   ├── [L: 231] test_budget.py
@@ -321,7 +324,7 @@
     │   ├── [L:   1] __init__.py
     │   ├── sdk/
     │   │   ├── [L:   1] __init__.py
-    │   │   └── [L: 206] test_client.py
+    │   │   └── [L: 279] test_client.py
     │   └── tui/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 682] test_commander_dependencies.py
@@ -344,6 +347,7 @@
     │   ├── [L: 516] test_engine.py
     │   ├── [L: 287] test_engine_proxy.py
     │   ├── [L: 302] test_engine_sessions.py
+    │   ├── [L: 354] test_fork_handler.py
     │   ├── [L: 445] test_graph_handler.py
     │   ├── [L: 284] test_proxy_manager.py
     │   ├── [L: 195] test_session_registry.py
@@ -351,4 +355,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-70 directories, 282 files, 67,378 total lines
+71 directories, 285 files, 69,636 total lines

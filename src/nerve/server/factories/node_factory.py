@@ -83,6 +83,8 @@ class NodeFactory:
         parallel_tool_calls: bool | None = None,  # Control parallel tool execution
         # HTTP backend for LLM nodes
         http_backend: HttpBackend = "aiohttp",
+        # ClaudeWezTerm options
+        claude_session_id: str | None = None,  # Claude Code session ID for fork support
     ) -> Node:
         """Create a node of the specified backend type.
 
@@ -110,6 +112,7 @@ class NodeFactory:
             tool_choice: Tool choice mode - "auto", "none", "required", or force dict.
             parallel_tool_calls: Control parallel tool execution (True/False/None).
             http_backend: HTTP backend for LLM nodes ("aiohttp" or "openai").
+            claude_session_id: Claude Code session ID for fork support (claude-wezterm only).
 
         Returns:
             The created node.
@@ -190,6 +193,7 @@ class NodeFactory:
                 response_timeout=response_timeout,
                 ready_timeout=ready_timeout,
                 proxy_url=proxy_url,
+                claude_session_id=claude_session_id,
             )
         elif backend == "bash":
             # BashNode is stateless - no lifecycle management

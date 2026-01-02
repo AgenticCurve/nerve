@@ -589,6 +589,71 @@ class StatefulLLMNode:
             },
         )
 
+    def fork(self, new_id: str) -> StatefulLLMNode:
+        """Fork this node with a new ID, copying conversation history.
+
+        Creates a new StatefulLLMNode with:
+        - Deep copy of all messages (conversation history)
+        - Same system prompt
+        - Same tool definitions and executor
+        - Same underlying LLM configuration (new inner LLM node created)
+        - Fork metadata (forked_from, fork_timestamp)
+
+        The forked node is independent - changes to one don't affect the other.
+
+        Args:
+            new_id: Unique identifier for the forked node.
+
+        Returns:
+            New StatefulLLMNode with copied state.
+
+        Example:
+            >>> original = StatefulLLMNode(id="claude", session=session, llm=llm)
+            >>> await original.execute(ctx(input="Hello"))
+            >>> forked = original.fork("claude_research")
+            >>> # forked has same conversation history, can diverge from here
+        """
+        import copy
+
+        # Fork the inner LLM node - preserves the concrete type (OpenRouterNode, GLMNode, etc.)
+        # and all type-specific configuration (e.g., GLMNode.thinking)
+        new_llm = self.llm.fork(f"{new_id}-llm")
+
+        # Deep copy messages to ensure independence
+        forked_messages = [
+            Message(
+                role=msg.role,
+                content=msg.content,
+                tool_calls=copy.deepcopy(msg.tool_calls) if msg.tool_calls else None,
+                tool_call_id=msg.tool_call_id,
+                name=msg.name,
+            )
+            for msg in self.messages
+        ]
+
+        # Create forked node with copied state
+        forked = StatefulLLMNode(
+            id=new_id,
+            session=self.session,
+            llm=new_llm,
+            system=self.system,
+            tools=copy.deepcopy(self.tools),  # Deep copy to ensure independence
+            tool_executor=self.tool_executor,
+            max_tool_rounds=self.max_tool_rounds,
+            tool_choice=self.tool_choice,
+            parallel_tool_calls=self.parallel_tool_calls,
+            metadata={
+                **self.metadata,
+                "forked_from": self.id,
+                "fork_timestamp": time.time(),
+            },
+        )
+
+        # Assign copied messages (bypass __post_init__ which sets empty list)
+        forked.messages = forked_messages
+
+        return forked
+
     def __repr__(self) -> str:
         return (
             f"StatefulLLMNode(id={self.id!r}, llm={self.llm.id!r}, messages={len(self.messages)})"
