@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
@@ -465,27 +466,55 @@ class SuggestionNode(OpenRouterNode):
         """Execute suggestion generation.
 
         Calls parent execute() then parses suggestions from response.
+        Also builds llm_debug for ML training data collection.
 
         Args:
             context: ExecutionContext with input.
 
         Returns:
-            Result dict with 'output' as list of suggestions.
+            Result dict with 'output' as list of suggestions and 'llm_debug'
+            containing full request/response for ML training.
         """
         logger.debug("SuggestionNode: executing suggestion request")
 
+        # Capture messages before calling parent (for llm_debug)
+        messages, extra_params = self._parse_input(context.input)
+
+        start_time = time.monotonic()
+
         # Call parent to get LLM response
         result = await super().execute(context)
+
+        latency_ms = (time.monotonic() - start_time) * 1000
 
         # Parse suggestions from output
         if result.get("success") and result.get("output"):
             raw_output = result["output"]
             suggestions = self._parse_suggestions(raw_output)
             result["output"] = suggestions
+
             # Defensive: ensure attributes dict exists (parent should always set it)
             if "attributes" not in result:
                 result["attributes"] = {}
             result["attributes"]["raw_response"] = raw_output
+
+            # Build llm_debug for ML training data
+            attrs = result["attributes"]
+            result["llm_debug"] = {
+                "request": {
+                    "messages": messages,
+                    "model": self.model,
+                    **extra_params,
+                },
+                "response": {
+                    "raw_content": raw_output,
+                    "model": attrs.get("model", self.model),
+                    "usage": attrs.get("usage"),
+                    "finish_reason": attrs.get("finish_reason"),
+                    "latency_ms": latency_ms,
+                },
+                "version": "v1.0",
+            }
 
             logger.debug("SuggestionNode: parsed %d suggestions from response", len(suggestions))
             for i, suggestion in enumerate(suggestions, 1):
