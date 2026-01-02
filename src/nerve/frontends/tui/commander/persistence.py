@@ -76,7 +76,7 @@ async def restore_session_state(commander: Commander, data: dict[str, Any]) -> d
     entities = data.get("entities", {})
 
     # First sync to get current entities in session
-    await commander._sync_entities()
+    await commander._entities.sync()
     existing_ids = set(commander.entities.keys())
 
     # Filter out entities that already exist
@@ -118,7 +118,7 @@ async def restore_session_state(commander: Commander, data: dict[str, Any]) -> d
     workflows_need_reload = len(workflows_missing)
 
     # Sync entities to pick up new ones
-    await commander._sync_entities()
+    await commander._entities.sync()
 
     # Restore timeline blocks - merge into existing timeline to preserve executor reference
     blocks_restored = 0

@@ -27,26 +27,22 @@ from typing import TYPE_CHECKING, Any
 from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
-from prompt_toolkit.layout import (
-    ConditionalContainer,
-    HSplit,
-    Layout,
-    ScrollablePane,
-    VSplit,
-    Window,
-)
+from prompt_toolkit.layout import Layout
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 
 from nerve.frontends.tui.commander.clipboard import copy_to_clipboard
+from nerve.frontends.tui.commander.workflow_events import process_events
 from nerve.frontends.tui.commander.workflow_state import (
     StepInfo,
     TUIWorkflowEvent,
     ViewMode,
 )
-from nerve.frontends.tui.commander.workflow_ui import WorkflowUIRendererMixin
+from nerve.frontends.tui.commander.workflow_ui import (
+    WorkflowUIRendererMixin,
+    create_workflow_layout,
+)
 
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
@@ -345,119 +341,11 @@ class WorkflowRunnerApp(WorkflowUIRendererMixin):
         self._status_message_consumed = False  # Reset so message shows
 
     def _create_layout(self) -> Layout:
-        """Create the TUI layout with view switching."""
-        # Main view layout
-        main_view = HSplit(
-            [
-                # Header
-                Window(content=FormattedTextControl(text=self._get_header), height=3),
-                # Main content: steps list + preview
-                VSplit(
-                    [
-                        # Left: Steps list with hidden focus receiver
-                        HSplit(
-                            [
-                                # Hidden focus receiver (0 height, just for focus)
-                                Window(content=self._steps_focus_control, height=0),
-                                # Actual steps list
-                                Window(
-                                    content=self._steps_control,
-                                ),
-                            ],
-                            width=30,
-                        ),
-                        # Separator
-                        Window(width=1, char="│", style="dim"),
-                        # Right: Step preview
-                        Window(
-                            content=FormattedTextControl(text=self._get_step_preview),
-                            wrap_lines=True,
-                        ),
-                    ]
-                ),
-                # Gate input (conditional)
-                ConditionalContainer(
-                    HSplit(
-                        [
-                            Window(height=1, char="─", style="dim"),
-                            ScrollablePane(
-                                Window(
-                                    content=FormattedTextControl(text=self._get_gate_prompt),
-                                    wrap_lines=True,
-                                ),
-                            ),
-                            Window(height=1, char="─", style="dim"),
-                            Window(content=self._gate_buffer_control, height=1),
-                        ],
-                        height=12,  # Give gate panel more viewport space
-                    ),
-                    filter=Condition(lambda: self._has_gate()),
-                ),
-                # Status bar
-                Window(
-                    content=FormattedTextControl(text=self._get_status_bar),
-                    height=1,
-                    style="reverse",
-                ),
-            ]
-        )
+        """Create the TUI layout with view switching.
 
-        # Full screen step view
-        full_screen_view = HSplit(
-            [
-                Window(content=FormattedTextControl(text=self._get_full_screen_header), height=2),
-                Window(height=1, char="─", style="dim"),
-                ScrollablePane(
-                    Window(
-                        content=FormattedTextControl(text=self._get_full_screen_content),
-                        wrap_lines=True,
-                    ),
-                ),
-                Window(
-                    content=FormattedTextControl(text=self._get_full_screen_status),
-                    height=1,
-                    style="reverse",
-                ),
-            ]
-        )
-
-        # Events view
-        events_view = HSplit(
-            [
-                Window(
-                    content=FormattedTextControl(
-                        text=lambda: FormattedText([("bold", "Workflow Events\n")])
-                    ),
-                    height=2,
-                ),
-                Window(height=1, char="─", style="dim"),
-                ScrollablePane(
-                    Window(
-                        content=FormattedTextControl(text=self._get_events_content), wrap_lines=True
-                    ),
-                ),
-                Window(
-                    content=FormattedTextControl(
-                        text=lambda: FormattedText([("", " [↑/↓] Scroll │ [q/Esc] Back")])
-                    ),
-                    height=1,
-                    style="reverse",
-                ),
-            ]
-        )
-
-        # Root with conditional containers
-        root = HSplit(
-            [
-                ConditionalContainer(main_view, filter=Condition(lambda: self._is_main_view())),
-                ConditionalContainer(
-                    full_screen_view, filter=Condition(lambda: self._is_full_screen_view())
-                ),
-                ConditionalContainer(events_view, filter=Condition(lambda: self._is_events_view())),
-            ]
-        )
-
-        return Layout(root)
+        Delegates to the standalone create_workflow_layout function.
+        """
+        return create_workflow_layout(self)
 
     def _add_event(self, event_type: str, data: dict[str, Any] | None = None) -> None:
         """Add a local event."""
@@ -470,114 +358,11 @@ class WorkflowRunnerApp(WorkflowUIRendererMixin):
         )
 
     def _update_steps_from_events(self, server_events: list[dict[str, Any]]) -> None:
-        """Update steps list from server events."""
-        for event in server_events:
-            event_type = event.get("event_type", "")
-            data = event.get("data", {})
+        """Update steps list from server events.
 
-            if event_type == "node_started":
-                node_id = data.get("node_id", "unknown")
-                input_text = data.get("input", "")
-                # Avoid duplicate if already tracking this node as running
-                if any(s.node_id == node_id and s.status == "running" for s in self.steps):
-                    continue
-                # Add new step
-                self.steps.append(
-                    StepInfo(
-                        node_id=node_id,
-                        input_text=input_text,
-                        status="running",
-                    )
-                )
-
-            elif event_type == "node_completed":
-                node_id = data.get("node_id", "")
-                output_text = data.get("output", "")
-                # Find and update the step
-                for step in reversed(self.steps):
-                    if step.node_id == node_id and step.status == "running":
-                        step.status = "completed"
-                        step.output_text = output_text
-                        break
-
-            elif event_type == "node_error":
-                node_id = data.get("node_id", "")
-                error = data.get("error", "Unknown error")
-                for step in reversed(self.steps):
-                    if step.node_id == node_id and step.status == "running":
-                        step.status = "error"
-                        step.error = error
-                        break
-
-            elif event_type == "graph_started":
-                graph_id = data.get("graph_id", "unknown")
-                input_text = data.get("input", "")
-                # Avoid duplicate if already tracking this graph as running
-                if any(s.node_id == graph_id and s.status == "running" for s in self.steps):
-                    continue
-                # Add new step (graphs show as steps too)
-                self.steps.append(
-                    StepInfo(
-                        node_id=f"[graph] {graph_id}",
-                        input_text=input_text,
-                        status="running",
-                    )
-                )
-
-            elif event_type == "graph_completed":
-                graph_id = data.get("graph_id", "")
-                output_text = data.get("output", "")
-                # Find and update the step
-                for step in reversed(self.steps):
-                    if step.node_id == f"[graph] {graph_id}" and step.status == "running":
-                        step.status = "completed"
-                        step.output_text = output_text
-                        break
-
-            elif event_type == "graph_error":
-                graph_id = data.get("graph_id", "")
-                error = data.get("error", "Unknown error")
-                for step in reversed(self.steps):
-                    if step.node_id == f"[graph] {graph_id}" and step.status == "running":
-                        step.status = "error"
-                        step.error = error
-                        break
-
-            elif event_type == "nested_workflow_started":
-                workflow_id = data.get("workflow_id", "unknown")
-                input_text = data.get("input", "")
-                # Avoid duplicate if already tracking this workflow as running
-                if any(
-                    s.node_id == f"[workflow] {workflow_id}" and s.status == "running"
-                    for s in self.steps
-                ):
-                    continue
-                # Add new step (nested workflows show as steps)
-                self.steps.append(
-                    StepInfo(
-                        node_id=f"[workflow] {workflow_id}",
-                        input_text=input_text,
-                        status="running",
-                    )
-                )
-
-            elif event_type == "nested_workflow_completed":
-                workflow_id = data.get("workflow_id", "")
-                # Find and update the step
-                for step in reversed(self.steps):
-                    if step.node_id == f"[workflow] {workflow_id}" and step.status == "running":
-                        step.status = "completed"
-                        step.output_text = "(completed)"
-                        break
-
-            elif event_type == "nested_workflow_error":
-                workflow_id = data.get("workflow_id", "")
-                error = data.get("error", "Unknown error")
-                for step in reversed(self.steps):
-                    if step.node_id == f"[workflow] {workflow_id}" and step.status == "running":
-                        step.status = "error"
-                        step.error = error
-                        break
+        Delegates to the standalone process_events function for testability.
+        """
+        process_events(self.steps, server_events)
 
     async def _poll_workflow(self) -> None:
         """Poll workflow status and update state."""

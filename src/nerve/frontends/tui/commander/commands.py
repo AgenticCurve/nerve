@@ -49,7 +49,7 @@ async def cmd_help(commander: Commander, args: str) -> None:
 
 async def cmd_nodes(commander: Commander, args: str) -> None:
     """Handle :nodes command - list available nodes (excludes graphs)."""
-    await commander._sync_entities()
+    await commander._entities.sync()
     # Filter to show only nodes (not graphs)
     nodes_only = {
         entity_id: entity.node_type
@@ -61,7 +61,7 @@ async def cmd_nodes(commander: Commander, args: str) -> None:
 
 async def cmd_graphs(commander: Commander, args: str) -> None:
     """Handle :graphs command - list available graphs."""
-    await commander._sync_entities()
+    await commander._entities.sync()
     # Filter to show only graphs
     graphs = {
         entity_id: entity
@@ -73,13 +73,13 @@ async def cmd_graphs(commander: Commander, args: str) -> None:
 
 async def cmd_entities(commander: Commander, args: str) -> None:
     """Handle :entities command - list all entities (nodes, graphs, workflows)."""
-    await commander._sync_entities()
+    await commander._entities.sync()
     rendering.print_entities(commander.console, commander.entities)
 
 
 async def cmd_workflows(commander: Commander, args: str) -> None:
     """Handle :workflows command - list available workflows."""
-    await commander._sync_entities()
+    await commander._entities.sync()
     # Filter to show only workflows
     workflows = {
         entity_id: entity
@@ -115,7 +115,7 @@ async def cmd_info(commander: Commander, args: str) -> None:
 
     # Try as entity name
     entity_id = args.strip()
-    await commander._sync_entities()
+    await commander._entities.sync()
     if entity_id in commander.entities:
         entity = commander.entities[entity_id]
         rendering.print_entity_info(commander.console, entity)
@@ -163,7 +163,7 @@ async def cmd_clean(commander: Commander, args: str) -> None:
 
 async def cmd_refresh(commander: Commander, args: str) -> None:
     """Handle :refresh command - sync nodes and re-render."""
-    await commander._sync_entities()
+    await commander._entities.sync()
     rendering.refresh_view(
         commander.console,
         commander.timeline,
@@ -194,10 +194,10 @@ async def cmd_world(commander: Commander, args: str) -> None:
     from nerve.frontends.tui.commander.workflow_runner import resume_workflow_tui
 
     # Check if arg matches a backgrounded workflow run_id
-    if args and commander._active_workflows:
+    if args and commander._workflows.active:
         run_id_prefix = args.strip()
         matching_run_ids = [
-            run_id for run_id in commander._active_workflows if run_id.startswith(run_id_prefix)
+            run_id for run_id in commander._workflows.active if run_id.startswith(run_id_prefix)
         ]
 
         # Handle ambiguous matches
@@ -206,7 +206,7 @@ async def cmd_world(commander: Commander, args: str) -> None:
                 f"[yellow]Ambiguous prefix '{run_id_prefix}' matches {len(matching_run_ids)} workflows:[/]"
             )
             for run_id in matching_run_ids:
-                wf_info = commander._active_workflows[run_id]
+                wf_info = commander._workflows.active[run_id]
                 workflow_id = wf_info.get("workflow_id", "?")
                 commander.console.print(f"  [dim]{run_id[:12]}[/] ({workflow_id})")
             commander.console.print("[dim]Use a longer prefix to disambiguate.[/]")
@@ -215,7 +215,7 @@ async def cmd_world(commander: Commander, args: str) -> None:
         if matching_run_ids:
             matching_run_id = matching_run_ids[0]
             # Resume the workflow
-            wf_info = commander._active_workflows[matching_run_id]
+            wf_info = commander._workflows.active[matching_run_id]
             workflow_id = wf_info.get("workflow_id", "")
             block_number = wf_info.get("block_number")
 
@@ -234,7 +234,7 @@ async def cmd_world(commander: Commander, args: str) -> None:
                 if result.get("backgrounded"):
                     block.status = "pending"
                     block.output_text = "(backgrounded - use :world to resume)"
-                    commander._active_workflows[matching_run_id] = {
+                    commander._workflows.active[matching_run_id] = {
                         **wf_info,
                         "events": result.get("events", []),
                         "pending_gate": result.get("pending_gate"),
@@ -247,19 +247,19 @@ async def cmd_world(commander: Commander, args: str) -> None:
                     block.status = "completed"
                     block.output_text = str(result.get("result", ""))
                     block.raw = result
-                    commander._active_workflows.pop(matching_run_id, None)
+                    commander._workflows.active.pop(matching_run_id, None)
                     rendering.print_block(commander.console, block)
                 elif result.get("state") == "cancelled":
                     block.status = "error"
                     block.error = "Workflow cancelled"
                     block.raw = result
-                    commander._active_workflows.pop(matching_run_id, None)
+                    commander._workflows.active.pop(matching_run_id, None)
                     rendering.print_block(commander.console, block)
                 else:
                     block.status = "error"
                     block.error = result.get("error", "Workflow failed")
                     block.raw = result
-                    commander._active_workflows.pop(matching_run_id, None)
+                    commander._workflows.active.pop(matching_run_id, None)
                     rendering.print_block(commander.console, block)
             return
 
@@ -269,7 +269,7 @@ async def cmd_world(commander: Commander, args: str) -> None:
         commander.nodes,
         commander._current_world,
         args,
-        commander._active_workflows,  # Pass active workflows for display
+        commander._workflows.active,  # Pass active workflows for display
     )
     if world_to_enter:
         commander._current_world = world_to_enter
@@ -469,7 +469,7 @@ async def cmd_load(commander: Commander, args: str) -> None:
 
     # Refresh entities to pick up new workflows
     if loaded_count > 0:
-        await commander._sync_entities()
+        await commander._entities.sync()
         # Count workflows
         workflow_count = sum(1 for e in commander.entities.values() if e.type == "workflow")
         commander.console.print(

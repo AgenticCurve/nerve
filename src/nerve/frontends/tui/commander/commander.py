@@ -13,22 +13,13 @@ This module is the main orchestrator, delegating to specialized modules:
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-import os
-import time
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
-from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
-from prompt_toolkit.buffer import Buffer
-from prompt_toolkit.document import Document
 from prompt_toolkit.filters import Condition
-from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.key_processor import KeyPressEvent
@@ -36,54 +27,20 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich.console import Console
 
-from nerve.frontends.tui.commander.blocks import Block, BlockType, Timeline
-from nerve.frontends.tui.commander.commands import dispatch_command
-from nerve.frontends.tui.commander.executor import (
-    CommandExecutor,
-    execute_graph_command,
-    execute_node_command,
-    execute_python_command,
-    get_block_type,
-)
+from nerve.frontends.tui.commander.blocks import Timeline
+from nerve.frontends.tui.commander.entity_manager import EntityInfo, EntityManager
+from nerve.frontends.tui.commander.executor import CommandExecutor
+from nerve.frontends.tui.commander.input_dispatcher import InputDispatcher
 from nerve.frontends.tui.commander.rendering import print_welcome
+from nerve.frontends.tui.commander.suggestion_manager import SuggestionManager
 from nerve.frontends.tui.commander.themes import get_ghost_text_color, get_theme
-from nerve.frontends.tui.commander.variables import expand_variables
-from nerve.frontends.tui.commander.workflow_runner import run_workflow_tui
+from nerve.frontends.tui.commander.workflow_tracker import WorkflowTracker
 
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
     from nerve.transport import UnixSocketClient
 
 logger = logging.getLogger(__name__)
-
-
-class PrefixAutoSuggest(AutoSuggest):
-    """Auto-suggest that shows remaining text when buffer is a prefix of suggestion."""
-
-    def __init__(self, get_suggestion: Callable[[], str]) -> None:
-        """Initialize with a callable that returns the current suggestion."""
-        self._get_suggestion = get_suggestion
-
-    def get_suggestion(self, buffer: Buffer, document: Document) -> Suggestion | None:
-        """Return remaining suggestion if current text is a prefix."""
-        text = document.text
-        suggestion = self._get_suggestion()
-        if text and suggestion.startswith(text) and text != suggestion:
-            return Suggestion(suggestion[len(text) :])
-        return None
-
-
-@dataclass
-class EntityInfo:
-    """Information about an executable entity (node or graph).
-
-    Provides unified tracking of both nodes and graphs in commander.
-    """
-
-    id: str
-    type: str  # "node" or "graph"
-    node_type: str  # "BashNode", "LLMChatNode", "graph", etc.
-    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -109,7 +66,9 @@ class Commander:
     # State (initialized in __post_init__ or run)
     console: Console = field(init=False)
     timeline: Timeline = field(default_factory=Timeline)
-    entities: dict[str, EntityInfo] = field(default_factory=dict)  # Unified nodes + graphs
+
+    # Entity management (delegate)
+    _entities: EntityManager = field(init=False)
 
     # Server connection (initialized in run)
     _client: UnixSocketClient | None = field(default=None, init=False)
@@ -123,34 +82,39 @@ class Commander:
     _open_monitor_requested: bool = field(default=False, init=False)  # Ctrl-Y pressed
     _open_suggestions_requested: bool = field(default=False, init=False)  # Ctrl-P pressed
 
-    # Suggestion system
-    _suggestion_node: str = field(
-        default="suggestions", init=False
-    )  # Node to fetch suggestions from
-    _suggestions: list[str] = field(
-        default_factory=list, init=False
-    )  # Current suggestions (empty until fetched)
-    _suggestion_idx: int = field(
-        default=-1, init=False
-    )  # -1 means show hint, 0+ means show suggestion
-    _suggestion_task: asyncio.Task[None] | None = field(
-        default=None, init=False
-    )  # Background fetch task
+    # Suggestion system (delegate)
+    _suggestions: SuggestionManager = field(init=False)
 
     # Execution engine
     _executor: CommandExecutor = field(init=False)
 
-    # Active (backgrounded) workflow runs: run_id -> workflow info
-    _active_workflows: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
+    # Workflow tracking (delegate)
+    _workflows: WorkflowTracker = field(init=False)
 
-    # Background task for polling workflow status
-    _workflow_poll_task: asyncio.Task[None] | None = field(default=None, init=False)
+    # Input dispatching (delegate)
+    _dispatcher: InputDispatcher = field(init=False)
 
     def __post_init__(self) -> None:
-        """Initialize console, prompt session, and executor."""
+        """Initialize console, prompt session, entity manager, suggestion manager, and executor."""
         theme = get_theme(self.theme_name)
         # force_terminal=True ensures ANSI codes work with patch_stdout()
         self.console = Console(theme=theme, force_terminal=True)
+
+        # Initialize entity manager (adapter and console set later in run())
+        self._entities = EntityManager()
+
+        # Initialize workflow tracker (adapter set later in run())
+        self._workflows = WorkflowTracker(timeline=self.timeline)
+
+        # Initialize suggestion manager (needs adapter set later in run())
+        self._suggestions = SuggestionManager(
+            entities=self._entities.entities,
+            timeline=self.timeline,
+            adapter=None,  # Set in run() after connection
+        )
+
+        # Initialize input dispatcher
+        self._dispatcher = InputDispatcher(commander=self)
 
         # Get ghost text color from theme
         ghost_color = get_ghost_text_color(self.theme_name)
@@ -165,18 +129,6 @@ class Commander:
         )
         # Create key bindings for prompt session
         kb = KeyBindings()
-
-        def _current_suggestion() -> str:
-            """Get the current suggestion based on index, or empty if showing hint."""
-            if self._suggestion_idx < 0 or not self._suggestions:
-                return ""
-            return self._suggestions[self._suggestion_idx]
-
-        def _get_placeholder() -> HTML:
-            """Get placeholder HTML - hint when no selection, suggestion otherwise."""
-            if self._suggestion_idx < 0 or not self._suggestions:
-                return HTML("<placeholder>Tab to cycle suggestions</placeholder>")
-            return HTML(f"<placeholder>{_current_suggestion()}</placeholder>")
 
         @kb.add("c-y")
         def open_monitor(event: KeyPressEvent) -> None:
@@ -194,74 +146,43 @@ class Commander:
             """Check if a suggestion is selected and text is a prefix of it."""
             if self._prompt_session.app is None:
                 return False
-            if self._suggestion_idx < 0 or not self._suggestions:
-                return False
             text = self._prompt_session.app.current_buffer.text
-            suggestion = _current_suggestion()
-            return suggestion.startswith(text) and text != suggestion
+            return self._suggestions.is_active(text)
 
         def _is_buffer_empty() -> bool:
             """Check if buffer is empty (for cycling suggestions)."""
             if self._prompt_session.app is None:
                 return False
-            return not self._prompt_session.app.current_buffer.text
+            return self._suggestions.is_buffer_empty(self._prompt_session.app.current_buffer.text)
 
         # Tab cycles to next suggestion (only when buffer is empty)
         @kb.add("tab", filter=Condition(_is_buffer_empty))
-        def next_suggestion(event: KeyPressEvent) -> None:
+        def next_suggestion(_event: KeyPressEvent) -> None:
             """Cycle to next suggestion with Tab, or show first if available."""
-            if not self._suggestions:
-                return  # No suggestions available yet
-            # If showing hint (-1), go to first suggestion (0)
-            # Otherwise cycle to next
-            if self._suggestion_idx < 0:
-                self._suggestion_idx = 0
-            else:
-                self._suggestion_idx = (self._suggestion_idx + 1) % len(self._suggestions)
+            self._suggestions.cycle_next()
 
         # Shift+Tab cycles to previous suggestion (only when buffer is empty)
         @kb.add("s-tab", filter=Condition(_is_buffer_empty))
-        def prev_suggestion(event: KeyPressEvent) -> None:
+        def prev_suggestion(_event: KeyPressEvent) -> None:
             """Cycle to previous suggestion with Shift+Tab."""
-            if not self._suggestions:
-                return  # No suggestions available yet
-            # If showing hint (-1), go to last suggestion
-            # Otherwise cycle to previous
-            if self._suggestion_idx < 0:
-                self._suggestion_idx = len(self._suggestions) - 1
-            else:
-                self._suggestion_idx = (self._suggestion_idx - 1) % len(self._suggestions)
-
-        def _get_next_word() -> str:
-            """Get the next word from suggestion to insert."""
-            text = self._prompt_session.app.current_buffer.text
-            suggestion = _current_suggestion()
-            remaining = suggestion[len(text) :]
-            # Find next word boundary (space or end)
-            space_idx = remaining.find(" ")
-            if space_idx == -1:
-                return remaining  # Rest of suggestion
-            return remaining[: space_idx + 1]  # Include the space
+            self._suggestions.cycle_prev()
 
         # Right arrow accepts suggestion word by word
         @kb.add("right", filter=Condition(_is_suggestion_active))
         def accept_suggestion_word(event: KeyPressEvent) -> None:
             """Accept next word from placeholder suggestion with Right Arrow."""
-            next_word = _get_next_word()
+            text = event.app.current_buffer.text
+            next_word = self._suggestions.get_next_word(text)
             if next_word:
                 event.app.current_buffer.insert_text(next_word)
-
-        def _get_remaining() -> str:
-            """Get all remaining text from suggestion."""
-            text = self._prompt_session.app.current_buffer.text
-            return _current_suggestion()[len(text) :]
 
         # Cmd+Right (or End) accepts entire remaining suggestion
         @kb.add("end", filter=Condition(_is_suggestion_active))
         @kb.add("c-e", filter=Condition(_is_suggestion_active))  # Ctrl+E (end of line)
         def accept_suggestion_all(event: KeyPressEvent) -> None:
             """Accept entire remaining suggestion."""
-            remaining = _get_remaining()
+            text = event.app.current_buffer.text
+            remaining = self._suggestions.get_remaining(text)
             if remaining:
                 event.app.current_buffer.insert_text(remaining)
 
@@ -270,16 +191,28 @@ class Commander:
             bottom_toolbar=self._get_status_bar,
             style=prompt_style,
             key_bindings=kb,
-            placeholder=_get_placeholder,  # Callable for dynamic placeholder
-            auto_suggest=PrefixAutoSuggest(_current_suggestion),
+            placeholder=self._suggestions.get_placeholder,
+            auto_suggest=self._suggestions.get_auto_suggest(),
         )
+        # Wire up prompt session to suggestion manager for invalidation
+        self._suggestions.set_prompt_session(self._prompt_session)
+
         # Initialize executor for threshold-based async execution
         self._executor = CommandExecutor(
             timeline=self.timeline,
             console=self.console,
             async_threshold_ms=self.async_threshold_ms,
-            on_block_complete=self._on_block_complete,
+            on_block_complete=self._suggestions.on_block_complete,
         )
+
+    @property
+    def entities(self) -> dict[str, EntityInfo]:
+        """Access to entities dict (delegates to EntityManager).
+
+        Returns:
+            Dict mapping entity_id -> EntityInfo for all entities.
+        """
+        return self._entities.entities
 
     @property
     def nodes(self) -> dict[str, str]:
@@ -288,11 +221,7 @@ class Commander:
         Returns:
             Dict mapping node_id -> node_type for all entities of type "node".
         """
-        return {
-            entity_id: entity.node_type
-            for entity_id, entity in self.entities.items()
-            if entity.type == "node"
-        }
+        return self._entities.nodes
 
     def _get_status_bar(self) -> str:
         """Generate dynamic status bar content.
@@ -343,12 +272,10 @@ class Commander:
             parts.append(f"⏸️  {waiting_count}")
 
         # Active (backgrounded) workflows
-        active_wf_count = len(self._active_workflows)
+        active_wf_count = self._workflows.get_active_count()
         if active_wf_count > 0:
             # Check if any have waiting gates
-            waiting_gates = sum(
-                1 for wf in self._active_workflows.values() if wf.get("pending_gate") is not None
-            )
+            waiting_gates = self._workflows.get_waiting_gates_count()
             if waiting_gates > 0:
                 parts.append(f"🔄 {active_wf_count} wf ({waiting_gates} gate)")
             else:
@@ -407,8 +334,19 @@ class Commander:
         self._adapter = RemoteSessionAdapter(self._client, self.server_name, self.session_name)
         self.console.print(f"[dim]Connected! Session: {self.session_name}[/]")
 
+        # Wire up entity manager with adapter and console
+        self._entities.adapter = self._adapter
+        self._entities.console = self.console
+
+        # Wire up suggestion manager with adapter and sync callback
+        self._suggestions.adapter = self._adapter
+        self._suggestions.set_sync_callback(self._entities.sync)
+
+        # Wire up workflow tracker with adapter
+        self._workflows.adapter = self._adapter
+
         # Fetch nodes from session
-        await self._sync_entities()
+        await self._entities.sync()
 
         # Print welcome
         print_welcome(self.console, self.server_name, self.session_name, self.nodes)
@@ -420,7 +358,7 @@ class Commander:
         # Trigger initial suggestion fetch (runs in background)
         # This is done AFTER config loading so any block completions from startup commands
         # don't race with this initial fetch
-        self._trigger_suggestion_fetch()
+        self._suggestions.trigger_fetch()
 
         # Start background executor
         await self._executor.start()
@@ -469,7 +407,7 @@ class Commander:
                                 run_suggestion_picker,
                             )
 
-                            selected = await run_suggestion_picker(self._suggestions)
+                            selected = await run_suggestion_picker(self._suggestions.suggestions)
                             # Clear the ghost text line from when Ctrl-P was pressed
                             print(f"\033[A\r\033[K{prompt}", flush=True)
                             if selected:
@@ -488,7 +426,7 @@ class Commander:
                             print(f"\033[A\r\033[K{prompt}", flush=True)
                             continue
 
-                        await self._handle_input(user_input.strip())
+                        await self._dispatcher.dispatch(user_input.strip())
 
                     except KeyboardInterrupt:
                         self.console.print()
@@ -499,53 +437,6 @@ class Commander:
             signal.signal(signal.SIGINT, original_handler)
 
         await self._cleanup()
-
-    async def _sync_entities(self) -> None:
-        """Fetch nodes, graphs, and workflows from server session."""
-        if self._adapter is None:
-            return
-
-        try:
-            # Fetch nodes with full metadata (includes command, backend, etc.)
-            await self._adapter.list_nodes()  # Populates cache
-            nodes_info = await self._adapter.get_nodes_info()
-            self.entities.clear()
-            for info in nodes_info:
-                node_id = info.get("id", "")
-                node_type = info.get("type", "unknown")
-                # Extract all metadata fields except id, type, state
-                metadata = {k: v for k, v in info.items() if k not in ("id", "type", "state")}
-                self.entities[node_id] = EntityInfo(
-                    id=node_id,
-                    type="node",
-                    node_type=node_type,
-                    metadata=metadata,
-                )
-
-            # Fetch graphs
-            graph_ids = await self._adapter.list_graphs()
-            for graph_id in graph_ids:
-                self.entities[graph_id] = EntityInfo(
-                    id=graph_id,
-                    type="graph",
-                    node_type="graph",
-                )
-
-            # Fetch workflows
-            workflows = await self._adapter.list_workflows()
-            for wf in workflows:
-                wf_id = wf.get("id", "")
-                if wf_id:
-                    self.entities[wf_id] = EntityInfo(
-                        id=wf_id,
-                        type="workflow",
-                        node_type="workflow",
-                        metadata={"description": wf.get("description", "")},
-                    )
-        except (ConnectionError, TimeoutError, RuntimeError, OSError) as e:
-            # Handle known network/transport errors gracefully
-            self.console.print(f"[warning]Failed to fetch entities: {e}[/]")
-            logger.warning("Entity sync failed: %s", e, exc_info=True)
 
     async def _load_workspace_config(self) -> None:
         """Load workspace config file at startup.
@@ -632,7 +523,7 @@ class Commander:
             self.console.print(f"[dim]{output.strip()}[/]")
 
         # Sync entities to pick up newly created nodes/graphs/workflows
-        await self._sync_entities()
+        await self._entities.sync()
 
         # Count entities
         node_count = sum(1 for e in self.entities.values() if e.type == "node")
@@ -653,59 +544,9 @@ class Commander:
                 cmd = cmd.strip()
                 if cmd:
                     self.console.print(f"[dim]  → {cmd}[/]")
-                    await self._handle_input(cmd)
+                    await self._dispatcher.dispatch(cmd)
 
             self.console.print("[green]✓[/] Startup commands complete")
-
-    def _get_nodes_by_type(self) -> dict[str, str]:
-        """Build reverse mapping from node type to node ID.
-
-        Returns:
-            Dictionary mapping node_type/name -> node_id.
-            E.g., {"claude": "1", "bash": "2"}
-        """
-        # Build reverse mapping: node_type -> node_id
-        # If multiple nodes have the same type, only keep the first one
-        result: dict[str, str] = {}
-        for node_id, node_type in self.nodes.items():
-            if node_type not in result:
-                result[node_type] = node_id
-        return result
-
-    def _validate_and_create_error_block(
-        self, text: str, block_type: BlockType, node_id: str | None
-    ) -> Block | None:
-        """Validate variable references and return error block if invalid.
-
-        Checks for unresolvable references (:::nav when nav has no blocks, etc.)
-        and creates an error block if validation fails.
-
-        Args:
-            text: Text with potential variable references.
-            block_type: Type for the error block if created.
-            node_id: Node ID for the error block if created.
-
-        Returns:
-            None if validation passes, otherwise the error block
-            (already added to timeline and rendered).
-        """
-        from nerve.frontends.tui.commander.rendering import print_block
-        from nerve.frontends.tui.commander.variables import validate_variable_references
-
-        errors = validate_variable_references(text, self.timeline, self._get_nodes_by_type())
-        if not errors:
-            return None
-
-        block = Block(
-            block_type=block_type,
-            node_id=node_id,
-            input_text=text,
-            status="error",
-            error=errors[0],
-        )
-        self.timeline.add(block)
-        print_block(self.console, block)
-        return block
 
     async def _send_interrupt(self, node_id: str) -> None:
         """Send interrupt signal to a node via server."""
@@ -724,509 +565,19 @@ class Commander:
         except Exception:
             pass  # Ignore errors during interrupt
 
-    async def _handle_input(self, user_input: str) -> None:
-        """Handle user input and dispatch to appropriate handler.
-
-        Note: Suggestion refresh is triggered via on_block_complete callback
-        for commands that create blocks (@node, %workflow, >>> python).
-        Only : commands need explicit trigger here since they don't create blocks.
-        """
-        # Commands always start with : (works in any world)
-        if user_input.startswith(":"):
-            await dispatch_command(self, user_input[1:])
-            # : commands don't create blocks, so trigger suggestions manually
-            self._trigger_suggestion_fetch()
-
-        # If in a world, route directly to that node
-        elif self._current_world:
-            if self._current_world == "python":
-                await self._handle_python(user_input)
-            else:
-                await self._handle_entity_message(f"{self._current_world} {user_input}")
-
-        # Node/graph messages start with @
-        elif user_input.startswith("@"):
-            await self._handle_entity_message(user_input[1:])
-
-        # Workflow execution starts with %
-        elif user_input.startswith("%"):
-            await self._handle_workflow(user_input[1:])
-
-        # Python code starts with >>>
-        elif user_input.startswith(">>>"):
-            await self._handle_python(user_input[3:].strip())
-
-        # Default: show help
-        else:
-            self.console.print(
-                "[dim]Prefix with @node to send to a node, "
-                "%workflow for workflows, >>> for Python, or :help[/]"
-            )
-
-    def _gather_suggestion_context(self) -> dict[str, Any]:
-        """Gather context for the suggestion node.
-
-        Collects:
-        - nodes: list of node IDs (excluding 'suggestions' node)
-        - graphs: list of graph IDs
-        - workflows: list of workflow IDs
-        - blocks: list of block dicts with input/output/success (excluding suggestion blocks)
-        - cwd: current working directory
-
-        Returns:
-            Context dict ready to send to SuggestionNode.
-        """
-        # Gather entities by type (exclude 'suggestions' node - AI shouldn't predict itself)
-        nodes = [e.id for e in self.entities.values() if e.type == "node" and e.id != "suggestions"]
-        graphs = [e.id for e in self.entities.values() if e.type == "graph"]
-        workflows = [e.id for e in self.entities.values() if e.type == "workflow"]
-
-        # Gather blocks from timeline (exclude suggestion blocks)
-        blocks = []
-        for block in self.timeline.blocks:
-            if block.status == "completed" and block.node_id != "suggestions":
-                blocks.append(
-                    {
-                        "input": block.input_text,
-                        "output": block.output_text,
-                        "success": block.error is None,
-                        "error": block.error,
-                    }
-                )
-
-        return {
-            "nodes": nodes,
-            "graphs": graphs,
-            "workflows": workflows,
-            "blocks": blocks,
-            "cwd": os.getcwd(),
-        }
-
-    async def _fetch_suggestions(self) -> None:
-        """Fetch suggestions from the suggestion node in background.
-
-        Updates _suggestions list with new suggestions from the LLM.
-        Falls back to default suggestions if node unavailable or errors.
-        """
-        if self._adapter is None:
-            return
-
-        # Check if suggestion node exists
-        if self._suggestion_node not in self.entities:
-            await self._sync_entities()
-            if self._suggestion_node not in self.entities:
-                return  # Node not available, keep current suggestions
-
-        try:
-            context = self._gather_suggestion_context()
-            result = await self._adapter.execute_on_node(self._suggestion_node, json.dumps(context))
-
-            if result.get("success"):
-                output = result.get("output", [])
-                if isinstance(output, list) and output:
-                    self._suggestions = output
-                    self._suggestion_idx = 0  # Show first suggestion immediately
-                    # Invalidate prompt to trigger redraw with new suggestion
-                    if self._prompt_session.app is not None:
-                        self._prompt_session.app.invalidate()
-        except Exception as e:
-            # Keep existing suggestions on error
-            logger.debug("Failed to fetch suggestions: %s", e)
-
-    def _on_block_complete(self, block: Block) -> None:
-        """Callback when any block completes execution.
-
-        Triggers suggestion refresh unless it's a suggestion block.
-
-        Args:
-            block: The completed block.
-        """
-        # Skip suggestion refresh for suggestion blocks (avoid recursion)
-        if block.node_id == "suggestions":
-            return
-        self._trigger_suggestion_fetch()
-
-    def _trigger_suggestion_fetch(self) -> None:
-        """Trigger background fetch of suggestions.
-
-        Cancels any existing fetch and starts a new one.
-        Called after commands complete to refresh suggestions.
-        """
-        # Cancel existing task if running
-        if self._suggestion_task is not None and not self._suggestion_task.done():
-            self._suggestion_task.cancel()
-            # Suppress CancelledError - task is intentionally being replaced
-            self._suggestion_task.add_done_callback(
-                lambda t: t.exception() if not t.cancelled() else None
-            )
-
-        # Start new fetch task
-        self._suggestion_task = asyncio.create_task(self._fetch_suggestions())
-
-    async def _handle_entity_message(self, message: str) -> None:
-        """Handle @entity_name message syntax for both nodes and graphs."""
-        if self._adapter is None:
-            self.console.print("[error]Not connected to server[/]")
-            return
-
-        parts = message.split(maxsplit=1)
-        if not parts:
-            self.console.print("[warning]Usage: @entity_name message[/]")
-            return
-
-        entity_id = parts[0]
-        text = parts[1] if len(parts) > 1 else ""
-
-        # Special handling for @suggestions - auto-gather context
-        if entity_id == "suggestions" and not text:
-            context = self._gather_suggestion_context()
-            text = json.dumps(context)
-
-        if not text:
-            self.console.print(f"[warning]No message provided for @{entity_id}[/]")
-            return
-
-        if entity_id not in self.entities:
-            await self._sync_entities()
-            if entity_id not in self.entities:
-                self.console.print(f"[error]Entity not found: {entity_id}[/]")
-                self.console.print(
-                    f"[dim]Available: {', '.join(self.entities.keys()) or 'none'}[/]"
-                )
-                return
-
-        entity = self.entities[entity_id]
-        block_type = get_block_type(entity.node_type)
-
-        # Validate variable references before proceeding (fail fast on unresolvable refs)
-        if self._validate_and_create_error_block(text, block_type, entity_id):
-            return
-
-        # DON'T expand variables yet - detect dependencies first
-        from nerve.frontends.tui.commander.variables import extract_block_dependencies
-
-        dependencies = extract_block_dependencies(text, self.timeline, self._get_nodes_by_type())
-
-        # Create block with dependency info (input_text stores RAW text)
-        block = Block(
-            block_type=block_type,
-            node_id=entity_id,  # Works for both nodes and graphs
-            input_text=text,
-            depends_on=dependencies,
-        )
-        self.timeline.add(block)
-
-        # Execute with threshold handling
-        start_time = time.monotonic()
-
-        # IMPORTANT: Variable expansion happens INSIDE execute function
-        # This ensures dependencies are completed before expansion
-        async def execute() -> None:
-            # By this point, execute_with_threshold has waited for dependencies
-            # Pass block.number to exclude current block from negative index resolution
-            expanded_text = expand_variables(
-                self.timeline, text, self._get_nodes_by_type(), exclude_block_from=block.number
-            )
-
-            # Route based on entity type
-            if entity.type == "graph":
-                await execute_graph_command(
-                    self._adapter,  # type: ignore[arg-type]
-                    block,
-                    entity_id,
-                    expanded_text,
-                    start_time,
-                )
-            else:
-                await execute_node_command(
-                    self._adapter,  # type: ignore[arg-type]
-                    block,
-                    expanded_text,
-                    start_time,
-                    self._set_active_node,
-                )
-
-        await self._executor.execute_with_threshold(block, execute)
-
-    async def _handle_python(self, code: str) -> None:
-        """Handle Python code execution with threshold-based async."""
-        if not code:
-            self.console.print("[dim]Enter Python code after >>>[/]")
-            return
-
-        if self._adapter is None:
-            self.console.print("[error]Not connected to server[/]")
-            return
-
-        # Validate variable references before proceeding (fail fast on unresolvable refs)
-        if self._validate_and_create_error_block(code, "python", None):
-            return
-
-        # Detect dependencies (Python code can reference blocks and nodes)
-        from nerve.frontends.tui.commander.variables import extract_block_dependencies
-
-        dependencies = extract_block_dependencies(code, self.timeline, self._get_nodes_by_type())
-
-        # Create block with dependency info
-        block = Block(
-            block_type="python",
-            node_id=None,
-            input_text=code,
-            depends_on=dependencies,
-        )
-        self.timeline.add(block)
-
-        # Execute with threshold handling
-        start_time = time.monotonic()
-
-        async def execute() -> None:
-            await execute_python_command(
-                self._adapter,  # type: ignore[arg-type]
-                block,
-                code,
-                start_time,
-            )
-
-        await self._executor.execute_with_threshold(block, execute)
-
-    async def _handle_workflow(self, message: str) -> None:
-        """Handle %workflow_id input syntax for workflow execution.
-
-        Workflows run in a dedicated full-screen TUI that:
-        - Shows workflow state, events, and progress
-        - Handles gates with interactive prompts
-        - Returns result to store in the block
-
-        NOTE: The workflow TUI is a separate prompt_toolkit Application that
-        takes over the terminal, but does NOT stop the Commander's background
-        executor. Any in-progress blocks continue executing while workflow runs.
-        """
-        if self._adapter is None:
-            self.console.print("[error]Not connected to server[/]")
-            return
-
-        parts = message.split(maxsplit=1)
-        if not parts:
-            self.console.print("[warning]Usage: %workflow_id input[/]")
-            return
-
-        workflow_id = parts[0]
-        input_text = parts[1] if len(parts) > 1 else ""
-
-        # Check if workflow exists
-        if workflow_id not in self.entities:
-            await self._sync_entities()
-            if workflow_id not in self.entities:
-                self.console.print(f"[error]Workflow not found: {workflow_id}[/]")
-                # List available workflows
-                workflows = [e.id for e in self.entities.values() if e.type == "workflow"]
-                if workflows:
-                    self.console.print(f"[dim]Available workflows: {', '.join(workflows)}[/]")
-                else:
-                    self.console.print("[dim]No workflows registered[/]")
-                return
-
-        entity = self.entities[workflow_id]
-        if entity.type != "workflow":
-            self.console.print(f"[error]'{workflow_id}' is a {entity.type}, not a workflow[/]")
-            self.console.print("[dim]Use @ for nodes/graphs, % for workflows[/]")
-            return
-
-        # Validate variable references before proceeding (fail fast on unresolvable refs)
-        if self._validate_and_create_error_block(input_text, "workflow", workflow_id):
-            return
-
-        # Extract dependencies from input (for :::N references)
-        from nerve.frontends.tui.commander.variables import extract_block_dependencies
-
-        dependencies = extract_block_dependencies(
-            input_text, self.timeline, self._get_nodes_by_type()
-        )
-
-        # Create block for workflow (stores raw input)
-        block = Block(
-            block_type="workflow",
-            node_id=workflow_id,
-            input_text=input_text,
-            depends_on=dependencies,
-        )
-        self.timeline.add(block)
-
-        # Wait for dependencies before expanding variables
-        # This ensures :::N references see completed block data
-        if dependencies:
-            block.status = "waiting"
-            from nerve.frontends.tui.commander.rendering import print_block
-
-            print_block(self.console, block)
-            dependencies_ready = await self._executor.wait_for_dependencies(block)
-
-            # If dependency wait failed (returned False), stop here
-            if not dependencies_ready:
-                print_block(self.console, block)
-                return
-
-        # NOW expand variables - dependencies are complete
-        expanded_input = expand_variables(
-            self.timeline, input_text, self._get_nodes_by_type(), exclude_block_from=block.number
-        )
-
-        # Launch full-screen workflow TUI
-        # This takes over the screen until workflow completes
-        result = await run_workflow_tui(
-            self._adapter,
-            workflow_id,
-            expanded_input,
-        )
-
-        # Update block with result
-        block.duration_ms = result.get("duration_ms", 0)
-
-        if result.get("backgrounded"):
-            # Workflow was backgrounded - track it for resume
-            block.status = "pending"  # Mark as pending since still running
-            block.output_text = "(backgrounded - use :wf to resume)"
-            block.raw = result
-            run_id = result.get("run_id", "")
-            if run_id:
-                self._active_workflows[run_id] = {
-                    "workflow_id": workflow_id,
-                    "run_id": run_id,
-                    "block_number": block.number,
-                    "events": result.get("events", []),
-                    "pending_gate": result.get("pending_gate"),
-                    "start_time": result.get("start_time", 0),
-                    "steps": result.get("steps", []),
-                }
-            self.console.print(
-                f"[dim]Workflow backgrounded. Use :world to list or :world {run_id[:8]} to resume[/]"
-            )
-            # Start background polling for status updates
-            self._start_workflow_polling()
-        else:
-            # Handle completed, cancelled, or failed states
-            from nerve.frontends.tui.commander.rendering import print_block
-
-            if result.get("state") == "completed":
-                block.status = "completed"
-                block.output_text = str(result.get("result", ""))
-                block.raw = result
-            elif result.get("state") == "cancelled":
-                block.status = "error"
-                block.error = "Workflow cancelled"
-                block.raw = result
-            else:
-                block.status = "error"
-                block.error = result.get("error", "Workflow failed")
-                block.raw = result
-
-            print_block(self.console, block)
-
     def _set_active_node(self, node_id: str | None) -> None:
         """Set or clear the active node ID (for interrupt support)."""
         self._active_node_id = node_id
-
-    def _start_workflow_polling(self) -> None:
-        """Start background polling for active workflows if not already running.
-
-        Polling fetches fresh workflow state from the server every 3 seconds,
-        updating _active_workflows so the status bar shows accurate info.
-        """
-        if self._workflow_poll_task is not None and not self._workflow_poll_task.done():
-            return  # Already polling
-
-        self._workflow_poll_task = asyncio.create_task(self._poll_active_workflows())
-
-    async def _poll_active_workflows(self) -> None:
-        """Background task that polls workflow status every 3 seconds.
-
-        Updates _active_workflows with fresh state and pending_gate info.
-        Removes completed/failed workflows from tracking.
-        Stops when no more active workflows.
-        """
-        poll_interval = 3.0  # seconds
-
-        while self._active_workflows and self._adapter is not None:
-            try:
-                # Poll each active workflow
-                completed_runs: list[str] = []
-
-                for run_id, wf_info in list(self._active_workflows.items()):
-                    try:
-                        status = await self._adapter.get_workflow_run(run_id)
-
-                        if status:
-                            state = status.get("state", "unknown")
-
-                            # Update workflow info with fresh data
-                            wf_info["state"] = state
-                            wf_info["pending_gate"] = status.get("pending_gate")
-                            wf_info["events"] = status.get("events", [])
-
-                            # If workflow completed, update block and remove from active
-                            if state in ("completed", "failed", "cancelled"):
-                                completed_runs.append(run_id)
-
-                                # Update the associated block
-                                block_num = wf_info.get("block_number")
-                                if block_num is not None:
-                                    block = self.timeline.get(block_num)
-                                    if block:
-                                        if state == "completed":
-                                            block.status = "completed"
-                                            block.output_text = str(status.get("result", ""))
-                                        else:
-                                            block.status = "error"
-                                            block.error = status.get("error", f"Workflow {state}")
-                                        block.raw = status
-
-                    except Exception as e:
-                        logger.debug(f"Failed to poll workflow {run_id}: {e}")
-
-                # Remove completed workflows from tracking
-                for run_id in completed_runs:
-                    del self._active_workflows[run_id]
-
-                # Sleep before next poll
-                await asyncio.sleep(poll_interval)
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.debug(f"Workflow polling error: {e}")
-                await asyncio.sleep(poll_interval)
 
     async def _cleanup(self) -> None:
         """Cleanup resources including active workflows."""
         await self._executor.stop()
 
         # Cancel suggestion fetch task
-        if self._suggestion_task is not None and not self._suggestion_task.done():
-            self._suggestion_task.cancel()
-            try:
-                await self._suggestion_task
-            except asyncio.CancelledError:
-                pass
-            self._suggestion_task = None
+        await self._suggestions.cleanup()
 
-        # Cancel workflow polling task
-        if self._workflow_poll_task is not None and not self._workflow_poll_task.done():
-            self._workflow_poll_task.cancel()
-            try:
-                await self._workflow_poll_task
-            except asyncio.CancelledError:
-                pass
-            self._workflow_poll_task = None
-
-        # Cancel any active (backgrounded) workflows
-        if self._active_workflows and self._adapter is not None:
-            for run_id in list(self._active_workflows.keys()):
-                try:
-                    await self._adapter.cancel_workflow(run_id)
-                    logger.debug(f"Cancelled workflow {run_id} on exit")
-                except Exception as e:
-                    logger.debug(f"Failed to cancel workflow {run_id}: {e}")
-            self._active_workflows.clear()
+        # Cancel workflow polling and active workflows
+        await self._workflows.cleanup()
 
         if self._client is not None:
             try:
