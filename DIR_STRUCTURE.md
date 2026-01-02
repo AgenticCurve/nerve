@@ -132,7 +132,7 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 915] claude_wezterm_node.py
+│       │   │   │   ├── [L: 929] claude_wezterm_node.py
 │       │   │   │   ├── [L: 779] pty_node.py
 │       │   │   │   └── [L: 872] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
@@ -296,7 +296,7 @@
     │   │   │   ├── [L: 383] test_fork.py
     │   │   │   └── [L: 493] test_openrouter.py
     │   │   ├── terminal/
-    │   │   │   └── [L: 630] test_claude_wezterm_fork.py
+    │   │   │   └── [L: 700] test_claude_wezterm_fork.py
     │   │   ├── [L: 213] test_base.py
     │   │   ├── [L: 210] test_bash.py
     │   │   ├── [L: 231] test_budget.py
@@ -355,4 +355,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-71 directories, 285 files, 69,552 total lines
+71 directories, 285 files, 69,636 total lines

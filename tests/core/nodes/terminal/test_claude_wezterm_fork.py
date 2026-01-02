@@ -283,6 +283,76 @@ class TestSessionIdTracking:
             assert count == 1
 
     @pytest.mark.asyncio
+    async def test_create_handles_double_quoted_session_id(self, mock_session: MagicMock) -> None:
+        """create() should handle double-quoted --session-id in command."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        mock_inner = MagicMock()
+        mock_inner.backend = MagicMock()
+        mock_inner.backend.write = AsyncMock()
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_inner
+
+            # Command has double-quoted --session-id
+            node = await ClaudeWezTermNode.create(
+                id="test",
+                session=mock_session,
+                command='claude --dangerously-skip-permissions --session-id "my session id"',
+            )
+
+            # Should extract the unquoted session ID
+            assert node._claude_session_id == "my session id"
+
+    @pytest.mark.asyncio
+    async def test_create_handles_single_quoted_session_id(self, mock_session: MagicMock) -> None:
+        """create() should handle single-quoted --session-id in command."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        mock_inner = MagicMock()
+        mock_inner.backend = MagicMock()
+        mock_inner.backend.write = AsyncMock()
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_inner
+
+            # Command has single-quoted --session-id
+            node = await ClaudeWezTermNode.create(
+                id="test",
+                session=mock_session,
+                command="claude --dangerously-skip-permissions --session-id 'my session id'",
+            )
+
+            # Should extract the unquoted session ID
+            assert node._claude_session_id == "my session id"
+
+    @pytest.mark.asyncio
+    async def test_create_replaces_quoted_session_id(self, mock_session: MagicMock) -> None:
+        """create() should replace quoted --session-id when provided differs."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        mock_inner = MagicMock()
+        mock_inner.backend = MagicMock()
+        mock_inner.backend.write = AsyncMock()
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_inner
+
+            # Command has quoted --session-id, but we provide a different one
+            node = await ClaudeWezTermNode.create(
+                id="test",
+                session=mock_session,
+                command='claude --dangerously-skip-permissions --session-id "old id"',
+                claude_session_id="new-id",
+            )
+
+            # Should use provided session ID
+            assert node._claude_session_id == "new-id"
+            # Command should have the new unquoted session ID
+            assert "--session-id new-id" in node._command
+            assert '"old id"' not in node._command
+
+    @pytest.mark.asyncio
     async def test_session_id_in_to_info(self, mock_session: MagicMock) -> None:
         """to_info() should include claude_session_id in metadata."""
         from nerve.core.nodes.terminal.wezterm_node import WezTermNode

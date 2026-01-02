@@ -159,22 +159,36 @@ class ClaudeWezTermNode:
         import re
         import uuid as uuid_module
 
+        # Pattern to match --session-id with quoted or unquoted value
+        # Matches: --session-id value, --session-id "quoted value", --session-id 'quoted value'
+        session_id_pattern = r'--session-id\s+("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|\S+)'
+
         # Extract existing --session-id from command if present
-        session_id_match = re.search(r"--session-id\s+(\S+)", command)
-        existing_session_id = session_id_match.group(1) if session_id_match else None
+        session_id_match = re.search(session_id_pattern, command)
+        if session_id_match:
+            raw_value = session_id_match.group(1)
+            # Strip quotes if present to get the actual session ID
+            if (raw_value.startswith('"') and raw_value.endswith('"')) or (
+                raw_value.startswith("'") and raw_value.endswith("'")
+            ):
+                existing_session_id = raw_value[1:-1]
+            else:
+                existing_session_id = raw_value
+        else:
+            existing_session_id = None
 
         if existing_session_id:
             if claude_session_id is None:
-                # Use the session ID from the command
+                # Use the session ID from the command (unquoted)
                 claude_session_id = existing_session_id
             elif claude_session_id != existing_session_id:
-                # Replace existing --session-id with provided one
+                # Replace existing --session-id with provided one (unquoted)
                 logger.warning(
                     f"Replacing --session-id in command: '{existing_session_id}' -> '{claude_session_id}' "
                     f"for node '{id}'"
                 )
                 command = re.sub(
-                    r"--session-id\s+\S+",
+                    session_id_pattern,
                     f"--session-id {claude_session_id}",
                     command,
                 )
