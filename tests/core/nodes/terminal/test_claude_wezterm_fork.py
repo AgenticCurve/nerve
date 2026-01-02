@@ -115,6 +115,21 @@ class TestExtractBaseCommand:
         assert "new-id" not in result
         assert "--dangerously-skip-permissions" in result
 
+    def test_preserves_shell_operators(self, mock_session: MagicMock) -> None:
+        """Should preserve && and other shell operators."""
+        node = self._create_mock_node(
+            "cd ~/project && claude --dangerously-skip-permissions --session-id abc123",
+            mock_session,
+        )
+        result = node._extract_base_command()
+        assert "cd ~/project && claude" in result
+        assert "--dangerously-skip-permissions" in result
+        assert "--session-id" not in result
+        assert "abc123" not in result
+        # Verify && is NOT quoted
+        assert "'&&'" not in result
+        assert '"&&"' not in result
+
     def test_handles_quoted_args(self, mock_session: MagicMock) -> None:
         """Should handle quoted arguments properly."""
         node = self._create_mock_node(
@@ -217,6 +232,57 @@ class TestSessionIdTracking:
             assert count == 1
 
     @pytest.mark.asyncio
+    async def test_create_extracts_session_id_from_command(self, mock_session: MagicMock) -> None:
+        """create() should extract --session-id from command when not provided."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        mock_inner = MagicMock()
+        mock_inner.backend = MagicMock()
+        mock_inner.backend.write = AsyncMock()
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_inner
+
+            # Command has --session-id, but claude_session_id not provided
+            node = await ClaudeWezTermNode.create(
+                id="test",
+                session=mock_session,
+                command="claude --dangerously-skip-permissions --session-id from-command",
+            )
+
+            # Should use the session ID from the command
+            assert node._claude_session_id == "from-command"
+
+    @pytest.mark.asyncio
+    async def test_create_replaces_mismatched_session_id(self, mock_session: MagicMock) -> None:
+        """create() should replace --session-id in command when provided differs."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        mock_inner = MagicMock()
+        mock_inner.backend = MagicMock()
+        mock_inner.backend.write = AsyncMock()
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_inner
+
+            # Command has different --session-id than provided
+            node = await ClaudeWezTermNode.create(
+                id="test",
+                session=mock_session,
+                command="claude --dangerously-skip-permissions --session-id old-id",
+                claude_session_id="new-id",
+            )
+
+            # Should use provided session ID
+            assert node._claude_session_id == "new-id"
+            # Command should have the new session ID
+            assert "--session-id new-id" in node._command
+            assert "old-id" not in node._command
+            # Should still have exactly one --session-id
+            count = node._command.count("--session-id")
+            assert count == 1
+
+    @pytest.mark.asyncio
     async def test_session_id_in_to_info(self, mock_session: MagicMock) -> None:
         """to_info() should include claude_session_id in metadata."""
         from nerve.core.nodes.terminal.wezterm_node import WezTermNode
@@ -259,6 +325,10 @@ class TestClaudeWezTermFork:
         node._default_parser.value = "CLAUDE"
         node._history_writer = None
         node._proxy_url = None
+        node._ready_timeout = 60.0
+        node._response_timeout = 1800.0
+        node._forked_from = None
+        node._fork_timestamp = None
         mock_session.nodes["source"] = node
         return node
 
@@ -375,6 +445,59 @@ class TestClaudeWezTermFork:
             forked = await source.fork("forked")
 
             assert forked._proxy_url == "http://127.0.0.1:8080"
+
+    @pytest.mark.asyncio
+    async def test_fork_preserves_timeout_settings(
+        self, mock_session: MagicMock, mock_wezterm_node: MagicMock
+    ) -> None:
+        """fork() should preserve ready_timeout and response_timeout."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        source = self._create_mock_source_node(mock_session, mock_wezterm_node)
+        source._ready_timeout = 120.0
+        source._response_timeout = 3600.0
+
+        mock_forked_inner = MagicMock()
+        mock_forked_inner.backend = MagicMock()
+        mock_forked_inner.backend.write = AsyncMock()
+        mock_forked_inner.pane_id = "forked-pane"
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_forked_inner
+
+            forked = await source.fork("forked")
+
+            assert forked._ready_timeout == 120.0
+            assert forked._response_timeout == 3600.0
+
+    @pytest.mark.asyncio
+    async def test_fork_sets_metadata(
+        self, mock_session: MagicMock, mock_wezterm_node: MagicMock
+    ) -> None:
+        """fork() should set forked_from and fork_timestamp metadata."""
+        from nerve.core.nodes.terminal.wezterm_node import WezTermNode
+
+        source = self._create_mock_source_node(mock_session, mock_wezterm_node)
+
+        mock_forked_inner = MagicMock()
+        mock_forked_inner.backend = MagicMock()
+        mock_forked_inner.backend.write = AsyncMock()
+        mock_forked_inner.pane_id = "forked-pane"
+
+        with patch.object(WezTermNode, "_create_internal", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_forked_inner
+
+            forked = await source.fork("forked")
+
+            # Check fork metadata
+            assert forked._forked_from == "source"
+            assert forked._fork_timestamp is not None
+            assert isinstance(forked._fork_timestamp, float)
+
+            # Check it's exposed in to_info()
+            info = forked.to_info()
+            assert info.metadata["forked_from"] == "source"
+            assert "fork_timestamp" in info.metadata
 
     @pytest.mark.asyncio
     async def test_fork_extracts_cwd_from_inner(

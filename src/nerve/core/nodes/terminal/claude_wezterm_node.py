@@ -67,6 +67,12 @@ class ClaudeWezTermNode:
     _execute_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     # Claude Code session tracking (for fork support)
     _claude_session_id: str | None = field(default=None, init=False, repr=False)
+    # Timeout settings (preserved during fork)
+    _ready_timeout: float = field(default=60.0, init=False, repr=False)
+    _response_timeout: float = field(default=1800.0, init=False, repr=False)
+    # Fork metadata (set when node is created via fork)
+    _forked_from: str | None = field(default=None, init=False, repr=False)
+    _fork_timestamp: float | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prevent direct instantiation."""
@@ -148,14 +154,35 @@ class ClaudeWezTermNode:
         if "claude" not in command.lower():
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
 
-        # Generate Claude session ID if not provided (for fork support)
+        # Handle Claude session ID for fork support
+        # Reconcile provided claude_session_id with any --session-id in command
+        import re
         import uuid as uuid_module
 
-        if claude_session_id is None:
-            claude_session_id = str(uuid_module.uuid4())
+        # Extract existing --session-id from command if present
+        session_id_match = re.search(r"--session-id\s+(\S+)", command)
+        existing_session_id = session_id_match.group(1) if session_id_match else None
 
-        # Inject --session-id into command if not already present
-        if "--session-id" not in command:
+        if existing_session_id:
+            if claude_session_id is None:
+                # Use the session ID from the command
+                claude_session_id = existing_session_id
+            elif claude_session_id != existing_session_id:
+                # Replace existing --session-id with provided one
+                logger.warning(
+                    f"Replacing --session-id in command: '{existing_session_id}' -> '{claude_session_id}' "
+                    f"for node '{id}'"
+                )
+                command = re.sub(
+                    r"--session-id\s+\S+",
+                    f"--session-id {claude_session_id}",
+                    command,
+                )
+            # else: claude_session_id matches existing, no change needed
+        else:
+            # No --session-id in command
+            if claude_session_id is None:
+                claude_session_id = str(uuid_module.uuid4())
             command = f"{command} --session-id {claude_session_id}"
 
         # Setup history
@@ -217,6 +244,8 @@ class ClaudeWezTermNode:
             wrapper._proxy_url = proxy_url
             wrapper._execute_lock = asyncio.Lock()  # Initialize lock for execute_when_ready
             wrapper._claude_session_id = claude_session_id
+            wrapper._ready_timeout = ready_timeout
+            wrapper._response_timeout = response_timeout
 
             # History: log the initial run command (buffer captured by first operation)
             if history_writer and history_writer.enabled:
@@ -673,7 +702,7 @@ class ClaudeWezTermNode:
 
     def to_info(self) -> NodeInfo:
         """Get node information."""
-        metadata = {
+        metadata: dict[str, str | float | None] = {
             "pane_id": self.pane_id,
             "command": self.command,
             "default_parser": self._default_parser.value,
@@ -683,6 +712,10 @@ class ClaudeWezTermNode:
             metadata["proxy_url"] = self._proxy_url
         if self._claude_session_id:
             metadata["claude_session_id"] = self._claude_session_id
+        if self._forked_from:
+            metadata["forked_from"] = self._forked_from
+        if self._fork_timestamp:
+            metadata["fork_timestamp"] = self._fork_timestamp
         return NodeInfo(
             id=self.id,
             node_type="claude-wezterm",
@@ -703,6 +736,9 @@ class ClaudeWezTermNode:
         - --resume <value>
         - --fork-session
 
+        Uses regex to preserve shell operators (&&, ||, ;, |) that would be
+        incorrectly quoted by shlex.join().
+
         Returns:
             Command string without session-related flags.
 
@@ -710,33 +746,28 @@ class ClaudeWezTermNode:
             >>> node._command = "claude --dangerously-skip-permissions --session-id abc123"
             >>> node._extract_base_command()
             'claude --dangerously-skip-permissions'
+
+            >>> node._command = "cd ~/project && claude --session-id abc123"
+            >>> node._extract_base_command()
+            'cd ~/project && claude'
         """
-        try:
-            parts = shlex.split(self._command)
-        except ValueError:
-            # If shlex fails, fall back to simple split
-            parts = self._command.split()
+        import re
 
-        filtered = []
-        skip_next = False
+        result = self._command
 
-        for part in parts:
-            if skip_next:
-                skip_next = False
-                continue
+        # Remove --session-id and its argument (handles quoted values too)
+        result = re.sub(r"--session-id\s+(?:\"[^\"]*\"|'[^']*'|\S+)", "", result)
 
-            # Skip flags that take an argument
-            if part in ("--session-id", "--resume"):
-                skip_next = True
-                continue
+        # Remove --resume and its argument
+        result = re.sub(r"--resume\s+(?:\"[^\"]*\"|'[^']*'|\S+)", "", result)
 
-            # Skip standalone flags
-            if part == "--fork-session":
-                continue
+        # Remove --fork-session flag
+        result = re.sub(r"--fork-session\b", "", result)
 
-            filtered.append(part)
+        # Clean up extra whitespace
+        result = re.sub(r"\s+", " ", result).strip()
 
-        return shlex.join(filtered)
+        return result
 
     async def fork(self, new_id: str) -> ClaudeWezTermNode:
         """Fork this node by creating a new Claude session branched from this one.
@@ -800,6 +831,7 @@ class ClaudeWezTermNode:
 
         # Create new node with fork command
         # Note: We pass claude_session_id explicitly to avoid re-generation
+        # All settings (parser, timeouts, proxy_url, cwd) are preserved from the original
         forked = await ClaudeWezTermNode.create(
             id=new_id,
             session=self.session,
@@ -807,11 +839,15 @@ class ClaudeWezTermNode:
             cwd=cwd,
             history=self._history_writer is not None and self._history_writer.enabled,
             parser=self._default_parser,
-            ready_timeout=60.0,
-            response_timeout=1800.0,
+            ready_timeout=self._ready_timeout,
+            response_timeout=self._response_timeout,
             proxy_url=self._proxy_url,
             claude_session_id=new_claude_session_id,
         )
+
+        # Set fork metadata for traceability
+        forked._forked_from = self.id
+        forked._fork_timestamp = time.time()
 
         return forked
 
