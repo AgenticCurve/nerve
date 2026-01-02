@@ -372,7 +372,9 @@ class TCPSocketClient:
                                 )
                                 future.set_result(result)
                         else:
-                            logger.warning(
+                            # This can happen when a request was cancelled but the server
+                            # still sent a response. Not an error, just debug-level info.
+                            logger.debug(
                                 "Received response for unknown request_id: %s",
                                 request_id,
                             )

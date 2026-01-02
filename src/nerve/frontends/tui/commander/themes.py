@@ -31,6 +31,8 @@ def create_theme(
     warning: str = "bold yellow",
     # Pending blocks (subdued appearance)
     pending: str = "bright_black",
+    # Ghost text (suggestions/placeholders) - prompt_toolkit compatible color
+    ghost_text: str = "#6e6e6e",
 ) -> Theme:
     """Create a theme with the given styles.
 
@@ -61,6 +63,8 @@ def create_theme(
             "warning": warning,
             # Pending blocks
             "pending": pending,
+            # Ghost text (for prompt_toolkit - stored here for theme consistency)
+            "ghost": ghost_text,
         }
     )
 
@@ -91,6 +95,7 @@ NORD_THEME = create_theme(
     success="#A3BE8C",
     warning="#EBCB8B",
     pending="#4C566A",  # Nord's comment color
+    ghost_text="#4C566A",  # Nord comment gray
 )
 
 # Dracula-inspired theme
@@ -112,6 +117,7 @@ DRACULA_THEME = create_theme(
     success="#50FA7B",
     warning="#FFB86C",
     pending="#6272A4",  # Dracula's comment color
+    ghost_text="#6272A4",  # Dracula comment purple-gray
 )
 
 # Minimal monochrome theme
@@ -133,6 +139,7 @@ MONO_THEME = create_theme(
     success="bold",
     warning="bold yellow",
     pending="bright_black",
+    ghost_text="#555555",  # Dark gray for mono
 )
 
 # Theme registry for easy lookup
@@ -154,3 +161,35 @@ def get_theme(name: str) -> Theme:
         The theme, or DEFAULT_THEME if not found.
     """
     return THEMES.get(name.lower(), DEFAULT_THEME)
+
+
+# Ghost text colors for prompt_toolkit (intentionally separate from Rich theme).
+#
+# Why duplicated? Rich Theme stores Style objects with complex attributes (bold,
+# italic, color, bgcolor, etc.), but prompt_toolkit needs simple hex color strings.
+# Extracting hex from Rich Style objects is fragile (color may be named, RGB tuple,
+# or None). Maintaining explicit hex values here ensures prompt_toolkit compatibility.
+#
+# These values MUST match the ghost_text parameter in each theme's create_theme() call.
+GHOST_TEXT_COLORS: dict[str, str] = {
+    "default": "#6e6e6e",  # Medium gray - visible but clearly different
+    "nord": "#4C566A",  # Nord comment gray
+    "dracula": "#6272A4",  # Dracula comment purple-gray
+    "mono": "#555555",  # Dark gray
+}
+
+
+def get_ghost_text_color(theme_name: str) -> str:
+    """Get the ghost text color for a theme (prompt_toolkit compatible).
+
+    Note: This returns a hex color string for prompt_toolkit, which requires
+    simple color values. Rich Theme stores Style objects which aren't directly
+    compatible with prompt_toolkit's style system.
+
+    Args:
+        theme_name: Theme name (default, nord, dracula, mono)
+
+    Returns:
+        Hex color string for ghost text, e.g. "#6e6e6e"
+    """
+    return GHOST_TEXT_COLORS.get(theme_name.lower(), GHOST_TEXT_COLORS["default"])

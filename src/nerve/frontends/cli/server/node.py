@@ -19,6 +19,7 @@ NODE_TYPE_CHOICES = [
     "OpenRouterNode",
     "GLMNode",  # Single-shot LLM
     "StatefulLLMNode",  # Stateful chat
+    "SuggestionNode",  # Suggestion generation
 ]
 
 
@@ -116,7 +117,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     "node_type",
     type=click.Choice(NODE_TYPE_CHOICES),
     default="PTYNode",
-    help="Node type (stateful: PTYNode, WezTermNode, ClaudeWezTermNode, StatefulLLMNode; stateless: BashNode, IdentityNode, OpenRouterNode, GLMNode)",
+    help="Node type (stateful: PTYNode, WezTermNode, ClaudeWezTermNode, StatefulLLMNode; stateless: BashNode, IdentityNode, OpenRouterNode, GLMNode, SuggestionNode)",
 )
 @click.option(
     "--pane-id", default=None, help="Attach to existing WezTerm pane (wezterm backend only)"
@@ -398,7 +399,7 @@ async def node_create(
     if node_type == "BashNode":
         # BashNode doesn't need special validation, uses command and cwd
         pass
-    elif node_type in ("OpenRouterNode", "GLMNode"):
+    elif node_type in ("OpenRouterNode", "GLMNode", "SuggestionNode"):
         # Stateless LLM nodes require api_key and llm_model
         if not api_key:
             error_exit(f"--api-key is required for {node_type}")
@@ -429,7 +430,7 @@ async def node_create(
         if api_key or llm_model or llm_base_url or llm_timeout:
             error_exit(
                 "--api-key, --llm-model, --llm-base-url, --llm-timeout "
-                "are only valid for LLM nodes (OpenRouterNode, GLMNode, StatefulLLMNode)"
+                "are only valid for LLM nodes (OpenRouterNode, GLMNode, SuggestionNode, StatefulLLMNode)"
             )
         if thinking:
             error_exit("--thinking is only valid for GLMNode or StatefulLLMNode with glm provider")

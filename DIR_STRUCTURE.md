@@ -51,6 +51,11 @@
 │   │   ├── [L: 316] code_review_workflow.py
 │   │   ├── [L: 199] multi_step_demo.py
 │   │   └── [L:  58] simple_loadable.py
+│   ├── workspace/
+│   │   └── driver_navigator/
+│   │       ├── [L: 125] main.py
+│   │       ├── [L: 145] workflow_bug_hunter.py
+│   │       └── [L: 151] workflow_verify_refactoring.py
 │   └── [L: 107] workspace_example.py
 ├── features/
 │   ├── glm/
@@ -69,6 +74,10 @@
 │               ├── [L: 379] sample_pane_03.txt
 │               └── [L:  57] sample_pane_04.txt
 ├── [L:  90] Makefile
+├── prompts/
+│   └── refactoring/
+│       ├── [L: 220] bug-hunter.md
+│       └── [L: 167] verify-refactoring.md
 ├── [L:  93] pyproject.toml
 ├── [L:   1] README.md
 ├── scripts/
@@ -112,11 +121,12 @@
 │       │   │   ├── [L: 562] history.py
 │       │   │   ├── [L: 165] identity.py
 │       │   │   ├── llm/
-│       │   │   │   ├── [L:  68] __init__.py
+│       │   │   │   ├── [L:  70] __init__.py
 │       │   │   │   ├── [L: 713] base.py
 │       │   │   │   ├── [L: 595] chat.py
 │       │   │   │   ├── [L: 141] glm.py
-│       │   │   │   └── [L: 105] openrouter.py
+│       │   │   │   ├── [L: 105] openrouter.py
+│       │   │   │   └── [L: 497] suggestion.py
 │       │   │   ├── [L: 109] policies.py
 │       │   │   ├── [L: 302] run_logging.py
 │       │   │   ├── [L: 742] session_logging.py
@@ -178,7 +188,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L: 911] node.py
+│       │   │   │   ├── [L: 912] node.py
 │       │   │   │   ├── [L: 206] session.py
 │       │   │   │   └── [L: 193] workflow.py
 │       │   │   ├── [L: 363] utils.py
@@ -193,20 +203,21 @@
 │       │       ├── [L:   8] __init__.py
 │       │       └── commander/
 │       │           ├── [L:  33] __init__.py
-│       │           ├── [L: 379] blocks.py
+│       │           ├── [L: 384] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L: 919] commander.py
+│       │           ├── [L:1263] commander.py
 │       │           ├── [L: 523] commands.py
-│       │           ├── [L: 453] executor.py
-│       │           ├── [L: 354] loop.py
+│       │           ├── [L: 481] executor.py
+│       │           ├── [L: 374] loop.py
 │       │           ├── [L: 682] monitor.py
 │       │           ├── [L: 311] persistence.py
 │       │           ├── [L: 533] rendering.py
-│       │           ├── [L:  60] result_handler.py
+│       │           ├── [L:  65] result_handler.py
 │       │           ├── [L: 128] status_indicators.py
+│       │           ├── [L: 175] suggestion_picker.py
 │       │           ├── [L: 154] text_builder.py
-│       │           ├── [L: 156] themes.py
-│       │           ├── [L: 543] variables.py
+│       │           ├── [L: 195] themes.py
+│       │           ├── [L: 663] variables.py
 │       │           ├── [L: 804] workflow_runner.py
 │       │           ├── [L:  42] workflow_state.py
 │       │           └── [L: 294] workflow_ui.py
@@ -232,7 +243,7 @@
 │       │   ├── [L: 313] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 322] node_factory.py
+│       │   │   └── [L: 341] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
@@ -243,7 +254,7 @@
 │       │   │   ├── [L: 114] server_handler.py
 │       │   │   ├── [L: 190] session_handler.py
 │       │   │   └── [L: 306] workflow_handler.py
-│       │   ├── [L: 198] protocols.py
+│       │   ├── [L: 199] protocols.py
 │       │   ├── [L: 478] proxy_manager.py
 │       │   ├── [L: 158] session_registry.py
 │       │   └── [L:  94] validation.py
@@ -252,8 +263,8 @@
 │           ├── [L: 380] http.py
 │           ├── [L: 125] in_process.py
 │           ├── [L:  67] protocol.py
-│           ├── [L: 412] tcp_socket.py
-│           └── [L: 419] unix_socket.py
+│           ├── [L: 414] tcp_socket.py
+│           └── [L: 421] unix_socket.py
 └── tests/
     ├── [L:   1] __init__.py
     ├── cli/
@@ -307,7 +318,7 @@
     │   └── tui/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 682] test_commander_dependencies.py
-    │       └── [L: 469] test_variable_expansion.py
+    │       └── [L: 665] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
     │   ├── clients/
@@ -333,4 +344,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-66 directories, 268 files, 64,049 total lines
+70 directories, 275 files, 66,313 total lines

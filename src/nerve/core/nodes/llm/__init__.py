@@ -57,6 +57,7 @@ from nerve.core.nodes.llm.base import StatelessLLMNode
 from nerve.core.nodes.llm.chat import Message, StatefulLLMNode, ToolDefinition
 from nerve.core.nodes.llm.glm import GLMNode
 from nerve.core.nodes.llm.openrouter import OpenRouterNode
+from nerve.core.nodes.llm.suggestion import SuggestionNode
 
 __all__ = [
     "GLMNode",
@@ -64,5 +65,6 @@ __all__ = [
     "OpenRouterNode",
     "StatefulLLMNode",
     "StatelessLLMNode",
+    "SuggestionNode",
     "ToolDefinition",
 ]

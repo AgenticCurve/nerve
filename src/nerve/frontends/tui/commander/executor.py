@@ -10,6 +10,7 @@ This eliminates code duplication between node and Python execution handlers.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from nerve.frontends.tui.commander.result_handler import update_block_from_resul
 
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,10 +53,14 @@ class CommandExecutor:
     timeline: Timeline
     console: Console
     async_threshold_ms: float = 200
+    on_block_complete: Callable[[Block], None] | None = None  # Callback when any block completes
 
     # Internal queue for background tasks
-    # Items: (block, task) where task is already running
-    _command_queue: asyncio.Queue[tuple[Block, asyncio.Task[None]]] = field(init=False)
+    # Items: (block, task, start_time) where task is already running
+    # start_time is None for dependency-wait tasks (execution hasn't started yet)
+    _command_queue: asyncio.Queue[tuple[Block, asyncio.Task[None], float | None]] = field(
+        init=False
+    )
     _executor_task: asyncio.Task[None] | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
@@ -123,13 +130,16 @@ class CommandExecutor:
                     await execute_fn()
 
                 # Queue the wait+execute task for background processing
+                # start_time=None because execution hasn't started yet (execute_fn handles timing)
                 wait_task: asyncio.Task[None] = asyncio.create_task(wait_and_execute())
-                await self._command_queue.put((block, wait_task))
+                await self._command_queue.put((block, wait_task, None))
                 return  # Return immediately - don't block main loop!
 
             # Dependencies ARE ready - fall through to normal execution below
 
         # No dependencies (or dependencies already ready) - use threshold-based execution (fast path or background queue)
+        # Capture start_time before task creation for accurate duration on error fallback
+        exec_start_time = time.monotonic()
         try:
             exec_task: asyncio.Task[None] = asyncio.create_task(execute_fn())
 
@@ -141,14 +151,21 @@ class CommandExecutor:
             # Fast path: completed within threshold, render result
             self.timeline.render_last(self.console)
 
+            # Notify callback if set (defensive - catch exceptions to prevent crash)
+            if self.on_block_complete is not None:
+                try:
+                    self.on_block_complete(block)
+                except Exception:
+                    logger.exception("Error in on_block_complete callback")
+
         except TimeoutError:
             # Slow path: show pending and queue for background completion
             block.status = "pending"
             block.was_async = True  # Mark as async for visual indicator on completion
             self.timeline.render_last(self.console)
 
-            # Queue the ongoing task for the executor to monitor
-            await self._command_queue.put((block, exec_task))
+            # Queue the ongoing task for the executor to monitor (with start_time for error fallback)
+            await self._command_queue.put((block, exec_task, exec_start_time))
 
     async def wait_for_dependencies(self, block: Block) -> bool:
         """Wait for all dependency blocks to complete.
@@ -219,9 +236,10 @@ class CommandExecutor:
 
             all_ready = True
             for dep_num in block.depends_on:
-                # Bounds check
+                # Bounds check (defensive - should not trigger after validation)
                 if dep_num >= len(self.timeline.blocks):
-                    continue
+                    all_ready = False
+                    break
 
                 dep_block = self.timeline.blocks[dep_num]
 
@@ -248,11 +266,11 @@ class CommandExecutor:
 
         while True:
             try:
-                # Wait for next item (block, task)
-                block, task = await self._command_queue.get()
+                # Wait for next item (block, task, start_time)
+                block, task, start_time = await self._command_queue.get()
 
                 # Spawn a monitoring task for this command (allows concurrent execution)
-                monitor = asyncio.create_task(self._monitor_task(block, task))
+                monitor = asyncio.create_task(self._monitor_task(block, task, start_time))
                 monitoring_tasks.add(monitor)
 
                 # Clean up completed monitoring tasks
@@ -266,15 +284,17 @@ class CommandExecutor:
                     t.cancel()
                 break
 
-    async def _monitor_task(self, block: Block, task: asyncio.Task[None]) -> None:
+    async def _monitor_task(
+        self, block: Block, task: asyncio.Task[None], start_time: float | None
+    ) -> None:
         """Monitor a single command task and render when complete.
 
         Args:
             block: The block to update and render.
             task: The already-running execution task.
+            start_time: When execution started (for error duration fallback).
+                None for dependency-wait tasks where execute_fn handles timing.
         """
-        start_time = time.monotonic()
-
         try:
             # Ongoing task - wait for it to complete
             # The task is already running and will update the block
@@ -285,11 +305,19 @@ class CommandExecutor:
             block.status = "error"
             block.error = f"{type(e).__name__}: {e}"
             # Ensure duration is set even for unexpected exceptions
-            if block.duration_ms is None:
+            # Only use start_time fallback if provided (not for dependency-wait tasks)
+            if block.duration_ms is None and start_time is not None:
                 block.duration_ms = (time.monotonic() - start_time) * 1000
 
         # Render the completed block (only render once at the end)
         print_block(self.console, block)
+
+        # Notify callback if set (defensive - catch exceptions to prevent crash)
+        if self.on_block_complete is not None:
+            try:
+                self.on_block_complete(block)
+            except Exception:
+                logger.exception("Error in on_block_complete callback")
 
 
 def get_block_type(node_type: str) -> BlockType:

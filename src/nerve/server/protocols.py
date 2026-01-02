@@ -130,6 +130,7 @@ NODE_TYPE_TO_BACKEND: dict[str, str] = {
     "OpenRouterNode": "openrouter",
     "GLMNode": "glm",
     "StatefulLLMNode": "llm-chat",
+    "SuggestionNode": "suggestion",
 }
 
 

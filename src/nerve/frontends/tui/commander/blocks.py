@@ -19,6 +19,9 @@ from nerve.frontends.tui.commander.status_indicators import get_status_indicator
 BlockType = Literal["bash", "llm", "python", "graph", "workflow", "node", "error"]
 BlockStatus = Literal["pending", "completed", "error", "waiting"]
 
+# Special node IDs with custom rendering behavior
+SUGGESTIONS_NODE_ID = "suggestions"
+
 
 @dataclass
 class Block:
@@ -75,15 +78,17 @@ class Block:
         header = self._build_header()
         parts.append(header)
 
-        # Input line
-        if self.input_text:
+        # Input line (skip for suggestion blocks - input is auto-generated context JSON)
+        if self.input_text and self.node_id != SUGGESTIONS_NODE_ID:
             input_line = Text()
             input_line.append("› ", style="pending" if is_pending else "dim")
             input_line.append(self.input_text, style="pending" if is_pending else "input")
             parts.append(input_line)
 
         # Blank line between input and output for visual separation
-        if self.input_text and (self.output_text or self.error) and not is_pending:
+        # Skip for suggestion blocks since we hide their input
+        show_input = self.input_text and self.node_id != SUGGESTIONS_NODE_ID
+        if show_input and (self.output_text or self.error) and not is_pending:
             parts.append(Text(""))
 
         # Output (if any) - not shown for pending blocks
