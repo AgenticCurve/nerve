@@ -160,7 +160,7 @@ class WorkflowTracker:
                                         block.raw = status
 
                     except Exception as e:
-                        logger.debug(f"Failed to poll workflow {run_id}: {e}")
+                        logger.debug("Failed to poll workflow %s: %s", run_id, e)
 
                 # Remove completed workflows from tracking
                 for run_id in completed_runs:
@@ -172,7 +172,7 @@ class WorkflowTracker:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.debug(f"Workflow polling error: {e}")
+                logger.debug("Workflow polling error: %s", e)
                 await asyncio.sleep(self.poll_interval)
 
     async def stop_polling(self) -> None:
@@ -199,7 +199,7 @@ class WorkflowTracker:
             for run_id in list(self.active.keys()):
                 try:
                     await self.adapter.cancel_workflow(run_id)
-                    logger.debug(f"Cancelled workflow {run_id} on exit")
+                    logger.debug("Cancelled workflow %s on exit", run_id)
                 except Exception as e:
-                    logger.debug(f"Failed to cancel workflow {run_id}: {e}")
+                    logger.debug("Failed to cancel workflow %s: %s", run_id, e)
             self.active.clear()

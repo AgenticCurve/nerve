@@ -205,18 +205,18 @@
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 384] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L: 615] commander.py
+│       │           ├── [L: 614] commander.py
 │       │           ├── [L: 523] commands.py
 │       │           ├── [L: 167] entity_manager.py
 │       │           ├── [L: 481] executor.py
-│       │           ├── [L: 422] input_dispatcher.py
-│       │           ├── [L: 374] loop.py
+│       │           ├── [L: 420] input_dispatcher.py
+│       │           ├── [L: 377] loop.py
 │       │           ├── [L: 682] monitor.py
 │       │           ├── [L: 311] persistence.py
 │       │           ├── [L: 533] rendering.py
 │       │           ├── [L:  65] result_handler.py
 │       │           ├── [L: 128] status_indicators.py
-│       │           ├── [L: 256] suggestion_manager.py
+│       │           ├── [L: 268] suggestion_manager.py
 │       │           ├── [L: 175] suggestion_picker.py
 │       │           ├── [L: 154] text_builder.py
 │       │           ├── [L: 195] themes.py
@@ -349,4 +349,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-70 directories, 280 files, 66,825 total lines
+70 directories, 280 files, 66,837 total lines

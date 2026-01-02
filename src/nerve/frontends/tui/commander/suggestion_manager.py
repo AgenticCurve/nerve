@@ -14,8 +14,9 @@ import html
 import json
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit.auto_suggest import AutoSuggest, Suggestion
 from prompt_toolkit.buffer import Buffer
@@ -77,7 +78,7 @@ class SuggestionManager:
     _prompt_session: PromptSession[str] | None = field(default=None, init=False)
 
     # Callback for entity sync (since we don't own entities)
-    _sync_entities: Callable[[], Any] | None = field(default=None, init=False)
+    _sync_entities: Callable[[], Awaitable[Any]] | None = field(default=None, init=False)
 
     def set_prompt_session(self, session: PromptSession[str]) -> None:
         """Set the prompt session for invalidation on suggestion updates."""
@@ -184,6 +185,17 @@ class SuggestionManager:
             "blocks": blocks,
             "cwd": os.getcwd(),
         }
+
+    def get_context_json(self) -> str:
+        """Get suggestion context as JSON string.
+
+        Public accessor for the context gathering logic.
+        Used by input_dispatcher for special @suggestions handling.
+
+        Returns:
+            JSON-encoded context dict.
+        """
+        return json.dumps(self._gather_context())
 
     async def fetch(self) -> None:
         """Fetch suggestions from the suggestion node in background.

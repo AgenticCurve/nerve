@@ -108,7 +108,7 @@ def _handle_graph_started(steps: list[StepInfo], data: dict[str, Any]) -> None:
     graph_id = data.get("graph_id", "unknown")
     input_text = data.get("input", "")
     # Avoid duplicate if already tracking this graph as running
-    if any(s.node_id == graph_id and s.status == "running" for s in steps):
+    if any(s.node_id == f"[graph] {graph_id}" and s.status == "running" for s in steps):
         return
     steps.append(
         StepInfo(

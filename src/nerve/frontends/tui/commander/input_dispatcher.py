@@ -9,10 +9,9 @@ separation of concerns and testability.
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nerve.frontends.tui.commander.blocks import Block, BlockType
@@ -157,8 +156,7 @@ class InputDispatcher:
 
         # Special handling for @suggestions - auto-gather context
         if entity_id == "suggestions" and not text:
-            context = cmd._suggestions._gather_context()
-            text = json.dumps(context)
+            text = cmd._suggestions.get_context_json()
 
         if not text:
             cmd.console.print(f"[warning]No message provided for @{entity_id}[/]")

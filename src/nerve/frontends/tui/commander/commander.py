@@ -13,7 +13,6 @@ This module is the main orchestrator, delegating to specialized modules:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -158,13 +157,13 @@ class Commander:
 
         # Tab cycles to next suggestion (only when buffer is empty)
         @kb.add("tab", filter=Condition(_is_buffer_empty))
-        def next_suggestion(event: KeyPressEvent) -> None:
+        def next_suggestion(_event: KeyPressEvent) -> None:
             """Cycle to next suggestion with Tab, or show first if available."""
             self._suggestions.cycle_next()
 
         # Shift+Tab cycles to previous suggestion (only when buffer is empty)
         @kb.add("s-tab", filter=Condition(_is_buffer_empty))
-        def prev_suggestion(event: KeyPressEvent) -> None:
+        def prev_suggestion(_event: KeyPressEvent) -> None:
             """Cycle to previous suggestion with Shift+Tab."""
             self._suggestions.cycle_prev()
 

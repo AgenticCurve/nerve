@@ -58,7 +58,7 @@ async def handle_loop(commander: Commander, args: str) -> None:
     nodes, start_prompt, until_phrase, max_rounds, templates = parsed
 
     # Validate nodes exist
-    await commander._sync_entities()
+    await commander._entities.sync()
     for node_id in nodes:
         if node_id not in commander.nodes:
             commander.console.print(f"[error]Node not found: {node_id}[/]")
@@ -268,7 +268,7 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     )
 
     validation_errors = validate_variable_references(
-        prompt, commander.timeline, commander._get_nodes_by_type()
+        prompt, commander.timeline, commander._entities.get_nodes_by_type()
     )
     if validation_errors:
         # Create an error block immediately instead of executing
@@ -285,7 +285,7 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
 
     # Detect dependencies from prompt BEFORE expansion
     dependencies = extract_block_dependencies(
-        prompt, commander.timeline, commander._get_nodes_by_type()
+        prompt, commander.timeline, commander._entities.get_nodes_by_type()
     )
 
     # Create and add block (input_text stores RAW prompt)
@@ -313,7 +313,10 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     # This ensures :::-1 and other refs have completed values
     # exclude_block_from prevents :::-1 from referencing this block itself
     expanded_prompt = expand_variables(
-        commander.timeline, prompt, commander._get_nodes_by_type(), exclude_block_from=block.number
+        commander.timeline,
+        prompt,
+        commander._entities.get_nodes_by_type(),
+        exclude_block_from=block.number,
     )
 
     # Execute
