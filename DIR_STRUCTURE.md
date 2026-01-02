@@ -132,7 +132,7 @@
 │       │   │   ├── [L: 742] session_logging.py
 │       │   │   ├── terminal/
 │       │   │   │   ├── [L:  24] __init__.py
-│       │   │   │   ├── [L: 737] claude_wezterm_node.py
+│       │   │   │   ├── [L: 879] claude_wezterm_node.py
 │       │   │   │   ├── [L: 779] pty_node.py
 │       │   │   │   └── [L: 872] wezterm_node.py
 │       │   │   ├── [L: 340] tools.py
@@ -250,12 +250,12 @@
 │       │   ├── [L: 314] engine.py
 │       │   ├── factories/
 │       │   │   ├── [L:  11] __init__.py
-│       │   │   └── [L: 341] node_factory.py
+│       │   │   └── [L: 345] node_factory.py
 │       │   ├── handlers/
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
-│       │   │   ├── [L: 491] node_lifecycle_handler.py
+│       │   │   ├── [L: 501] node_lifecycle_handler.py
 │       │   │   ├── [L: 255] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
@@ -295,6 +295,8 @@
     │   │   │   ├── [L: 176] test_chat_node.py
     │   │   │   ├── [L: 383] test_fork.py
     │   │   │   └── [L: 493] test_openrouter.py
+    │   │   ├── terminal/
+    │   │   │   └── [L: 507] test_claude_wezterm_fork.py
     │   │   ├── [L: 213] test_base.py
     │   │   ├── [L: 210] test_bash.py
     │   │   ├── [L: 231] test_budget.py
@@ -353,4 +355,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-70 directories, 284 files, 68,730 total lines
+71 directories, 285 files, 69,393 total lines

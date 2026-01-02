@@ -65,6 +65,8 @@ class ClaudeWezTermNode:
     _created_via_create: bool = field(default=False, init=False, repr=False)
     _proxy_url: str | None = field(default=None, init=False, repr=False)
     _execute_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
+    # Claude Code session tracking (for fork support)
+    _claude_session_id: str | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prevent direct instantiation."""
@@ -86,6 +88,7 @@ class ClaudeWezTermNode:
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
         proxy_url: str | None = None,
+        claude_session_id: str | None = None,
     ) -> ClaudeWezTermNode:
         """Create a new ClaudeWezTerm node and register with session.
 
@@ -103,6 +106,8 @@ class ClaudeWezTermNode:
             response_timeout: Default timeout for responses.
             proxy_url: URL for API proxy. If set, exports ANTHROPIC_BASE_URL
                        before running claude command.
+            claude_session_id: Claude Code session ID. If not provided, a UUID
+                              is generated. Used for fork support.
 
         Returns:
             A ready ClaudeWezTermNode, registered in the session.
@@ -142,6 +147,16 @@ class ClaudeWezTermNode:
 
         if "claude" not in command.lower():
             raise ValueError(f"Command must contain 'claude'. Got: {command}")
+
+        # Generate Claude session ID if not provided (for fork support)
+        import uuid as uuid_module
+
+        if claude_session_id is None:
+            claude_session_id = str(uuid_module.uuid4())
+
+        # Inject --session-id into command if not already present
+        if "--session-id" not in command:
+            command = f"{command} --session-id {claude_session_id}"
 
         # Setup history
         use_history = history if history is not None else session.history_enabled
@@ -201,6 +216,7 @@ class ClaudeWezTermNode:
             wrapper._history_writer = history_writer
             wrapper._proxy_url = proxy_url
             wrapper._execute_lock = asyncio.Lock()  # Initialize lock for execute_when_ready
+            wrapper._claude_session_id = claude_session_id
 
             # History: log the initial run command (buffer captured by first operation)
             if history_writer and history_writer.enabled:
@@ -665,6 +681,8 @@ class ClaudeWezTermNode:
         }
         if self._proxy_url:
             metadata["proxy_url"] = self._proxy_url
+        if self._claude_session_id:
+            metadata["claude_session_id"] = self._claude_session_id
         return NodeInfo(
             id=self.id,
             node_type="claude-wezterm",
@@ -672,6 +690,130 @@ class ClaudeWezTermNode:
             persistent=self.persistent,
             metadata=metadata,
         )
+
+    # -------------------------------------------------------------------------
+    # Fork support
+    # -------------------------------------------------------------------------
+
+    def _extract_base_command(self) -> str:
+        """Extract base command without session/resume/fork flags.
+
+        Strips these flags and their arguments from the stored command:
+        - --session-id <value>
+        - --resume <value>
+        - --fork-session
+
+        Returns:
+            Command string without session-related flags.
+
+        Example:
+            >>> node._command = "claude --dangerously-skip-permissions --session-id abc123"
+            >>> node._extract_base_command()
+            'claude --dangerously-skip-permissions'
+        """
+        try:
+            parts = shlex.split(self._command)
+        except ValueError:
+            # If shlex fails, fall back to simple split
+            parts = self._command.split()
+
+        filtered = []
+        skip_next = False
+
+        for part in parts:
+            if skip_next:
+                skip_next = False
+                continue
+
+            # Skip flags that take an argument
+            if part in ("--session-id", "--resume"):
+                skip_next = True
+                continue
+
+            # Skip standalone flags
+            if part == "--fork-session":
+                continue
+
+            filtered.append(part)
+
+        return shlex.join(filtered)
+
+    async def fork(self, new_id: str) -> ClaudeWezTermNode:
+        """Fork this node by creating a new Claude session branched from this one.
+
+        Uses Claude Code's native fork mechanism:
+        - --resume <original-session-id>: Resume from existing session
+        - --fork-session: Create a branch instead of continuing
+        - --session-id <new-session-id>: ID for the new forked session
+
+        The forked node is completely independent - it has its own WezTerm pane,
+        its own Claude process, and its own conversation history branched from
+        the fork point.
+
+        Args:
+            new_id: Unique ID for the forked node.
+
+        Returns:
+            New ClaudeWezTermNode with forked conversation.
+
+        Raises:
+            ValueError: If new_id already exists or session ID not tracked.
+
+        Example:
+            >>> node = await ClaudeWezTermNode.create(
+            ...     id="claude", session=session,
+            ...     command="claude --dangerously-skip-permissions"
+            ... )
+            >>> await node.send("What is Python?")
+            >>> # Fork to explore alternative direction
+            >>> researcher = await node.fork("researcher")
+            >>> await researcher.send("Now focus on security aspects")
+            >>> # Original continues independently
+            >>> await node.send("Tell me about web frameworks")
+        """
+        import uuid as uuid_module
+
+        # Validate new_id is unique
+        self.session.validate_unique_id(new_id, "node")
+
+        # Validate we have session ID to fork from
+        if not self._claude_session_id:
+            raise ValueError(
+                f"Cannot fork node '{self.id}': Claude session ID not tracked. "
+                "This node may have been created before session tracking was added."
+            )
+
+        # Generate new session ID for the fork
+        new_claude_session_id = str(uuid_module.uuid4())
+
+        # Build fork command using Claude's native fork mechanism
+        base_command = self._extract_base_command()
+        fork_command = (
+            f"{base_command} "
+            f"--resume {self._claude_session_id} "
+            f"--fork-session "
+            f"--session-id {new_claude_session_id}"
+        )
+
+        # Get cwd from inner node's backend
+        cwd = self._inner.backend.config.cwd if self._inner.backend.config else None
+
+        # Create new node with fork command
+        # Note: We pass claude_session_id explicitly to avoid re-generation
+        forked = await ClaudeWezTermNode.create(
+            id=new_id,
+            session=self.session,
+            command=fork_command,
+            cwd=cwd,
+            history=self._history_writer is not None and self._history_writer.enabled,
+            parser=self._default_parser,
+            ready_timeout=60.0,
+            response_timeout=1800.0,
+            proxy_url=self._proxy_url,
+            claude_session_id=new_claude_session_id,
+        )
+
+        return forked
 
     # -------------------------------------------------------------------------
     # Tool-capable interface (opt-in for LLMChatNode tool use)

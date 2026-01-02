@@ -403,7 +403,7 @@ class NodeLifecycleHandler:
         """Fork an existing node with a new ID.
 
         Creates a new node by copying state from the source node.
-        Only nodes that implement fork() can be forked (e.g., StatefulLLMNode).
+        Supports both sync fork (StatefulLLMNode) and async fork (ClaudeWezTermNode).
 
         Parameters:
             source_id: ID of the node to fork (required)
@@ -428,8 +428,18 @@ class NodeLifecycleHandler:
             raise ValueError(f"Node '{target_id}' already exists")
 
         # Try to fork - let the node decide if it supports forking
+        # Handle both sync fork (StatefulLLMNode) and async fork (ClaudeWezTermNode)
         try:
-            forked = source.fork(target_id)  # type: ignore[attr-defined]
+            fork_method = getattr(source, "fork", None)
+            if fork_method is None:
+                raise ValueError(f"Node type '{type(source).__name__}' does not support forking")
+
+            # Call fork - handle both sync and async
+            result = fork_method(target_id)
+            if asyncio.iscoroutine(result):
+                forked = await result
+            else:
+                forked = result
         except AttributeError:
             raise ValueError(
                 f"Node type '{type(source).__name__}' does not support forking"

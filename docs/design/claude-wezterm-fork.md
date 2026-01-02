@@ -65,7 +65,7 @@ class ClaudeWezTermNode:
 ```
 
 **Tasks:**
-- [ ] Add `_claude_session_id` field to ClaudeWezTermNode dataclass
+- [x] Add `_claude_session_id` field to ClaudeWezTermNode dataclass
 
 ---
 
@@ -121,10 +121,10 @@ async def create(
 ```
 
 **Tasks:**
-- [ ] Add `claude_session_id` parameter to `create()`
-- [ ] Generate UUID if not provided
-- [ ] Inject `--session-id` into command string
-- [ ] Store session ID on the wrapper instance
+- [x] Add `claude_session_id` parameter to `create()`
+- [x] Generate UUID if not provided
+- [x] Inject `--session-id` into command string
+- [x] Store session ID on the wrapper instance
 
 ---
 
@@ -156,7 +156,7 @@ def to_info(self) -> NodeInfo:
 ```
 
 **Tasks:**
-- [ ] Add `claude_session_id` to metadata in `to_info()`
+- [x] Add `claude_session_id` to metadata in `to_info()`
 
 ---
 
@@ -246,11 +246,11 @@ async def fork(self, new_id: str) -> ClaudeWezTermNode:
 ```
 
 **Tasks:**
-- [ ] Implement `fork()` method
-- [ ] Validate session ID exists before forking
-- [ ] Build fork command with `--resume`, `--fork-session`, `--session-id`
-- [ ] Extract cwd from inner node's backend config
-- [ ] Propagate proxy_url to forked node
+- [x] Implement `fork()` method
+- [x] Validate session ID exists before forking
+- [x] Build fork command with `--resume`, `--fork-session`, `--session-id`
+- [x] Extract cwd from inner node's backend config
+- [x] Propagate proxy_url to forked node
 
 ---
 
@@ -306,10 +306,10 @@ def _extract_base_command(self) -> str:
 ```
 
 **Tasks:**
-- [ ] Implement `_extract_base_command()` helper
-- [ ] Handle `--session-id`, `--resume` (with arguments)
-- [ ] Handle `--fork-session` (standalone flag)
-- [ ] Use shlex for proper quoting
+- [x] Implement `_extract_base_command()` helper
+- [x] Handle `--session-id`, `--resume` (with arguments)
+- [x] Handle `--fork-session` (standalone flag)
+- [x] Use shlex for proper quoting
 
 ---
 
@@ -324,8 +324,8 @@ For forked nodes, Claude needs to:
 The existing 2-second wait should be sufficient, but we may need to increase it for large conversation histories. The `ready_timeout` parameter already handles waiting for Claude to be ready.
 
 **Tasks:**
-- [ ] Verify 2-second initialization wait is sufficient for fork
-- [ ] Consider adding `fork_init_delay` parameter if needed
+- [x] Verify 2-second initialization wait is sufficient for fork
+- [x] Consider adding `fork_init_delay` parameter if needed
 
 ---
 
@@ -399,10 +399,10 @@ async def fork_node(self, params: dict[str, Any]) -> dict[str, Any]:
 ```
 
 **Tasks:**
-- [ ] Import `asyncio` in handler file
-- [ ] Check if fork result is coroutine
-- [ ] Await async fork methods
-- [ ] Keep sync fork working (StatefulLLMNode)
+- [x] Import `asyncio` in handler file
+- [x] Check if fork result is coroutine
+- [x] Await async fork methods
+- [x] Keep sync fork working (StatefulLLMNode)
 
 ---
 
@@ -431,7 +431,7 @@ if backend == "claude-wezterm":
 ```
 
 **Tasks:**
-- [ ] Pass `claude_session_id` kwarg to ClaudeWezTermNode.create()
+- [x] Pass `claude_session_id` kwarg to ClaudeWezTermNode.create()
 
 ---
 
@@ -664,49 +664,49 @@ class TestAsyncFork:
 ```
 
 **Tasks:**
-- [ ] Create `tests/core/nodes/terminal/test_claude_wezterm_fork.py`
-- [ ] Add session ID tracking tests
-- [ ] Add `_extract_base_command()` tests
-- [ ] Add fork method tests
-- [ ] Add independence tests
-- [ ] Add async fork handler tests
+- [x] Create `tests/core/nodes/terminal/test_claude_wezterm_fork.py`
+- [x] Add session ID tracking tests
+- [x] Add `_extract_base_command()` tests
+- [x] Add fork method tests
+- [x] Add independence tests
+- [x] Add async fork handler tests
 
 ---
 
 ## Implementation Checklist
 
 ### Phase 1: Session ID Tracking
-- [ ] Add `_claude_session_id` field to ClaudeWezTermNode
-- [ ] Add `claude_session_id` parameter to `create()`
-- [ ] Generate UUID if not provided
-- [ ] Inject `--session-id` into command
-- [ ] Store session ID on wrapper instance
-- [ ] Expose in `to_info()` metadata
+- [x] Add `_claude_session_id` field to ClaudeWezTermNode
+- [x] Add `claude_session_id` parameter to `create()`
+- [x] Generate UUID if not provided
+- [x] Inject `--session-id` into command
+- [x] Store session ID on wrapper instance
+- [x] Expose in `to_info()` metadata
 
 ### Phase 2: Fork Method
-- [ ] Implement `fork()` method
-- [ ] Implement `_extract_base_command()` helper
-- [ ] Validate session ID exists
-- [ ] Build fork command with proper flags
-- [ ] Extract cwd from inner node
-- [ ] Propagate proxy_url
+- [x] Implement `fork()` method
+- [x] Implement `_extract_base_command()` helper
+- [x] Validate session ID exists
+- [x] Build fork command with proper flags
+- [x] Extract cwd from inner node
+- [x] Propagate proxy_url
 
 ### Phase 3: Handler Update
-- [ ] Import asyncio in handler
-- [ ] Check if fork result is coroutine
-- [ ] Await async fork methods
-- [ ] Verify sync fork still works
+- [x] Import asyncio in handler
+- [x] Check if fork result is coroutine
+- [x] Await async fork methods
+- [x] Verify sync fork still works
 
 ### Phase 4: Factory Update
-- [ ] Pass `claude_session_id` through factory
+- [x] Pass `claude_session_id` through factory
 
 ### Phase 5: Tests
-- [ ] Session ID generation tests
-- [ ] Session ID injection tests
-- [ ] `_extract_base_command()` tests
-- [ ] Fork method tests
-- [ ] Fork independence tests
-- [ ] Async handler tests
+- [x] Session ID generation tests
+- [x] Session ID injection tests
+- [x] `_extract_base_command()` tests
+- [x] Fork method tests
+- [x] Fork independence tests
+- [x] Async handler tests
 
 ---
 
