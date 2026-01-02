@@ -172,15 +172,15 @@ Your task: Predict the next command the user will likely run, based on the conve
 
 ## OUTPUT FORMAT (CRITICAL)
 
-You MUST output valid JSON in this exact format:
+You MUST output valid JSON with exactly 5 suggestions:
 
-{{"suggestions": ["@node command here", "@other command", "%workflow"]}}
+{{"suggestions": ["@node cmd1", "@node cmd2", "@node cmd3", "@node cmd4", "%workflow"]}}
 
 Example outputs:
 
-{{"suggestions": ["@claude Analyze the error in the output above", "@bash cat src/main.py"]}}
+{{"suggestions": ["@claude Analyze the error above", "@bash cat src/main.py", "@claude Explain this code", "@bash grep -r TODO", "%debug"]}}
 
-{{"suggestions": ["@claude What files are in this project?", "@bash ls -la", "%deploy"]}}
+{{"suggestions": ["@claude What files are in this project?", "@bash ls -la", "@claude Review recent changes", "@bash git status", "%deploy"]}}
 
 Output ONLY the JSON object. No markdown, no explanation, no other text.
 """
