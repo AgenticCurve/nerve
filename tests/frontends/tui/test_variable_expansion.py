@@ -7,7 +7,11 @@ with actual block outputs.
 from __future__ import annotations
 
 from nerve.frontends.tui.commander.blocks import Block, Timeline
-from nerve.frontends.tui.commander.variables import VariableExpander, expand_variables
+from nerve.frontends.tui.commander.variables import (
+    VariableExpander,
+    expand_variables,
+    validate_variable_references,
+)
 
 
 class TestNumericBlockReferences:
@@ -316,6 +320,85 @@ class TestNodeReferences:
         # Even without nodes_by_type, it matches blocks by node_id directly
         assert result == "review output"
 
+    def test_node_reference_excludes_later_blocks(self) -> None:
+        """:::nodename should only see blocks before exclude_block_from.
+
+        This tests the TOCTOU (time-of-check-to-time-of-use) fix where node
+        references must resolve to the same block at expansion time as they
+        did at dependency extraction time.
+
+        Scenario:
+        - Block 0: driver, "hello"
+        - Block 1: nav, "first nav response"
+        - Block 2: driver, "review :::nav" (depends on Block 1)
+        - Block 3: nav, "second nav response" (added after Block 2 created)
+
+        When Block 2 expands :::nav, it should see Block 1 (the nav block that
+        existed when Block 2 was created), NOT Block 3 (added later).
+        """
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="driver", output_text="hello"))
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first nav response"))
+
+        # Block 2 is created with :::nav reference
+        # At this point, :::nav should resolve to Block 1
+        current_block = Block(block_type="llm", node_id="driver", input_text="review :::nav")
+        timeline.add(current_block)  # Block 2, number=2
+
+        # Block 3 (another nav block) is added AFTER Block 2
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="second nav response"))
+
+        # Expand with exclude_block_from=2 (Block 2's number)
+        # This simulates what happens when Block 2's execute function runs
+        result = expand_variables(
+            timeline, "review :::nav", nodes_by_type=None, exclude_block_from=current_block.number
+        )
+
+        # Should use Block 1's output ("first nav response"), NOT Block 3's
+        assert result == "review first nav response"
+
+    def test_node_reference_indexed_excludes_later_blocks(self) -> None:
+        """:::nodename[-1] should respect exclude_block_from.
+
+        Similar to the bare :::nodename test, but with explicit negative index.
+        """
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first"))
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="second"))
+
+        # Block 2 references :::nav[-1]
+        current_block = Block(block_type="llm", node_id="driver", input_text=":::nav[-1]")
+        timeline.add(current_block)  # number=2
+
+        # Block 3 added after
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="third"))
+
+        result = expand_variables(
+            timeline, ":::nav[-1]", nodes_by_type=None, exclude_block_from=current_block.number
+        )
+
+        # Should see "second" (last nav block before Block 2), NOT "third"
+        assert result == "second"
+
+    def test_node_reference_positive_index_excludes_later_blocks(self) -> None:
+        """:::nodename[N] should respect exclude_block_from for bounds checking."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first"))
+
+        # Block 1 references :::nav[1] which doesn't exist yet
+        current_block = Block(block_type="llm", node_id="driver", input_text=":::nav[1]")
+        timeline.add(current_block)  # number=1
+
+        # Block 2 adds another nav block
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="second"))
+
+        result = expand_variables(
+            timeline, ":::nav[1]", nodes_by_type=None, exclude_block_from=current_block.number
+        )
+
+        # Should error because :::nav[1] doesn't exist from Block 1's perspective
+        assert "<error:" in result.lower()
+
 
 class TestMixedReferences:
     """Tests for mixed reference patterns in a single string."""
@@ -467,3 +550,116 @@ class TestBashOutputPreference:
 
         result = expand_variables(timeline, ":::0['output']")
         assert result == "llm output"
+
+
+class TestValidateVariableReferences:
+    """Tests for validate_variable_references function (cold start detection)."""
+
+    def test_no_errors_with_valid_references(self) -> None:
+        """Valid references should return empty error list."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="output"))
+
+        errors = validate_variable_references("review :::nav", timeline)
+        assert errors == []
+
+    def test_error_when_node_has_no_blocks(self) -> None:
+        """:::nodename should error when node has no blocks (cold start)."""
+        timeline = Timeline()
+        # No nav blocks exist
+
+        errors = validate_variable_references("review :::nav", timeline)
+        assert len(errors) == 1
+        assert "nav" in errors[0]
+        assert "no blocks" in errors[0]
+
+    def test_error_when_indexed_node_has_no_blocks(self) -> None:
+        """:::nodename[N] should error when node has no blocks."""
+        timeline = Timeline()
+
+        errors = validate_variable_references("review :::nav[0]", timeline)
+        assert len(errors) == 1
+        assert "nav" in errors[0]
+        assert "no blocks" in errors[0]
+
+    def test_error_when_node_index_out_of_bounds(self) -> None:
+        """:::nodename[N] should error when index exceeds block count."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first"))
+
+        errors = validate_variable_references("review :::nav[5]", timeline)
+        assert len(errors) == 1
+        assert "out of range" in errors[0]
+
+    def test_error_when_last_on_empty_timeline(self) -> None:
+        """:::last should error when timeline is empty."""
+        timeline = Timeline()
+
+        errors = validate_variable_references("review :::last", timeline)
+        assert len(errors) == 1
+        assert ":::last" in errors[0]
+        assert "no blocks" in errors[0]
+
+    def test_error_when_negative_index_out_of_bounds(self) -> None:
+        """:::-N should error when N exceeds timeline length."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="only one"))
+
+        errors = validate_variable_references("review :::-5", timeline)
+        assert len(errors) == 1
+        assert ":::-5" in errors[0]
+        assert "out of range" in errors[0]
+
+    def test_error_when_negative_index_on_empty_timeline(self) -> None:
+        """:::-N should error when timeline is empty."""
+        timeline = Timeline()
+
+        errors = validate_variable_references("review :::-1", timeline)
+        assert len(errors) == 1
+        assert ":::-1" in errors[0]
+        assert "no blocks" in errors[0]
+
+    def test_multiple_errors_reported(self) -> None:
+        """Multiple invalid references should all be reported."""
+        timeline = Timeline()
+
+        errors = validate_variable_references("compare :::nav and :::driver", timeline)
+        assert len(errors) == 2
+        assert any("nav" in err for err in errors)
+        assert any("driver" in err for err in errors)
+
+    def test_error_when_positive_index_out_of_bounds(self) -> None:
+        """:::N should error when N exceeds timeline length."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="only one"))
+
+        errors = validate_variable_references("review :::5", timeline)
+        assert len(errors) == 1
+        assert ":::5" in errors[0]
+        assert "out of range" in errors[0]
+
+    def test_error_when_positive_index_on_empty_timeline(self) -> None:
+        """:::N should error when timeline is empty."""
+        timeline = Timeline()
+
+        errors = validate_variable_references("review :::0", timeline)
+        assert len(errors) == 1
+        assert ":::0" in errors[0]
+        assert "no blocks" in errors[0]
+
+    def test_valid_positive_index(self) -> None:
+        """Valid :::N should not error."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first"))
+
+        errors = validate_variable_references("review :::0", timeline)
+        assert errors == []
+
+    def test_valid_negative_index(self) -> None:
+        """Valid :::-N should not error."""
+        timeline = Timeline()
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="first"))
+        timeline.add(Block(block_type="llm", node_id="nav", output_text="second"))
+
+        errors = validate_variable_references("review :::-1", timeline)
+        assert errors == []

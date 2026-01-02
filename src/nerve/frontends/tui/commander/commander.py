@@ -36,7 +36,7 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from prompt_toolkit.styles import Style
 from rich.console import Console
 
-from nerve.frontends.tui.commander.blocks import Block, Timeline
+from nerve.frontends.tui.commander.blocks import Block, BlockType, Timeline
 from nerve.frontends.tui.commander.commands import dispatch_command
 from nerve.frontends.tui.commander.executor import (
     CommandExecutor,
@@ -672,6 +672,41 @@ class Commander:
                 result[node_type] = node_id
         return result
 
+    def _validate_and_create_error_block(
+        self, text: str, block_type: BlockType, node_id: str | None
+    ) -> Block | None:
+        """Validate variable references and return error block if invalid.
+
+        Checks for unresolvable references (:::nav when nav has no blocks, etc.)
+        and creates an error block if validation fails.
+
+        Args:
+            text: Text with potential variable references.
+            block_type: Type for the error block if created.
+            node_id: Node ID for the error block if created.
+
+        Returns:
+            None if validation passes, otherwise the error block
+            (already added to timeline and rendered).
+        """
+        from nerve.frontends.tui.commander.rendering import print_block
+        from nerve.frontends.tui.commander.variables import validate_variable_references
+
+        errors = validate_variable_references(text, self.timeline, self._get_nodes_by_type())
+        if not errors:
+            return None
+
+        block = Block(
+            block_type=block_type,
+            node_id=node_id,
+            input_text=text,
+            status="error",
+            error=errors[0],
+        )
+        self.timeline.add(block)
+        print_block(self.console, block)
+        return block
+
     async def _send_interrupt(self, node_id: str) -> None:
         """Send interrupt signal to a node via server."""
         if self._client is None:
@@ -863,6 +898,10 @@ class Commander:
         entity = self.entities[entity_id]
         block_type = get_block_type(entity.node_type)
 
+        # Validate variable references before proceeding (fail fast on unresolvable refs)
+        if self._validate_and_create_error_block(text, block_type, entity_id):
+            return
+
         # DON'T expand variables yet - detect dependencies first
         from nerve.frontends.tui.commander.variables import extract_block_dependencies
 
@@ -917,6 +956,10 @@ class Commander:
 
         if self._adapter is None:
             self.console.print("[error]Not connected to server[/]")
+            return
+
+        # Validate variable references before proceeding (fail fast on unresolvable refs)
+        if self._validate_and_create_error_block(code, "python", None):
             return
 
         # Detect dependencies (Python code can reference blocks and nodes)
@@ -987,6 +1030,10 @@ class Commander:
         if entity.type != "workflow":
             self.console.print(f"[error]'{workflow_id}' is a {entity.type}, not a workflow[/]")
             self.console.print("[dim]Use @ for nodes/graphs, % for workflows[/]")
+            return
+
+        # Validate variable references before proceeding (fail fast on unresolvable refs)
+        if self._validate_and_create_error_block(input_text, "workflow", workflow_id):
             return
 
         # Extract dependencies from input (for :::N references)

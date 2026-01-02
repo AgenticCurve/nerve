@@ -205,10 +205,10 @@
 │       │           ├── [L:  33] __init__.py
 │       │           ├── [L: 384] blocks.py
 │       │           ├── [L:  65] clipboard.py
-│       │           ├── [L:1216] commander.py
+│       │           ├── [L:1263] commander.py
 │       │           ├── [L: 523] commands.py
 │       │           ├── [L: 481] executor.py
-│       │           ├── [L: 354] loop.py
+│       │           ├── [L: 374] loop.py
 │       │           ├── [L: 682] monitor.py
 │       │           ├── [L: 311] persistence.py
 │       │           ├── [L: 533] rendering.py
@@ -217,7 +217,7 @@
 │       │           ├── [L: 175] suggestion_picker.py
 │       │           ├── [L: 154] text_builder.py
 │       │           ├── [L: 195] themes.py
-│       │           ├── [L: 543] variables.py
+│       │           ├── [L: 663] variables.py
 │       │           ├── [L: 804] workflow_runner.py
 │       │           ├── [L:  42] workflow_state.py
 │       │           └── [L: 294] workflow_ui.py
@@ -318,7 +318,7 @@
     │   └── tui/
     │       ├── [L:   1] __init__.py
     │       ├── [L: 682] test_commander_dependencies.py
-    │       └── [L: 469] test_variable_expansion.py
+    │       └── [L: 665] test_variable_expansion.py
     ├── gateway/
     │   ├── [L:   1] __init__.py
     │   ├── clients/
@@ -344,4 +344,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-70 directories, 275 files, 65,930 total lines
+70 directories, 275 files, 66,313 total lines

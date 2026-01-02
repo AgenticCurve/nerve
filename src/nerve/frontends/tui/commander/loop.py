@@ -261,9 +261,29 @@ async def execute_loop_step(commander: Commander, node_id: str, prompt: str) -> 
     node_type = commander.nodes.get(node_id, "node")
     block_type = get_block_type(node_type)
 
-    # Detect dependencies from prompt BEFORE expansion
-    from nerve.frontends.tui.commander.variables import extract_block_dependencies
+    # Validate variable references before proceeding (fail fast on unresolvable refs)
+    from nerve.frontends.tui.commander.variables import (
+        extract_block_dependencies,
+        validate_variable_references,
+    )
 
+    validation_errors = validate_variable_references(
+        prompt, commander.timeline, commander._get_nodes_by_type()
+    )
+    if validation_errors:
+        # Create an error block immediately instead of executing
+        block = Block(
+            block_type=block_type,
+            node_id=node_id,
+            input_text=prompt,
+            status="error",
+            error=validation_errors[0],
+        )
+        commander.timeline.add(block)
+        print_block(commander.console, block)
+        return None
+
+    # Detect dependencies from prompt BEFORE expansion
     dependencies = extract_block_dependencies(
         prompt, commander.timeline, commander._get_nodes_by_type()
     )

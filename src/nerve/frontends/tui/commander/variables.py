@@ -132,11 +132,22 @@ class VariableExpander:
     def _get_node_blocks(self, node_ref: str) -> list[Block]:
         """Get all blocks for a specific node.
 
+        Respects exclude_block_from to ensure node references resolve to the same
+        blocks at expansion time as they did at dependency extraction time.
+
         Args:
             node_ref: Node reference (ID or type/name like "claude").
         """
         node_id = self._resolve_node_id(node_ref)
-        return [b for b in self.timeline.blocks if b.node_id == node_id]
+        blocks = [b for b in self.timeline.blocks if b.node_id == node_id]
+
+        # Exclude blocks at or after the specified number (e.g., current block)
+        # This prevents TOCTOU bugs where new blocks are added between
+        # dependency extraction and expansion
+        if self.exclude_block_from is not None:
+            blocks = [b for b in blocks if b.number < self.exclude_block_from]
+
+        return blocks
 
     def _get_node_block_by_index(self, node_ref: str, idx: int) -> Block | None:
         """Get block by index within a node's blocks (supports negative indexing).
@@ -541,3 +552,112 @@ def extract_block_dependencies(
             )
 
     return dependencies
+
+
+def validate_variable_references(
+    text: str, timeline: Timeline, nodes_by_type: dict[str, str] | None = None
+) -> list[str]:
+    """Validate variable references and return list of errors.
+
+    Checks for unresolvable references that would fail during expansion:
+    - Node references (:::nodename) where the node has no blocks yet
+    - :::last when timeline is empty
+    - :::-N when timeline has fewer than N blocks
+
+    Use this BEFORE extract_block_dependencies to fail fast on invalid references.
+
+    Args:
+        text: Text with potential variable references.
+        timeline: Timeline to validate against.
+        nodes_by_type: Optional mapping from node type/name to node ID.
+
+    Returns:
+        List of error messages. Empty list means all references are valid.
+
+    Example:
+        errors = validate_variable_references("review :::nav", timeline, nodes_by_type)
+        if errors:
+            # Handle errors - don't proceed with block creation
+            for err in errors:
+                print(f"Error: {err}")
+    """
+    errors: list[str] = []
+
+    # Check :::last on empty timeline
+    if ":::last" in text and not timeline.blocks:
+        errors.append(":::last cannot be used - no blocks in timeline yet")
+
+    # Check :::-N references
+    for match in re.finditer(r":::(-\d+)", text):
+        neg_idx = int(match.group(1))
+        actual_idx = len(timeline.blocks) + neg_idx
+        if actual_idx < 0 or actual_idx >= len(timeline.blocks):
+            if not timeline.blocks:
+                errors.append(f":::{neg_idx} cannot be used - no blocks in timeline yet")
+            else:
+                errors.append(
+                    f":::{neg_idx} is out of range - only {len(timeline.blocks)} block(s) exist"
+                )
+
+    # Check :::N positive references (don't match :::N[...] indexed patterns)
+    for match in re.finditer(r":::(\d+)(?!\[)", text):
+        block_num = int(match.group(1))
+        if block_num >= len(timeline.blocks):
+            if not timeline.blocks:
+                errors.append(f":::{block_num} cannot be used - no blocks in timeline yet")
+            else:
+                errors.append(
+                    f":::{block_num} is out of range - only {len(timeline.blocks)} block(s) exist"
+                )
+
+    # Check :::nodename[N] references
+    for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[(-?\d+)\]", text):
+        node_ref = match.group(1)
+        if node_ref == "last":
+            continue  # Handled above
+
+        idx = int(match.group(2))
+        node_id = nodes_by_type.get(node_ref, node_ref) if nodes_by_type else node_ref
+        node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+
+        if not node_blocks:
+            errors.append(
+                f":::{node_ref}[{idx}] cannot be used - node '{node_ref}' has no blocks yet"
+            )
+        else:
+            # Check index bounds
+            try:
+                _ = node_blocks[idx]
+            except IndexError:
+                errors.append(
+                    f":::{node_ref}[{idx}] is out of range - node '{node_ref}' only has {len(node_blocks)} block(s)"
+                )
+
+    # Check bare :::nodename references (must check AFTER indexed to avoid double-reporting)
+    # Track indexed refs we've already seen to avoid partial matching issues
+    indexed_refs = set()
+    for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)\[-?\d+\]", text):
+        indexed_refs.add(match.start())
+
+    for match in re.finditer(r":::([a-zA-Z_][a-zA-Z0-9_-]*)", text):
+        # Skip if this position was already handled by indexed pattern
+        if match.start() in indexed_refs:
+            continue
+
+        node_ref = match.group(1)
+        if node_ref == "last":
+            continue  # Handled above
+
+        # Skip if this is actually an indexed ref (the pattern might have matched a prefix)
+        # Check if the full match is followed by [
+        end_pos = match.end()
+        if end_pos < len(text) and text[end_pos] == "[":
+            continue
+
+        node_id = nodes_by_type.get(node_ref, node_ref) if nodes_by_type else node_ref
+        node_blocks = [b for b in timeline.blocks if b.node_id == node_id]
+
+        if not node_blocks:
+            errors.append(f":::{node_ref} cannot be used - node '{node_ref}' has no blocks yet")
+
+    return errors
