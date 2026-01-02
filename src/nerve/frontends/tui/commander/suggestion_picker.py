@@ -109,28 +109,28 @@ class SuggestionPickerApp:
 
         @kb.add("up")
         @kb.add("k")
-        def move_up(event: KeyPressEvent) -> None:
+        def move_up(_event: KeyPressEvent) -> None:
             """Move selection up."""
             if self.suggestions:
                 self.selected_index = (self.selected_index - 1) % len(self.suggestions)
 
         @kb.add("down")
         @kb.add("j")
-        def move_down(event: KeyPressEvent) -> None:
+        def move_down(_event: KeyPressEvent) -> None:
             """Move selection down."""
             if self.suggestions:
                 self.selected_index = (self.selected_index + 1) % len(self.suggestions)
 
         @kb.add("home")
         @kb.add("g")
-        def go_top(event: KeyPressEvent) -> None:
+        def go_top(_event: KeyPressEvent) -> None:
             """Go to first suggestion."""
             if self.suggestions:
                 self.selected_index = 0
 
         @kb.add("end")
         @kb.add("G")
-        def go_bottom(event: KeyPressEvent) -> None:
+        def go_bottom(_event: KeyPressEvent) -> None:
             """Go to last suggestion."""
             if self.suggestions:
                 self.selected_index = len(self.suggestions) - 1

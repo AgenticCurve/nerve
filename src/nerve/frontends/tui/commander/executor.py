@@ -10,6 +10,7 @@ This eliminates code duplication between node and Python execution handlers.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from nerve.frontends.tui.commander.result_handler import update_block_from_resul
 
 if TYPE_CHECKING:
     from nerve.frontends.cli.repl.adapters import RemoteSessionAdapter
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -148,9 +151,12 @@ class CommandExecutor:
             # Fast path: completed within threshold, render result
             self.timeline.render_last(self.console)
 
-            # Notify callback if set
+            # Notify callback if set (defensive - catch exceptions to prevent crash)
             if self.on_block_complete is not None:
-                self.on_block_complete(block)
+                try:
+                    self.on_block_complete(block)
+                except Exception:
+                    logger.exception("Error in on_block_complete callback")
 
         except TimeoutError:
             # Slow path: show pending and queue for background completion
@@ -306,9 +312,12 @@ class CommandExecutor:
         # Render the completed block (only render once at the end)
         print_block(self.console, block)
 
-        # Notify callback if set
+        # Notify callback if set (defensive - catch exceptions to prevent crash)
         if self.on_block_complete is not None:
-            self.on_block_complete(block)
+            try:
+                self.on_block_complete(block)
+            except Exception:
+                logger.exception("Error in on_block_complete callback")
 
 
 def get_block_type(node_type: str) -> BlockType:
