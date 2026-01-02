@@ -205,7 +205,7 @@ class SuggestionNode(OpenRouterNode):
     node_type: ClassVar[str] = "suggestion"
 
     # Number of suggestions to request
-    num_suggestions: int = 3
+    num_suggestions: int = 5
 
     def _format_entities(self, context: dict[str, Any]) -> str:
         """Format available entities for system prompt.

@@ -456,6 +456,8 @@ class Commander:
                             from nerve.frontends.tui.commander.monitor import run_monitor
 
                             await run_monitor(self.timeline)
+                            # Clear the ghost text line that was printed when Ctrl-Y was pressed
+                            print(f"\033[A\r\033[K{prompt}", flush=True)
                             continue
 
                         # Check if suggestion picker was requested via Ctrl-P
@@ -470,7 +472,8 @@ class Commander:
                                 # Use the selected suggestion as input
                                 user_input = selected
                             else:
-                                # Cancelled - go back to prompt
+                                # Cancelled - clear the ghost text line and go back to prompt
+                                print(f"\033[A\r\033[K{prompt}", flush=True)
                                 continue
 
                         if not user_input or not user_input.strip():
