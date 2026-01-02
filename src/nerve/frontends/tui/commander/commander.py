@@ -613,7 +613,11 @@ class Commander:
                 startup_commands = re.findall(r'["\']([^"\']+)["\']', match.group(1))
 
         # Execute the config code on the server (creates nodes, graphs, workflows)
-        output, error = await self._adapter.execute_python(code, {})
+        try:
+            output, error = await self._adapter.execute_python(code, {})
+        except Exception as e:
+            self.console.print(f"[error]Config execution failed: {e}[/]")
+            return
 
         if error:
             self.console.print(f"[error]Config error: {error}[/]")

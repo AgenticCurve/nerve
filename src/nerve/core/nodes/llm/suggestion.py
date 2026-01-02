@@ -440,9 +440,10 @@ class SuggestionNode(OpenRouterNode):
             if not line:
                 continue
 
-            # Remove common numbering patterns: "1.", "1)", "- ", "* "
-            if len(line) > 1 and line[0].isdigit() and line[1] in ".):":
-                line = line[2:].strip()
+            # Remove common numbering patterns: "1.", "10.", "1)", "- ", "* "
+            number_match = re.match(r"^\d+[.):\s]+", line)
+            if number_match:
+                line = line[number_match.end() :].strip()
             elif line and line[0] in "-*":
                 line = line[1:].strip()
 
