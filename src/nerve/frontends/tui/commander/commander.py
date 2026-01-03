@@ -31,6 +31,7 @@ from nerve.frontends.tui.commander.blocks import Timeline
 from nerve.frontends.tui.commander.entity_manager import EntityInfo, EntityManager
 from nerve.frontends.tui.commander.executor import CommandExecutor
 from nerve.frontends.tui.commander.input_dispatcher import InputDispatcher
+from nerve.frontends.tui.commander.prompt_completer import SlashPromptCompleter
 from nerve.frontends.tui.commander.rendering import print_welcome
 from nerve.frontends.tui.commander.suggestion_manager import SuggestionManager
 from nerve.frontends.tui.commander.themes import get_ghost_text_color, get_theme
@@ -94,6 +95,9 @@ class Commander:
     # Input dispatching (delegate)
     _dispatcher: InputDispatcher = field(init=False)
 
+    # Slash prompt completer (for path expansion)
+    _slash_completer: SlashPromptCompleter = field(init=False)
+
     def __post_init__(self) -> None:
         """Initialize console, prompt session, entity manager, suggestion manager, and executor."""
         theme = get_theme(self.theme_name)
@@ -121,14 +125,23 @@ class Commander:
         # Get ghost text color from theme
         ghost_color = get_ghost_text_color(self.theme_name)
 
-        # Create dynamic status bar (uses terminal's default colors)
+        # Create dynamic status bar and completion menu styles
         prompt_style = Style.from_dict(
             {
                 "bottom-toolbar": "bg: noinherit",  # Explicitly use terminal default background
                 "placeholder": f"fg:{ghost_color} italic",  # Ghost text when empty
                 "auto-suggestion": f"fg:{ghost_color} italic",  # Ghost text while typing
+                # Completion menu styling
+                "completion-menu": "bg:#1a1a2e",  # Dark background
+                "completion-menu.completion": "bg:#1a1a2e #88c0d0",  # Cyan text
+                "completion-menu.completion.current": "bg:#3b4252 #a3be8c bold",  # Green highlight
+                "completion-path": "#88c0d0",  # Cyan for paths
+                "completion-path-selected": "#a3be8c bold",  # Green when selected
             }
         )
+
+        # Initialize slash prompt completer (stored for path expansion)
+        self._slash_completer = SlashPromptCompleter()
         # Create key bindings for prompt session
         kb = KeyBindings()
 
@@ -188,6 +201,24 @@ class Commander:
             if remaining:
                 event.app.current_buffer.insert_text(remaining)
 
+        # Enter key: expand slash prompts or submit
+        @kb.add("enter")
+        def handle_enter(event: KeyPressEvent) -> None:
+            """Handle Enter - expand slash prompts or submit normally."""
+            text = event.app.current_buffer.text.strip()
+
+            # Check if it's a slash prompt path that can be expanded
+            if text.startswith("/") and self._slash_completer.is_valid_prompt_path(text):
+                content = self._slash_completer.expand_prompt(text)
+                if content:
+                    # Replace buffer with content, cursor at top, don't submit
+                    event.app.current_buffer.text = content
+                    event.app.current_buffer.cursor_position = 0
+                    return
+
+            # Otherwise, submit normally
+            event.app.current_buffer.validate_and_handle()
+
         self._prompt_session = PromptSession(
             history=InMemoryHistory(),
             bottom_toolbar=self._get_status_bar,
@@ -195,6 +226,8 @@ class Commander:
             key_bindings=kb,
             placeholder=self._suggestions.get_placeholder,
             auto_suggest=self._suggestions.get_auto_suggest(),
+            completer=self._slash_completer,
+            complete_while_typing=True,
         )
         # Wire up prompt session to suggestion manager for invalidation
         self._suggestions.set_prompt_session(self._prompt_session)
