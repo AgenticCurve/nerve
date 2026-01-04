@@ -707,12 +707,11 @@ class RemoteSessionAdapter:
         )
 
         if result.success and result.data:
-            # Check for error from server (e.g., node doesn't support tools)
-            if "error" in result.data:
-                raise ValueError(result.data["error"])
+            # If node doesn't support tools, return empty list (not an error)
+            # The "error" field indicates node isn't ToolCapable, not a failure
             tools: list[dict[str, Any]] = result.data.get("tools", [])
             return tools
-        # Command failed - raise error for consistency with LocalSessionAdapter
+        # Command failed (e.g., node not found) - raise error
         error_msg = result.error or "Failed to list tools"
         raise ValueError(error_msg)
 

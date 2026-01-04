@@ -394,7 +394,8 @@ class NodeLifecycleHandler:
         node = self.validation.get_node(session, node_id)
 
         if not isinstance(node, ToolCapable):
-            raise ValueError(f"Node '{node_id}' does not support tools")
+            # Return empty tools list - not an error, just not a multi-tool node
+            return {"node_id": node_id, "tools": []}
 
         tools = node.list_tools()
         return {

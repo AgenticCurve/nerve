@@ -187,7 +187,7 @@
 │       │   │   ├── [L: 193] output.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
-│       │   │   │   ├── [L: 987] adapters.py
+│       │   │   │   ├── [L: 986] adapters.py
 │       │   │   │   ├── [L: 139] cleanup.py
 │       │   │   │   ├── [L:  38] cli.py
 │       │   │   │   ├── commands/
@@ -199,7 +199,7 @@
 │       │   │   ├── server/
 │       │   │   │   ├── [L: 548] __init__.py
 │       │   │   │   ├── [L: 214] graph.py
-│       │   │   │   ├── [L:1081] node.py
+│       │   │   │   ├── [L:1087] node.py
 │       │   │   │   ├── [L: 206] session.py
 │       │   │   │   └── [L: 193] workflow.py
 │       │   │   ├── [L: 363] utils.py
@@ -268,7 +268,7 @@
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
-│       │   │   ├── [L: 537] node_lifecycle_handler.py
+│       │   │   ├── [L: 538] node_lifecycle_handler.py
 │       │   │   ├── [L: 255] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
@@ -380,4 +380,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-77 directories, 304 files, 73,169 total lines
+77 directories, 304 files, 73,175 total lines
