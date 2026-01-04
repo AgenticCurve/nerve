@@ -23,6 +23,7 @@ from nerve.core.nodes.base import NodeInfo, NodeState
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.llm.base import StatelessLLMNode
 from nerve.core.nodes.run_logging import log_complete, log_error, log_start, log_warning
+from nerve.core.nodes.tools import ToolDefinition
 
 if TYPE_CHECKING:
     from nerve.core.session.session import Session
@@ -50,26 +51,6 @@ class Message:
         if self.name:
             msg["name"] = self.name
         return msg
-
-
-@dataclass
-class ToolDefinition:
-    """Definition of an available tool."""
-
-    name: str
-    description: str
-    parameters: dict[str, Any]  # JSON Schema
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to API-compatible dict (OpenAI format)."""
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
-            },
-        }
 
 
 # Type alias for tool executor function

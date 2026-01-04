@@ -20,6 +20,7 @@ NODE_TYPE_CHOICES = [
     "GLMNode",  # Single-shot LLM
     "StatefulLLMNode",  # Stateful chat
     "SuggestionNode",  # Suggestion generation
+    "MCPNode",  # MCP server connection
 ]
 
 
@@ -169,7 +170,7 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
 @click.option(
     "--cwd",
     default=None,
-    help="Working directory (BashNode only)",
+    help="Working directory (BashNode, MCPNode, terminal nodes)",
 )
 @click.option(
     "--bash-timeout",
@@ -250,6 +251,13 @@ async def node_list(server_name: str, session_id: str | None, json_output: bool)
     default=None,
     help="Enable/disable parallel tool calls (default: provider decides)",
 )
+# MCPNode options
+@click.option(
+    "--mcp-args",
+    "mcp_args",
+    multiple=True,
+    help="Arguments for MCP server command (MCPNode only, repeatable)",
+)
 @async_server_command
 async def node_create(
     name: str,
@@ -285,6 +293,8 @@ async def node_create(
     tool_choice: str | None,
     force_tool: str | None,
     parallel_tool_calls: bool | None,
+    # MCPNode options
+    mcp_args: tuple[str, ...],
 ) -> None:
     """Create a new node.
 
@@ -358,6 +368,18 @@ async def node_create(
 
         nerve server node send my-llm "What is 2+2?"
         nerve server node send my-llm "What is 3+3?"
+
+    **MCP nodes (MCPNode - connects to MCP server, exposes tools):**
+
+        nerve server node create notebooklm --server myproject \\
+            --type MCPNode \\
+            --command notebooklm-mcp
+
+        nerve server node create fs-mcp --server myproject \\
+            --type MCPNode \\
+            --command npx \\
+            --mcp-args @modelcontextprotocol/server-filesystem \\
+            --mcp-args /tmp
     """
     from nerve.core.validation import validate_name
     from nerve.server.protocols import Command, CommandType
@@ -436,8 +458,14 @@ async def node_create(
             error_exit("--thinking is only valid for GLMNode or StatefulLLMNode with glm provider")
         if llm_provider or system:
             error_exit("--llm-provider and --system are only valid for StatefulLLMNode")
-        if cwd and node_type not in ("PTYNode", "WezTermNode", "ClaudeWezTermNode"):
-            error_exit("--cwd is only valid for BashNode and terminal nodes")
+        if cwd and node_type not in (
+            "PTYNode",
+            "WezTermNode",
+            "ClaudeWezTermNode",
+            "BashNode",
+            "MCPNode",
+        ):
+            error_exit("--cwd is only valid for BashNode, MCPNode, and terminal nodes")
         if bash_timeout:
             error_exit("--bash-timeout is only valid for BashNode")
 
@@ -451,6 +479,13 @@ async def node_create(
             error_exit("--force-tool is only valid for StatefulLLMNode")
         if parallel_tool_calls is not None:
             error_exit("--parallel-tool-calls is only valid for StatefulLLMNode")
+
+    # MCP options validation
+    if node_type == "MCPNode":
+        if not command:
+            error_exit("--command is required for MCPNode (MCP server executable)")
+    elif mcp_args:
+        error_exit("--mcp-args is only valid for MCPNode")
 
     # Map node type to wire protocol backend value
     backend = NODE_TYPE_TO_BACKEND.get(node_type, "pty")
@@ -519,6 +554,10 @@ async def node_create(
             if provider_debug_dir:
                 provider_config["debug_dir"] = provider_debug_dir
             params["provider"] = provider_config
+
+        # Add MCP options
+        if mcp_args:
+            params["mcp_args"] = list(mcp_args)
 
         result = await client.send_command(
             Command(

@@ -3,11 +3,12 @@
 This module provides utilities to expose nodes as tools that StatefulLLMNode
 can use. Nodes opt-in to being tools by implementing the ToolCapable protocol.
 
-A node becomes tool-capable by defining four methods:
-- tool_description(): What does this tool do?
-- tool_parameters(): JSON Schema for tool inputs
-- tool_input(args): Convert tool args to context.input
-- tool_result(result): Convert execute() result to string
+A node becomes tool-capable by defining two methods:
+- list_tools(): Return list of ToolDefinition objects
+- call_tool(name, args): Execute a specific tool and return result string
+
+This design supports both single-tool nodes (N=1) and multi-tool nodes (N>1)
+like MCP servers which expose multiple tools from a single connection.
 
 Example:
     >>> bash = BashNode(id="bash", session=session)
@@ -29,13 +30,50 @@ Example:
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.run_logging import log_complete, log_error, log_start
 
 if TYPE_CHECKING:
-    from nerve.core.nodes.llm.chat import ToolDefinition, ToolExecutor
+    from nerve.core.nodes.llm.chat import ToolExecutor
+
+
+# ---------------------------------------------------------------------------
+# Tool Definition
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ToolDefinition:
+    """Definition of a tool for LLM consumption.
+
+    Used by both single-tool nodes (like BashNode) and multi-tool nodes
+    (like MCPNode) to describe their available tools.
+
+    Attributes:
+        name: Tool name (e.g., "read_file", "bash").
+        description: Human-readable description for LLM.
+        parameters: JSON Schema for tool parameters.
+        node_id: Owning node ID for routing tool calls.
+    """
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+    node_id: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to API-compatible dict (OpenAI format)."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -45,90 +83,70 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class ToolCapable(Protocol):
-    """Protocol for nodes that can be used as tools.
+    """Protocol for nodes that provide tools to LLMs.
 
     Nodes implement this protocol to opt-in to being available as tools
-    for StatefulLLMNode. The protocol requires four methods that define how
-    the node presents itself and handles tool interactions.
+    for StatefulLLMNode. The protocol requires two methods:
+    - list_tools(): Return all tools this node provides
+    - call_tool(name, args): Execute a specific tool by name
 
-    Example implementation:
+    This design supports both single-tool nodes (N=1) and multi-tool nodes
+    (N>1, like MCP servers).
+
+    Example implementation (single-tool node):
         class BashNode:
-            def tool_description(self) -> str:
-                return "Execute bash/shell commands"
-
-            def tool_parameters(self) -> dict[str, Any]:
-                return {
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string", "description": "The command"},
+            def list_tools(self) -> list[ToolDefinition]:
+                return [ToolDefinition(
+                    name="bash",
+                    description="Execute bash/shell commands",
+                    parameters={
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string", "description": "The command"},
+                        },
+                        "required": ["command"],
                     },
-                    "required": ["command"],
-                }
+                    node_id=self.id,
+                )]
 
-            def tool_input(self, args: dict[str, Any]) -> Any:
-                return args["command"]
+            async def call_tool(self, name: str, args: dict[str, Any]) -> str:
+                result = await self.execute(ExecutionContext(input=args["command"]))
+                return result.get("output", "")
 
-            def tool_result(self, result: dict[str, Any]) -> str:
-                return result.get("stdout", "")
+    Example implementation (multi-tool node like MCPNode):
+        class MCPNode:
+            def list_tools(self) -> list[ToolDefinition]:
+                return self._tools  # Multiple tools from MCP server
+
+            async def call_tool(self, name: str, args: dict[str, Any]) -> str:
+                return await self._mcp_client.call_tool(name, args)
     """
 
     id: str
 
-    async def execute(self, context: ExecutionContext) -> Any:
-        """Execute the node with given context.
+    def list_tools(self) -> list[ToolDefinition]:
+        """Return all tools this node provides.
 
-        This is the standard node execution method that all nodes implement.
-        Return type varies by node (dict, ParsedResponse, etc.).
-        """
-        ...
-
-    def tool_description(self) -> str:
-        """Return a description of what this tool does.
-
-        This description is shown to the LLM to help it decide when to use
-        this tool. Keep it concise but informative.
+        Single-tool nodes return a list of 1. Multi-tool nodes (like MCP)
+        return multiple tools.
 
         Returns:
-            Human-readable description of the tool's purpose.
+            List of ToolDefinition objects describing available tools.
         """
         ...
 
-    def tool_parameters(self) -> dict[str, Any]:
-        """Return JSON Schema for tool parameters.
-
-        This schema defines what arguments the tool accepts. The LLM uses
-        this to construct valid tool calls.
-
-        Returns:
-            JSON Schema dict with type, properties, and required fields.
-        """
-        ...
-
-    def tool_input(self, args: dict[str, Any]) -> Any:
-        """Convert tool arguments to context.input value.
-
-        When the LLM calls this tool with arguments, this method extracts
-        the value to pass as context.input to execute().
+    async def call_tool(self, name: str, args: dict[str, Any]) -> str:
+        """Execute a specific tool by name.
 
         Args:
-            args: Arguments from the LLM's tool call.
+            name: Tool name (without node prefix).
+            args: Tool arguments as dict.
 
         Returns:
-            Value to use as context.input for execute().
-        """
-        ...
+            Tool result as string (for LLM consumption).
 
-    def tool_result(self, result: Any) -> str:
-        """Convert execute() result to string for LLM.
-
-        After execute() returns, this method formats the result
-        into a string that the LLM can understand.
-
-        Args:
-            result: Result from execute() (type varies by node).
-
-        Returns:
-            String representation of the result for the LLM.
+        Raises:
+            ValueError: If tool name not found.
         """
         ...
 
@@ -145,27 +163,27 @@ def is_tool_capable(node: Any) -> bool:
         node: Any object to check.
 
     Returns:
-        True if node has all required tool methods.
+        True if node has list_tools() and call_tool() methods.
     """
     return isinstance(node, ToolCapable)
 
 
-def node_to_tool_definition(node: ToolCapable) -> ToolDefinition:
-    """Convert a tool-capable node to a ToolDefinition.
+def is_multi_tool_node(node: Any) -> bool:
+    """Check if a node has multiple tools.
+
+    Useful for Commander to determine parsing behavior:
+    - Single-tool nodes: entire input goes to the tool
+    - Multi-tool nodes: first token is tool name, rest is JSON args
 
     Args:
-        node: A node that implements ToolCapable.
+        node: Any node object.
 
     Returns:
-        ToolDefinition ready for use with StatefulLLMNode.
+        True if node is tool-capable and has more than one tool.
     """
-    from nerve.core.nodes.llm.chat import ToolDefinition
-
-    return ToolDefinition(
-        name=node.id,
-        description=node.tool_description(),
-        parameters=node.tool_parameters(),
-    )
+    if not is_tool_capable(node):
+        return False
+    return len(node.list_tools()) > 1
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +233,9 @@ def tools_from_nodes(
     Only nodes that implement the ToolCapable protocol are included.
     Nodes without tool methods are silently skipped.
 
+    Tool names are prefixed with node ID to avoid collisions when multiple
+    nodes provide tools with the same name (e.g., "bash.bash", "fs-mcp.read_file").
+
     Args:
         nodes: List of nodes. Only tool-capable ones are included.
         max_result_length: Maximum result length before truncation.
@@ -238,11 +259,27 @@ def tools_from_nodes(
         ...     tool_executor=executor,
         ... )
     """
-    # Filter to only tool-capable nodes
-    tool_nodes: dict[str, ToolCapable] = {node.id: node for node in nodes if is_tool_capable(node)}
+    # Build tool definitions and routing map
+    # Map: prefixed_name -> (node, original_tool_name)
+    definitions: list[ToolDefinition] = []
+    tool_map: dict[str, tuple[ToolCapable, str]] = {}
 
-    # Generate tool definitions
-    definitions = [node_to_tool_definition(node) for node in tool_nodes.values()]
+    for node in nodes:
+        if not is_tool_capable(node):
+            continue
+
+        for tool in node.list_tools():
+            # Prefix tool name with node ID to avoid collisions
+            prefixed_name = f"{node.id}.{tool.name}"
+
+            prefixed_tool = ToolDefinition(
+                name=prefixed_name,
+                description=tool.description,
+                parameters=tool.parameters,
+                node_id=node.id,
+            )
+            definitions.append(prefixed_tool)
+            tool_map[prefixed_name] = (node, tool.name)
 
     # Create executor
     async def executor(
@@ -253,18 +290,19 @@ def tools_from_nodes(
         """Execute a tool by name with given arguments.
 
         Args:
-            name: Tool name (node id).
+            name: Tool name (prefixed with node id, e.g., "bash.bash").
             args: Arguments from LLM's tool call.
             context: Optional parent context for logging inheritance.
 
         Returns:
             String result for the LLM.
         """
-        # Find the node
-        node = tool_nodes.get(name)
-        if node is None:
-            available = list(tool_nodes.keys())
+        # Find the node and original tool name
+        if name not in tool_map:
+            available = list(tool_map.keys())
             return f"Error: Unknown tool '{name}'. Available tools: {available}"
+
+        node, original_tool_name = tool_map[name]
 
         # Get logger from node's session if available
         logger = None
@@ -283,33 +321,18 @@ def tools_from_nodes(
             node.id,
             "tool_start",
             exec_id=exec_id,
+            tool=original_tool_name,
             tool_args=_truncate_for_log(str(args)),
         )
 
         start_time = time.monotonic()
 
         try:
-            # Convert args to input
-            input_value = node.tool_input(args)
-
-            # Build execution context
-            exec_context = ExecutionContext(
-                session=session,
-                input=input_value,
-                # Inherit logging context from parent
-                run_logger=context.run_logger if context else None,
-                exec_id=exec_id,
-                correlation_id=context.correlation_id if context else None,
-            )
-
-            # Execute the node
-            result = await node.execute(exec_context)
-
-            # Format result
-            formatted = node.tool_result(result)
+            # Call the tool directly via call_tool()
+            result = await node.call_tool(original_tool_name, args)
 
             # Truncate if needed
-            formatted = truncate_result(formatted, max_result_length)
+            result = truncate_result(result, max_result_length)
 
             # Log completion
             duration = time.monotonic() - start_time
@@ -319,10 +342,11 @@ def tools_from_nodes(
                 "tool_complete",
                 duration,
                 exec_id=exec_id,
-                result_length=len(formatted),
+                tool=original_tool_name,
+                result_length=len(result),
             )
 
-            return formatted
+            return result
 
         except Exception as e:
             duration = time.monotonic() - start_time
@@ -333,6 +357,7 @@ def tools_from_nodes(
                 "tool_error",
                 e,
                 exec_id=exec_id,
+                tool=original_tool_name,
                 duration_s=f"{duration:.1f}",
             )
             return error_msg

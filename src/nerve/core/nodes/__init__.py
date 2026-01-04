@@ -96,6 +96,9 @@ from nerve.core.nodes.identity import IdentityNode
 # LLM nodes
 from nerve.core.nodes.llm import OpenRouterNode
 
+# MCP nodes
+from nerve.core.nodes.mcp import MCPNode
+
 # Agent capabilities: Error handling
 from nerve.core.nodes.policies import ErrorPolicy
 
@@ -103,7 +106,13 @@ from nerve.core.nodes.policies import ErrorPolicy
 from nerve.core.nodes.terminal import ClaudeWezTermNode, PTYNode, WezTermNode
 
 # Tool adapter
-from nerve.core.nodes.tools import ToolCapable, is_tool_capable, tools_from_nodes
+from nerve.core.nodes.tools import (
+    ToolCapable,
+    ToolDefinition,
+    is_multi_tool_node,
+    is_tool_capable,
+    tools_from_nodes,
+)
 
 # Agent capabilities: Tracing
 from nerve.core.nodes.trace import ExecutionTrace, StepTrace
@@ -123,6 +132,8 @@ __all__ = [
     "IdentityNode",
     # LLM
     "OpenRouterNode",
+    # MCP
+    "MCPNode",
     # Context
     "ExecutionContext",
     # Graph
@@ -155,6 +166,8 @@ __all__ = [
     "HISTORY_BUFFER_LINES",
     # Tools
     "ToolCapable",
+    "ToolDefinition",
     "is_tool_capable",
+    "is_multi_tool_node",
     "tools_from_nodes",
 ]
