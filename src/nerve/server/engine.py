@@ -176,6 +176,7 @@ class NerveEngine:
             CommandType.LIST_NODES: self.node_lifecycle_handler.list_nodes,
             CommandType.GET_NODE: self.node_lifecycle_handler.get_node,
             CommandType.FORK_NODE: self.node_lifecycle_handler.fork_node,
+            CommandType.LIST_NODE_TOOLS: self.node_lifecycle_handler.list_node_tools,
             # Node interaction
             CommandType.RUN_COMMAND: self.node_interaction_handler.run_command,
             CommandType.EXECUTE_INPUT: self.node_interaction_handler.execute_input,

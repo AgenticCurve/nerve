@@ -8,7 +8,7 @@ the Open/Closed Principle:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
     from nerve.core.nodes import Node
@@ -48,6 +48,7 @@ class NodeFactory:
         "glm",
         "llm-chat",
         "suggestion",
+        "mcp",
     )
 
     async def create(
@@ -85,6 +86,12 @@ class NodeFactory:
         http_backend: HttpBackend = "aiohttp",
         # ClaudeWezTerm options
         claude_session_id: str | None = None,  # Claude Code session ID for fork support
+        mcp_config: dict[str, Any] | None = None,  # MCP server config for Claude Code
+        strict_mcp_config: bool = False,  # Fail if MCP server fails to start
+        # MCP node options
+        mcp_args: list[str] | None = None,  # MCP server command arguments
+        mcp_env: dict[str, str] | None = None,  # MCP server environment variables
+        mcp_timeout: float = 30.0,  # MCP operation timeout
     ) -> Node:
         """Create a node of the specified backend type.
 
@@ -113,6 +120,9 @@ class NodeFactory:
             parallel_tool_calls: Control parallel tool execution (True/False/None).
             http_backend: HTTP backend for LLM nodes ("aiohttp" or "openai").
             claude_session_id: Claude Code session ID for fork support (claude-wezterm only).
+            mcp_config: MCP server config for Claude Code (claude-wezterm only).
+                       Dict of server names to configs (command, args, env, etc.).
+            strict_mcp_config: If True, fail if any MCP server fails to start (claude-wezterm only).
 
         Returns:
             The created node.
@@ -124,6 +134,7 @@ class NodeFactory:
         from nerve.core.nodes.bash import BashNode
         from nerve.core.nodes.identity import IdentityNode
         from nerve.core.nodes.llm import GLMNode, OpenRouterNode, StatefulLLMNode, SuggestionNode
+        from nerve.core.nodes.mcp import MCPNode
         from nerve.core.nodes.terminal import (
             ClaudeWezTermNode,
             PTYNode,
@@ -140,6 +151,7 @@ class NodeFactory:
             | GLMNode
             | StatefulLLMNode
             | SuggestionNode
+            | MCPNode
         )
 
         if backend == "pty":
@@ -194,6 +206,8 @@ class NodeFactory:
                 ready_timeout=ready_timeout,
                 proxy_url=proxy_url,
                 claude_session_id=claude_session_id,
+                mcp_config=mcp_config,
+                strict_mcp_config=strict_mcp_config,
             )
         elif backend == "bash":
             # BashNode is stateless - no lifecycle management
@@ -303,8 +317,7 @@ class NodeFactory:
                     if not is_tool_capable(tool_node):
                         raise ValueError(
                             f"Node '{tid}' is not tool-capable. "
-                            "It must implement tool_description(), tool_parameters(), "
-                            "tool_input(), and tool_result() methods."
+                            "It must implement list_tools() and call_tool() methods."
                         )
                     tool_nodes.append(tool_node)
 
@@ -338,6 +351,26 @@ class NodeFactory:
                 timeout=llm_timeout or 30.0,  # Faster timeout for suggestions
                 debug_dir=llm_debug_dir,
                 http_backend=http_backend,
+            )
+        elif backend == "mcp":
+            # MCPNode - connects to MCP server and exposes its tools
+            if not command:
+                raise ValueError("command is required for mcp backend (MCP server executable)")
+
+            # command can be string or list, MCPNode.create expects string
+            cmd_str = command if isinstance(command, str) else command[0]
+            # If command is a list, remaining items go to mcp_args
+            if isinstance(command, list) and len(command) > 1:
+                mcp_args = (mcp_args or []) + command[1:]
+
+            node = await MCPNode.create(
+                id=str(node_id),
+                session=session,
+                command=cmd_str,
+                args=mcp_args,
+                env=mcp_env,
+                cwd=cwd,
+                timeout=mcp_timeout,
             )
         else:
             raise ValueError(f"Unknown backend: '{backend}'. Valid backends: {self.VALID_BACKENDS}")

@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nerve.frontends.tui.commander.suggestion_history import (
     append_to_history_async,
@@ -178,6 +178,11 @@ class InputDispatcher:
     async def handle_entity_message(self, message: str) -> None:
         """Handle @entity_name message syntax for both nodes and graphs.
 
+        For multi-tool nodes (like MCPNode), supports:
+        - @node ?           → List all tools
+        - @node tool ?      → Show tool details
+        - @node tool {...}  → Execute tool with JSON args
+
         Args:
             message: The message after the @ prefix (e.g., "claude Hello!").
         """
@@ -186,6 +191,14 @@ class InputDispatcher:
             execute_graph_command,
             execute_node_command,
             get_block_type,
+        )
+        from nerve.frontends.tui.commander.multi_tool import (
+            is_help_command,
+            is_multi_tool_node_type,
+            parse_help_command,
+            parse_multi_tool_input,
+            render_node_tools_help,
+            render_tool_help,
         )
         from nerve.frontends.tui.commander.variables import (
             expand_variables,
@@ -210,10 +223,7 @@ class InputDispatcher:
         if entity_id == "suggestions" and not text:
             text = cmd._suggestions.get_context_json()
 
-        if not text:
-            cmd.console.print(f"[warning]No message provided for @{entity_id}[/]")
-            return
-
+        # Lookup entity
         if entity_id not in cmd.entities:
             await cmd._entities.sync()
             if entity_id not in cmd.entities:
@@ -222,16 +232,77 @@ class InputDispatcher:
                 return
 
         entity = cmd.entities[entity_id]
+        is_multi_tool = is_multi_tool_node_type(entity.node_type)
+
+        # Handle help commands for multi-tool nodes (before block creation)
+        if is_multi_tool and (text == "" or is_help_command(text)):
+            is_help, tool_name = parse_help_command(text) if text else (True, None)
+            if is_help or text == "":
+                # Fetch tools from server
+                tools_data = await cmd._adapter.list_node_tools(entity_id)
+                from nerve.core.nodes.tools import ToolDefinition
+
+                tools = [
+                    ToolDefinition(
+                        name=t["name"],
+                        description=t.get("description", ""),
+                        parameters=t.get("parameters", {}),
+                        node_id=t.get("node_id", entity_id),
+                    )
+                    for t in tools_data
+                ]
+
+                if tool_name:
+                    # Show specific tool help
+                    tool = next((t for t in tools if t.name == tool_name), None)
+                    if tool:
+                        render_tool_help(cmd.console, entity_id, tool)
+                    else:
+                        cmd.console.print(f"[error]Tool '{tool_name}' not found[/]")
+                        tool_names = [t.name for t in tools]
+                        cmd.console.print(f"[dim]Available: {', '.join(tool_names)}[/]")
+                else:
+                    # Show all tools
+                    render_node_tools_help(cmd.console, entity_id, tools)
+                return
+
+        # For non-help commands, require text
+        if not text:
+            if is_multi_tool:
+                cmd.console.print(f'[warning]Usage: @{entity_id} <tool> {{"arg": "value"}}[/]')
+                cmd.console.print(f"[dim]Use @{entity_id} ? to list tools[/]")
+            else:
+                cmd.console.print(f"[warning]No message provided for @{entity_id}[/]")
+            return
+
         block_type = get_block_type(entity.node_type)
 
+        # For multi-tool nodes, parse tool name and JSON args
+        execution_input: str | dict[str, Any]
+        if is_multi_tool:
+            try:
+                tool_name, tool_args = parse_multi_tool_input(text)
+                execution_input = {"tool": tool_name, "args": tool_args}
+            except ValueError as e:
+                cmd.console.print(f"[error]{e}[/]")
+                return
+        else:
+            execution_input = text
+
         # Validate variable references before proceeding (fail fast on unresolvable refs)
-        if self._validate_and_create_error_block(text, block_type, entity_id):
+        if isinstance(execution_input, str) and self._validate_and_create_error_block(
+            execution_input, block_type, entity_id
+        ):
             return
 
         # DON'T expand variables yet - detect dependencies first
-        dependencies = extract_block_dependencies(
-            text, cmd.timeline, cmd._entities.get_nodes_by_type()
-        )
+        dependencies: set[int]
+        if isinstance(execution_input, str):
+            dependencies = extract_block_dependencies(
+                execution_input, cmd.timeline, cmd._entities.get_nodes_by_type()
+            )
+        else:
+            dependencies = set()  # Multi-tool nodes use JSON, no variable expansion
 
         # Create block with dependency info (input_text stores RAW text)
         block = Block(
@@ -252,13 +323,19 @@ class InputDispatcher:
         # This ensures dependencies are completed before expansion
         async def execute() -> None:
             # By this point, execute_with_threshold has waited for dependencies
-            # Pass block.number to exclude current block from negative index resolution
-            expanded_text = expand_variables(
-                cmd.timeline,
-                text,
-                cmd._entities.get_nodes_by_type(),
-                exclude_block_from=block.number,
-            )
+            # For multi-tool nodes, pass parsed input; for others, expand variables
+            final_input: str | dict[str, Any]
+            if isinstance(execution_input, dict):
+                # Multi-tool node: pass structured input
+                final_input = execution_input
+            else:
+                # Regular node: expand variables
+                final_input = expand_variables(
+                    cmd.timeline,
+                    execution_input,
+                    cmd._entities.get_nodes_by_type(),
+                    exclude_block_from=block.number,
+                )
 
             # Route based on entity type
             if entity.type == "graph":
@@ -266,14 +343,14 @@ class InputDispatcher:
                     cmd._adapter,  # type: ignore[arg-type]
                     block,
                     entity_id,
-                    expanded_text,
+                    str(final_input) if isinstance(final_input, dict) else final_input,
                     start_time,
                 )
             else:
                 await execute_node_command(
                     cmd._adapter,  # type: ignore[arg-type]
                     block,
-                    expanded_text,
+                    final_input,
                     start_time,
                     cmd._set_active_node,
                 )

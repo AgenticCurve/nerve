@@ -48,6 +48,13 @@ class NodeState(Enum):
 
     State transitions:
         CREATED -> STARTING -> READY <-> BUSY -> STOPPING -> STOPPED
+                        ↓                           ↑
+                      ERROR ────────────────────────┘
+                           (via stop() only)
+
+    ERROR indicates an unrecoverable failure (e.g., MCP server crashed,
+    connection lost). A node in ERROR state cannot transition out except
+    via stop() -> STOPPED. User must delete and recreate the node to recover.
     """
 
     CREATED = auto()  # Node instantiated but not started
@@ -56,6 +63,7 @@ class NodeState(Enum):
     BUSY = auto()  # Node is processing
     STOPPING = auto()  # Node is shutting down (cleanup in progress)
     STOPPED = auto()  # Node is stopped and cannot be used
+    ERROR = auto()  # Unrecoverable error state (connection lost, crash, etc.)
 
 
 @dataclass

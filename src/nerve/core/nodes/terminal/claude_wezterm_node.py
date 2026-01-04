@@ -11,6 +11,7 @@ import shlex
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from nerve.core.nodes.base import NodeInfo, NodeState
@@ -21,6 +22,7 @@ from nerve.core.types import ParserType
 
 if TYPE_CHECKING:
     from nerve.core.nodes.context import ExecutionContext
+    from nerve.core.nodes.tools import ToolDefinition
     from nerve.core.session.session import Session
 
 
@@ -73,6 +75,9 @@ class ClaudeWezTermNode:
     # Fork metadata (set when node is created via fork)
     _forked_from: str | None = field(default=None, init=False, repr=False)
     _fork_timestamp: float | None = field(default=None, init=False, repr=False)
+    # MCP config (for Claude Code native MCP support)
+    _mcp_config: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _mcp_config_path: Path | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Prevent direct instantiation."""
@@ -95,6 +100,8 @@ class ClaudeWezTermNode:
         response_timeout: float = 1800.0,
         proxy_url: str | None = None,
         claude_session_id: str | None = None,
+        mcp_config: dict[str, Any] | None = None,
+        strict_mcp_config: bool = False,
     ) -> ClaudeWezTermNode:
         """Create a new ClaudeWezTerm node and register with session.
 
@@ -114,6 +121,11 @@ class ClaudeWezTermNode:
                        before running claude command.
             claude_session_id: Claude Code session ID. If not provided, a UUID
                               is generated. Used for fork support.
+            mcp_config: MCP server configuration dict. Keys are server names,
+                       values are server configs (command, args, env, etc.).
+                       Passed to Claude via --mcp-config flag.
+            strict_mcp_config: If True, add --strict-mcp-config flag to fail
+                              if any MCP server fails to start.
 
         Returns:
             A ready ClaudeWezTermNode, registered in the session.
@@ -199,6 +211,30 @@ class ClaudeWezTermNode:
                 claude_session_id = str(uuid_module.uuid4())
             command = f"{command} --session-id {claude_session_id}"
 
+        # Handle MCP config (write to temp file, add --mcp-config flag)
+        mcp_config_path: Path | None = None
+        if mcp_config:
+            import json
+            import tempfile
+
+            # Generate unique filename for MCP config
+            config_filename = f"nerve-mcp-{id}-{uuid_module.uuid4().hex[:8]}.json"
+            mcp_config_path = Path(tempfile.gettempdir()) / config_filename
+
+            # Wrap in mcpServers format (Claude Code expects this structure)
+            full_config = {"mcpServers": mcp_config}
+
+            with open(mcp_config_path, "w") as f:
+                json.dump(full_config, f, indent=2)
+
+            # Append --mcp-config flag to command
+            command = f"{command} --mcp-config {mcp_config_path}"
+
+            if strict_mcp_config:
+                command = f"{command} --strict-mcp-config"
+
+            logger.debug(f"MCP config written to {mcp_config_path} for node '{id}'")
+
         # Setup history
         use_history = history if history is not None else session.history_enabled
         history_writer = None
@@ -260,6 +296,8 @@ class ClaudeWezTermNode:
             wrapper._claude_session_id = claude_session_id
             wrapper._ready_timeout = ready_timeout
             wrapper._response_timeout = response_timeout
+            wrapper._mcp_config = mcp_config
+            wrapper._mcp_config_path = mcp_config_path
 
             # History: log the initial run command (buffer captured by first operation)
             if history_writer and history_writer.enabled:
@@ -702,6 +740,17 @@ class ClaudeWezTermNode:
         await self._inner.stop()
         self.state = NodeState.STOPPED
 
+        # Clean up MCP config temp file
+        if self._mcp_config_path and self._mcp_config_path.exists():
+            import logging
+
+            logger = logging.getLogger(__name__)
+            try:
+                self._mcp_config_path.unlink()
+                logger.debug(f"Deleted MCP config file: {self._mcp_config_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete MCP config file {self._mcp_config_path}: {e}")
+
         # Log node stopped (persistent node)
         if self.session and self.session.session_logger:
             self.session.session_logger.log_node_stopped(self.id, reason="stopped")
@@ -716,7 +765,7 @@ class ClaudeWezTermNode:
 
     def to_info(self) -> NodeInfo:
         """Get node information."""
-        metadata: dict[str, str | float | None] = {
+        metadata: dict[str, Any] = {
             "pane_id": self.pane_id,
             "command": self.command,
             "default_parser": self._default_parser.value,
@@ -730,6 +779,8 @@ class ClaudeWezTermNode:
             metadata["forked_from"] = self._forked_from
         if self._fork_timestamp:
             metadata["fork_timestamp"] = self._fork_timestamp
+        if self._mcp_config:
+            metadata["mcp_servers"] = list(self._mcp_config.keys())
         return NodeInfo(
             id=self.id,
             node_type="claude-wezterm",
@@ -869,58 +920,67 @@ class ClaudeWezTermNode:
     # Tool-capable interface (opt-in for LLMChatNode tool use)
     # -------------------------------------------------------------------------
 
-    def tool_description(self) -> str:
-        """Return description of this tool for LLM.
+    def list_tools(self) -> list[ToolDefinition]:
+        """Return all tools this node provides.
+
+        ClaudeWezTermNode is a single-tool node that provides the "ask_claude" tool.
 
         Returns:
-            Human-readable description of what this tool does.
+            List containing one ToolDefinition for Claude interaction.
         """
-        return "Ask Claude (another AI assistant) for help, opinions, or to perform tasks"
+        from nerve.core.nodes.tools import ToolDefinition
 
-    def tool_parameters(self) -> dict[str, Any]:
-        """Return JSON Schema for tool parameters.
-
-        Returns:
-            JSON Schema dict defining accepted parameters.
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "The message or question to send to Claude",
+        return [
+            ToolDefinition(
+                name="ask_claude",
+                description="Ask Claude (another AI assistant) for help, opinions, or to perform tasks",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "description": "The message or question to send to Claude",
+                        },
+                    },
+                    "required": ["message"],
                 },
-            },
-            "required": ["message"],
-        }
+                node_id=self.id,
+            )
+        ]
 
-    def tool_input(self, args: dict[str, Any]) -> str:
-        """Convert tool arguments to context.input value.
-
-        Args:
-            args: Arguments from LLM's tool call.
-
-        Returns:
-            Message string to send to Claude.
-        """
-        message = args.get("message", "")
-        return str(message) if message else ""
-
-    def tool_result(self, result: dict[str, Any]) -> str:
-        """Convert execute() result to string for LLM.
+    async def call_tool(self, name: str, args: dict[str, Any]) -> str:
+        """Execute the ask_claude tool.
 
         Args:
-            result: Response dict from execute().
+            name: Tool name (must be "ask_claude").
+            args: Arguments with "message" key.
 
         Returns:
             Claude's response text (last text section only).
+
+        Raises:
+            ValueError: If tool name is not "ask_claude".
         """
+        if name != "ask_claude":
+            raise ValueError(
+                f"Unknown tool '{name}'. ClaudeWezTermNode only provides 'ask_claude' tool."
+            )
+
+        message = args.get("message", "")
+        message_str = str(message) if message else ""
+
+        from nerve.core.nodes.context import ExecutionContext
+
+        context = ExecutionContext(session=self.session, input=message_str)
+        result = await self.execute(context)
+
         # Get only the last text section (most recent/final response)
-        sections = result.get("sections", [])
+        # Note: sections are in result["attributes"]["sections"]
+        sections = result.get("attributes", {}).get("sections", [])
         text_sections = [s for s in sections if s.get("type") == "text"]
         if text_sections:
             content = text_sections[-1].get("content", "")
-            return str(content) if content else ""
+            return str(content) if content else "(no response)"
         return "(no response)"
 
     def __repr__(self) -> str:
