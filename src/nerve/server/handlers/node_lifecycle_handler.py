@@ -101,6 +101,11 @@ class NodeLifecycleHandler:
         )
         # MCPNode options
         mcp_args = params.get("mcp_args")
+        mcp_env = params.get("mcp_env")
+        mcp_timeout = params.get("mcp_timeout", 30.0)
+        # ClaudeWezTermNode MCP passthrough options
+        mcp_config = params.get("mcp_config")
+        strict_mcp_config = params.get("strict_mcp_config", False)
 
         # Handle provider configuration and start proxy if needed
         proxy_url: str | None = None
@@ -152,6 +157,11 @@ class NodeLifecycleHandler:
                 http_backend=http_backend,
                 # MCPNode options
                 mcp_args=mcp_args,
+                mcp_env=mcp_env,
+                mcp_timeout=mcp_timeout,
+                # ClaudeWezTermNode MCP passthrough
+                mcp_config=mcp_config,
+                strict_mcp_config=strict_mcp_config,
             )
         except Exception as e:
             # Cleanup proxy on failure
