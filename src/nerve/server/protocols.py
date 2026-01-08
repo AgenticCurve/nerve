@@ -78,6 +78,7 @@ class CommandType(Enum):
     LIST_NODES = auto()
     GET_NODE = auto()
     FORK_NODE = auto()
+    LIST_NODE_TOOLS = auto()  # List tools from a ToolCapable node
 
     # Interaction
     RUN_COMMAND = auto()  # Fire and forget - start a program
@@ -132,6 +133,7 @@ NODE_TYPE_TO_BACKEND: dict[str, str] = {
     "GLMNode": "glm",
     "StatefulLLMNode": "llm-chat",
     "SuggestionNode": "suggestion",
+    "MCPNode": "mcp",
 }
 
 

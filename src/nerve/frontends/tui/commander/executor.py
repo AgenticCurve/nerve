@@ -346,7 +346,7 @@ def get_block_type(node_type: str) -> BlockType:
 async def execute_node_command(
     adapter: RemoteSessionAdapter,
     block: Block,
-    text: str,
+    input_data: str | dict[str, Any],
     start_time: float,
     set_active_node: Callable[[str | None], None],
 ) -> None:
@@ -355,16 +355,24 @@ async def execute_node_command(
     Args:
         adapter: Session adapter for server communication.
         block: The block to update with results.
-        text: The input text (already expanded by caller).
+        input_data: The input (text for regular nodes, dict for multi-tool nodes).
         start_time: When execution started (for duration calculation).
         set_active_node: Callback to set/clear active node ID for interrupt support.
     """
+    import json
+
     node_id = block.node_id
     if not node_id:
         block.status = "error"
         block.error = "No node ID"
         block.duration_ms = (time.monotonic() - start_time) * 1000
         return
+
+    # Serialize dict input to JSON string for transport
+    if isinstance(input_data, dict):
+        text = json.dumps(input_data)
+    else:
+        text = input_data
 
     # Track active node for interrupt support
     set_active_node(node_id)

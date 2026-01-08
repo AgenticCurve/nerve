@@ -99,6 +99,13 @@ class NodeLifecycleHandler:
             Literal["aiohttp", "openai"],
             params.get("http_backend", "aiohttp"),
         )
+        # MCPNode options
+        mcp_args = params.get("mcp_args")
+        mcp_env = params.get("mcp_env")
+        mcp_timeout = params.get("mcp_timeout", 30.0)
+        # ClaudeWezTermNode MCP passthrough options
+        mcp_config = params.get("mcp_config")
+        strict_mcp_config = params.get("strict_mcp_config", False)
 
         # Handle provider configuration and start proxy if needed
         proxy_url: str | None = None
@@ -148,6 +155,13 @@ class NodeLifecycleHandler:
                 parallel_tool_calls=parallel_tool_calls,
                 # HTTP backend
                 http_backend=http_backend,
+                # MCPNode options
+                mcp_args=mcp_args,
+                mcp_env=mcp_env,
+                mcp_timeout=mcp_timeout,
+                # ClaudeWezTermNode MCP passthrough
+                mcp_config=mcp_config,
+                strict_mcp_config=strict_mcp_config,
             )
         except Exception as e:
             # Cleanup proxy on failure
@@ -373,6 +387,39 @@ class NodeLifecycleHandler:
             result["pane_id"] = info.metadata["pane_id"]
 
         return result
+
+    async def list_node_tools(self, params: dict[str, Any]) -> dict[str, Any]:
+        """List tools from a ToolCapable node.
+
+        Args:
+            params: Must contain "node_id".
+
+        Returns:
+            Dict with "tools" list containing tool definitions.
+        """
+        from nerve.core.nodes.tools import ToolCapable
+
+        session = self.session_registry.get_session(params.get("session_id"))
+        node_id = self.validation.require_param(params, "node_id")
+        node = self.validation.get_node(session, node_id)
+
+        if not isinstance(node, ToolCapable):
+            # Return empty tools list - not an error, just not a multi-tool node
+            return {"node_id": node_id, "tools": []}
+
+        tools = node.list_tools()
+        return {
+            "node_id": node_id,
+            "tools": [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "node_id": t.node_id,
+                }
+                for t in tools
+            ],
+        }
 
     def _gather_nodes_info(self, session: Any, node_ids: list[str]) -> list[dict[str, Any]]:
         """Gather info dicts for nodes.

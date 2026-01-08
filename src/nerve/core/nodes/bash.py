@@ -25,6 +25,7 @@ from nerve.core.nodes.context import ExecutionContext
 from nerve.core.nodes.run_logging import log_complete, log_error, log_start, log_warning
 
 if TYPE_CHECKING:
+    from nerve.core.nodes.tools import ToolDefinition
     from nerve.core.session.session import Session
 
 
@@ -405,52 +406,56 @@ class BashNode:
     # Tool-capable interface (opt-in for LLMChatNode tool use)
     # -------------------------------------------------------------------------
 
-    def tool_description(self) -> str:
-        """Return description of this tool for LLM.
+    def list_tools(self) -> list[ToolDefinition]:
+        """Return all tools this node provides.
+
+        BashNode is a single-tool node that provides the "bash" tool.
 
         Returns:
-            Human-readable description of what this tool does.
+            List containing one ToolDefinition for bash command execution.
         """
-        return "Execute bash/shell commands and return stdout/stderr"
+        from nerve.core.nodes.tools import ToolDefinition
 
-    def tool_parameters(self) -> dict[str, Any]:
-        """Return JSON Schema for tool parameters.
-
-        Returns:
-            JSON Schema dict defining accepted parameters.
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The bash command to execute",
+        return [
+            ToolDefinition(
+                name="bash",
+                description="Execute bash/shell commands and return stdout/stderr",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The bash command to execute",
+                        },
+                    },
+                    "required": ["command"],
                 },
-            },
-            "required": ["command"],
-        }
+                node_id=self.id,
+            )
+        ]
 
-    def tool_input(self, args: dict[str, Any]) -> str:
-        """Convert tool arguments to context.input value.
+    async def call_tool(self, name: str, args: dict[str, Any]) -> str:
+        """Execute the bash tool.
 
         Args:
-            args: Arguments from LLM's tool call.
+            name: Tool name (must be "bash").
+            args: Arguments with "command" key.
 
         Returns:
-            Command string to execute.
+            Command output or error message as string.
+
+        Raises:
+            ValueError: If tool name is not "bash".
         """
+        if name != "bash":
+            raise ValueError(f"Unknown tool '{name}'. BashNode only provides 'bash' tool.")
+
         command = args.get("command", "")
-        return str(command) if command else ""
+        command_str = str(command) if command else ""
 
-    def tool_result(self, result: dict[str, Any]) -> str:
-        """Convert execute() result to string for LLM.
+        context = ExecutionContext(session=self.session, input=command_str)
+        result = await self.execute(context)
 
-        Args:
-            result: Result dict from execute().
-
-        Returns:
-            Formatted string with command output or error.
-        """
         if result.get("success"):
             attributes = result.get("attributes", {})
             stdout = attributes.get("stdout", "")

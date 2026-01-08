@@ -121,6 +121,18 @@ class SessionAdapter(Protocol):
         """
         ...
 
+    async def list_node_tools(self, node_id: str) -> list[dict[str, Any]]:
+        """List tools from a ToolCapable node.
+
+        Args:
+            node_id: ID of the node to query.
+
+        Returns:
+            List of tool definition dicts with name, description, parameters, node_id.
+            Empty list if node doesn't support tools.
+        """
+        ...
+
     async def show_graph(
         self, graph_id: str | None = None, fallback_graph: Graph | None = None
     ) -> str:
@@ -391,6 +403,35 @@ class LocalSessionAdapter:
 
         return {"node_id": forked.id, "forked_from": source_id}
 
+    async def list_node_tools(self, node_id: str) -> list[dict[str, Any]]:
+        """List tools from a ToolCapable node.
+
+        Args:
+            node_id: ID of the node to query.
+
+        Returns:
+            List of tool definition dicts.
+        """
+        from nerve.core.nodes.tools import ToolCapable
+
+        node = self.session.get_node(node_id)
+        if not node:
+            raise ValueError(f"Node not found: {node_id}")
+
+        if not isinstance(node, ToolCapable):
+            return []
+
+        tools = node.list_tools()
+        return [
+            {
+                "name": t.name,
+                "description": t.description,
+                "parameters": t.parameters,
+                "node_id": t.node_id,
+            }
+            for t in tools
+        ]
+
     def _resolve_graph(self, graph_id: str | None, fallback_graph: Any | None) -> Any:
         """Resolve graph from ID or fallback."""
         if graph_id:
@@ -646,6 +687,33 @@ class RemoteSessionAdapter:
                 "error": result.error or "Unknown server error",
                 "error_type": "api_error",
             }
+
+    async def list_node_tools(self, node_id: str) -> list[dict[str, Any]]:
+        """List tools from a ToolCapable node.
+
+        Args:
+            node_id: ID of the node to query.
+
+        Returns:
+            List of tool definition dicts.
+        """
+        from nerve.server.protocols import Command, CommandType
+
+        result = await self.client.send_command(
+            Command(
+                type=CommandType.LIST_NODE_TOOLS,
+                params=self._add_session_id({"node_id": node_id}),
+            )
+        )
+
+        if result.success and result.data:
+            # If node doesn't support tools, return empty list (not an error)
+            # The "error" field indicates node isn't ToolCapable, not a failure
+            tools: list[dict[str, Any]] = result.data.get("tools", [])
+            return tools
+        # Command failed (e.g., node not found) - raise error
+        error_msg = result.error or "Failed to list tools"
+        raise ValueError(error_msg)
 
     async def stop(self) -> None:
         """Disconnect from server."""
