@@ -40,7 +40,7 @@ class ClaudeParser(Parser):
     def is_ready(self, content: str) -> bool:
         """Check if Claude is ready for input.
 
-        Simple logic: if "esc to interrupt" is NOT in the last 50 lines,
+        Simple logic: if interrupt hints are NOT in the last 50 lines,
         Claude is done processing.
 
         Args:
@@ -56,10 +56,15 @@ class ClaudeParser(Parser):
         # Check bottom 50 lines
         check_lines = lines[-50:] if len(lines) > 50 else lines
 
-        # If "esc to interrupt" or "esc to cancel" is present, still processing
+        # If any interrupt hint is present, still processing
+        # Covers: "esc to interrupt", "esc to cancel", "ctrl+c to interrupt"
         for line in check_lines:
             line_lower = line.lower()
-            if "esc to interrupt" in line_lower or "esc to cancel" in line_lower:
+            if (
+                "esc to interrupt" in line_lower
+                or "esc to cancel" in line_lower
+                or "ctrl+c to interrupt" in line_lower
+            ):
                 return False
 
         return True
@@ -118,10 +123,11 @@ class ClaudeParser(Parser):
             if stripped.startswith("─") and "conversation compacted" in stripped.lower():
                 compaction_idx = i
 
-        # Find last user prompt ("> " followed by actual text, not suggestions)
+        # Find last user prompt ("> " or "❯ " followed by actual text, not suggestions)
         last_prompt_idx = -1
         for i, line in enumerate(lines):
-            if line.startswith("> ") and len(line.strip()) > 1:
+            is_prompt = line.startswith("> ") or line.startswith("❯ ")
+            if is_prompt and len(line.strip()) > 1:
                 if "(tab to accept)" not in line:
                     last_prompt_idx = i
 
@@ -150,13 +156,16 @@ class ClaudeParser(Parser):
             if stripped_line.startswith("-- INSERT --") or stripped_line.startswith("⏵⏵"):
                 for j in range(i - 1, max(start_idx, i - 10), -1):
                     stripped = lines[j].strip()
-                    if stripped == ">" or stripped == "> ":
+                    # Check for empty prompt (old ">" or new "❯" format)
+                    if stripped in (">", "> ", "❯", "❯ "):
                         end_idx = j
                         # Also skip dash line before prompt if present
                         if j > start_idx and self._is_dash_line(lines[j - 1].strip()):
                             end_idx = j - 1
                         break
-                    if stripped.startswith(">") and "(tab to accept)" in stripped:
+                    # Check for suggestion prompt
+                    is_prompt_char = stripped.startswith(">") or stripped.startswith("❯")
+                    if is_prompt_char and "(tab to accept)" in stripped:
                         end_idx = j
                         # Also skip dash line before prompt if present
                         if j > start_idx and self._is_dash_line(lines[j - 1].strip()):

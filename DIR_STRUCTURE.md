@@ -1,4 +1,7 @@
 ./
+├── [L: 342] dump_one.txt
+├── [L:  91] dump_three.txt
+├── [L:  29] dump_two.txt
 ├── examples/
 │   ├── agents/
 │   │   ├── [L:  11] __init__.py
@@ -151,7 +154,7 @@
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
 │       │   │   ├── [L:  59] base.py
-│       │   │   ├── [L: 373] claude.py
+│       │   │   ├── [L: 382] claude.py
 │       │   │   ├── [L: 104] gemini.py
 │       │   │   └── [L:  96] none.py
 │       │   ├── patterns/
@@ -268,7 +271,7 @@
 │       │   │   ├── [L:  32] __init__.py
 │       │   │   ├── [L: 502] graph_handler.py
 │       │   │   ├── [L: 337] node_interaction_handler.py
-│       │   │   ├── [L: 538] node_lifecycle_handler.py
+│       │   │   ├── [L: 548] node_lifecycle_handler.py
 │       │   │   ├── [L: 255] python_executor.py
 │       │   │   ├── [L: 217] repl_command_handler.py
 │       │   │   ├── [L: 114] server_handler.py
@@ -380,4 +383,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-77 directories, 304 files, 73,175 total lines
+77 directories, 307 files, 73,656 total lines
