@@ -1,0 +1,91 @@
+❯ I want to create a text to speech and speech to text program using uv python.. Frontend in tauri and backend in python. Backend should function without frontend as well... Currently both
+  frontend and backend are on the same computer but that may not remain the case -- we might have backend to a dedicated server later. Also we want to use the mode parakreet v3 from nvidia. And
+  some other opensource models later... figure out the high-level requirements and ask questions. Don't write any code yet.
+
+∴ Thinking…
+
+  The user wants to create a speech application with:
+  1. Text-to-Speech (TTS) and Speech-to-Text (STT) capabilities
+  2. Frontend: Tauri (Rust + web tech)
+  3. Backend: Python with uv (package manager)
+  4. Backend should work standalone (without frontend)
+  5. Future consideration: backend might move to dedicated server
+  6. Model: Parakeet v3 from NVIDIA (STT model)
+  7. Future: other open-source models
+
+  Let me think about the high-level requirements and questions I need to ask before starting implementation.
+
+  Key architectural decisions needed:
+  1. Communication protocol between frontend and backend (HTTP REST, WebSocket, gRPC?)
+  2. Audio streaming vs file-based processing
+  3. Model loading/management strategy
+  4. API design for standalone backend use
+
+  Questions I should ask:
+
+  Functional Requirements:
+  - Real-time streaming or batch processing?
+  - What audio formats need to be supported?
+  - Should the app handle long audio files or just short clips?
+  - Any language requirements beyond English?
+
+  Architecture:
+  - How should frontend and backend communicate? (REST API, WebSocket for streaming, gRPC?)
+  - Should audio be streamed in real-time or uploaded as files?
+
+  Model-specific:
+  - Parakeet v3 is an STT model - what about TTS? Which model for that?
+  - GPU requirements - should it work on CPU as well?
+  - Model download/caching strategy?
+
+  Deployment:
+  - Docker containerization for backend?
+  - Authentication/authorization when moving to server?
+
+  Let me organize these questions properly.
+
+⏺ High-Level Requirements Understanding
+
+  What I understand:
+  - STT (Speech-to-Text): Using NVIDIA Parakeet v3 (and other models later)
+  - TTS (Text-to-Speech): Model TBD
+  - Backend: Python with uv, must work standalone (CLI/API)
+  - Frontend: Tauri (Rust + web stack)
+  - Deployment: Local now, potentially remote server later
+
+  ---
+  Questions
+
+  1. Communication & Streaming
+  - Real-time streaming (speak and see text appear live) or batch processing (record → process → get result)?
+  - For the eventual remote deployment, should we design for WebSocket (streaming) or REST API (request/response), or both?
+
+  2. TTS Model
+  - Parakeet v3 is STT only. What TTS model do you want? Options include:
+    - Coqui TTS (open source, various voices)
+    - Piper (fast, lightweight)
+    - NVIDIA models (if staying in ecosystem)
+    - Other preference?
+
+  3. Audio Handling
+  - Input formats to support? (WAV, MP3, direct mic capture?)
+  - Output format for TTS? (WAV, MP3?)
+  - Max audio duration to handle?
+
+  4. Hardware Requirements
+  - Must it run on CPU-only machines, or can we assume NVIDIA GPU?
+  - Any memory constraints to consider?
+
+  5. Standalone Backend Usage
+  - CLI interface, REST API, or both for standalone use?
+  - Any authentication needed when backend goes remote?
+
+  6. Project Structure Preference
+  - Monorepo (frontend + backend together) or separate repos?
+
+  Let me know your thoughts on these, and I can start sketching the architecture.
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)                                                                                                                                          19638 tokens

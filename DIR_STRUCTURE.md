@@ -1,7 +1,4 @@
 ./
-├── [L: 342] dump_one.txt
-├── [L:  91] dump_three.txt
-├── [L:  29] dump_two.txt
 ├── examples/
 │   ├── agents/
 │   │   ├── [L:  11] __init__.py
@@ -79,7 +76,10 @@
 │               ├── [L:  48] sample_pane_01.txt
 │               ├── [L: 432] sample_pane_02.txt
 │               ├── [L: 379] sample_pane_03.txt
-│               └── [L:  57] sample_pane_04.txt
+│               ├── [L:  57] sample_pane_04.txt
+│               ├── [L: 342] sample_pane_05.txt
+│               ├── [L:  29] sample_pane_06.txt
+│               └── [L:  91] sample_pane_07.txt
 ├── [L:  90] Makefile
 ├── prompts/
 │   └── refactoring/
@@ -148,7 +148,7 @@
 │       │   │   │   ├── [L:  24] __init__.py
 │       │   │   │   ├── [L: 989] claude_wezterm_node.py
 │       │   │   │   ├── [L: 779] pty_node.py
-│       │   │   │   └── [L: 872] wezterm_node.py
+│       │   │   │   └── [L: 873] wezterm_node.py
 │       │   │   ├── [L: 365] tools.py
 │       │   │   └── [L: 215] trace.py
 │       │   ├── parsers/
@@ -167,7 +167,7 @@
 │       │   │   ├── [L: 108] manager.py
 │       │   │   ├── [L: 262] process.py
 │       │   │   ├── [L: 276] pty_backend.py
-│       │   │   └── [L: 528] wezterm_backend.py
+│       │   │   └── [L: 546] wezterm_backend.py
 │       │   ├── session/
 │       │   │   ├── [L:  60] __init__.py
 │       │   │   ├── [L: 137] manager.py
@@ -383,4 +383,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-77 directories, 307 files, 73,656 total lines
+77 directories, 307 files, 73,675 total lines

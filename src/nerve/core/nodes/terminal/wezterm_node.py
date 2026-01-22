@@ -493,12 +493,13 @@ class WezTermNode:
             # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)
             if is_claude:
                 # WezTerm + Claude: Just text + Enter
+                # Delay before Enter allows WezTerm to fully process long pastes
                 await self.backend.write(input_str)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
                 await self.backend.write("\r")
             else:
                 await self.backend.write(input_str)
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.5)
                 await self.backend.write("\n")
 
             self.state = NodeState.BUSY

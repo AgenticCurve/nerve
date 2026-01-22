@@ -184,8 +184,16 @@ class WezTermBackend(Backend):
                 "wezterm CLI not found. Make sure WezTerm is installed and in PATH."
             ) from err
 
+    # WezTerm send-text has issues with large text - characters get scrambled/dropped.
+    # Chunk large text to work around this limitation.
+    CHUNK_SIZE = 500  # Characters per chunk
+    CHUNK_DELAY = 0.1  # Seconds between chunks
+
     async def write(self, data: str) -> None:
         """Send text to the WezTerm pane.
+
+        Large text is sent in chunks to work around WezTerm's send-text limitation
+        where characters can get scrambled or dropped with large payloads.
 
         Args:
             data: Text to send to the pane.
@@ -199,6 +207,16 @@ class WezTermBackend(Backend):
         # Convert \n to \r for terminal (Enter key is carriage return)
         data = data.replace("\n", "\r")
 
+        # Send in chunks to avoid WezTerm's large text issues
+        for i in range(0, len(data), self.CHUNK_SIZE):
+            chunk = data[i : i + self.CHUNK_SIZE]
+            await self._send_chunk(chunk)
+            # Delay between chunks (but not after the last one)
+            if i + self.CHUNK_SIZE < len(data):
+                await asyncio.sleep(self.CHUNK_DELAY)
+
+    async def _send_chunk(self, data: str) -> None:
+        """Send a single chunk of text to the WezTerm pane."""
         cmd = [
             "wezterm",
             "cli",
