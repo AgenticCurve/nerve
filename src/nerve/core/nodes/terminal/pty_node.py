@@ -311,7 +311,7 @@ class PTYNode:
         parser_type = context.parser or self._default_parser
         timeout = context.timeout or self._response_timeout
 
-        is_claude = parser_type == ParserType.CLAUDE
+        is_claude = parser_type == ParserType.CLAUDE_CODE
         parser_instance = get_parser(parser_type)
 
         # Mark buffer position before sending
@@ -481,7 +481,7 @@ class PTYNode:
 
         parser_type = context.parser or self._default_parser
         parser_instance = get_parser(parser_type)
-        is_claude = parser_type == ParserType.CLAUDE
+        is_claude = parser_type == ParserType.CLAUDE_CODE
 
         try:
             # Send input
@@ -717,7 +717,7 @@ class PTYNode:
         parser = get_parser(parser_type)
         start = asyncio.get_event_loop().time()
 
-        if parser_type == ParserType.CLAUDE:
+        if parser_type == ParserType.CLAUDE_CODE:
             await self._wait_for_processing_start(timeout=10.0, buffer_start=buffer_start)
 
         ready_count = 0

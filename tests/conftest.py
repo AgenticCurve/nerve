@@ -55,7 +55,7 @@ def sample_claude_output_with_tool():
 
 # Real-world sample fixtures from captured Claude Code sessions
 @pytest.fixture
-def sample_pane_02():
+def claude_code_pane_02():
     """Real Claude output with Search tool call and text response.
 
     Contains:
@@ -64,11 +64,11 @@ def sample_pane_02():
     - Text response with code blocks
     - Ready state with token count
     """
-    return load_fixture("sample_pane_02.txt")
+    return load_fixture("claude_code_pane_02.txt")
 
 
 @pytest.fixture
-def sample_pane_03():
+def claude_code_pane_03():
     """Real Claude output with Bash tool, BigQuery results.
 
     Contains:
@@ -80,11 +80,11 @@ def sample_pane_03():
     - Session rating prompt
     - Ready state
     """
-    return load_fixture("sample_pane_03.txt")
+    return load_fixture("claude_code_pane_03.txt")
 
 
 @pytest.fixture
-def sample_pane_04():
+def claude_code_pane_04():
     """Real Claude output with multiple Search tool calls.
 
     Contains:
@@ -94,11 +94,11 @@ def sample_pane_04():
     - Complex multi-step conversation
     - Ready state
     """
-    return load_fixture("sample_pane_04.txt")
+    return load_fixture("claude_code_pane_04.txt")
 
 
 @pytest.fixture
-def pane_content():
+def claude_code_pane_content():
     """Captured pane content mid-session (processing state).
 
     Contains:
@@ -106,4 +106,4 @@ def pane_content():
     - Read tool references
     - In-progress status (not ready)
     """
-    return load_fixture("pane_content.txt")
+    return load_fixture("claude_code_pane_content.txt")

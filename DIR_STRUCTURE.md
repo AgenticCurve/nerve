@@ -71,15 +71,15 @@
 │   │   ├── [L: 162] openrouter_node.py
 │   │   └── [L: 414] tool_calling.py
 │   └── parser/
-│       └── claude/
-│           └── samples/
-│               ├── [L:  48] sample_pane_01.txt
-│               ├── [L: 432] sample_pane_02.txt
-│               ├── [L: 379] sample_pane_03.txt
-│               ├── [L:  57] sample_pane_04.txt
-│               ├── [L: 342] sample_pane_05.txt
-│               ├── [L:  29] sample_pane_06.txt
-│               └── [L:  91] sample_pane_07.txt
+│       └── claude_code/
+│           └── panes/
+│               ├── [L:  48] pane_01.txt
+│               ├── [L: 432] pane_02.txt
+│               ├── [L: 379] pane_03.txt
+│               ├── [L:  57] pane_04.txt
+│               ├── [L: 342] pane_05.txt
+│               ├── [L:  29] pane_06.txt
+│               └── [L:  91] pane_07.txt
 ├── [L:  90] Makefile
 ├── prompts/
 │   └── refactoring/
@@ -154,7 +154,7 @@
 │       │   ├── parsers/
 │       │   │   ├── [L:  62] __init__.py
 │       │   │   ├── [L:  59] base.py
-│       │   │   ├── [L: 382] claude.py
+│       │   │   ├── [L: 382] claude_code.py
 │       │   │   ├── [L: 104] gemini.py
 │       │   │   └── [L:  96] none.py
 │       │   ├── patterns/
@@ -185,9 +185,9 @@
 │       │   ├── [L:  15] __init__.py
 │       │   ├── cli/
 │       │   │   ├── [L:  21] __init__.py
-│       │   │   ├── [L: 347] extract.py
-│       │   │   ├── [L: 267] main.py
+│       │   │   ├── [L: 271] main.py
 │       │   │   ├── [L: 193] output.py
+│       │   │   ├── [L: 362] parse.py
 │       │   │   ├── repl/
 │       │   │   │   ├── [L:  34] __init__.py
 │       │   │   │   ├── [L: 986] adapters.py
@@ -299,11 +299,11 @@
     ├── core/
     │   ├── [L:   1] __init__.py
     │   ├── fixtures/
-    │   │   ├── [L:  29] pane_content.txt
-    │   │   ├── [L:  36] sample_pane_02.txt
-    │   │   ├── [L:  58] sample_pane_03.txt
-    │   │   ├── [L: 144] sample_pane_04.txt
-    │   │   └── [L: 103] sample_pane_05.txt
+    │   │   ├── [L:  36] claude_code_pane_02.txt
+    │   │   ├── [L:  58] claude_code_pane_03.txt
+    │   │   ├── [L: 144] claude_code_pane_04.txt
+    │   │   ├── [L: 103] claude_code_pane_05.txt
+    │   │   └── [L:  29] claude_code_pane_content.txt
     │   ├── mcp/
     │   │   ├── [L:   1] __init__.py
     │   │   ├── [L: 167] mock_mcp_server.py
@@ -383,4 +383,4 @@
     └── transport/
         └── [L:   1] __init__.py
 
-77 directories, 307 files, 73,675 total lines
+77 directories, 307 files, 73,694 total lines

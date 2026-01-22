@@ -5,7 +5,7 @@ No PTY knowledge, no session awareness, no events.
 
 Classes:
     Parser: Abstract base for parsers.
-    ClaudeParser: Parser for Claude Code CLI output.
+    ClaudeCodeParser: Parser for Claude Code CLI output.
     GeminiParser: Parser for Gemini CLI output.
     NoneParser: No-op parser for raw output.
 
@@ -13,9 +13,9 @@ Functions:
     get_parser: Get parser instance for a parser type.
 
 Example:
-    >>> from nerve.core.parsers import ClaudeParser
+    >>> from nerve.core.parsers import ClaudeCodeParser
     >>>
-    >>> parser = ClaudeParser()
+    >>> parser = ClaudeCodeParser()
     >>>
     >>> # Check if CLI is ready for input
     >>> if parser.is_ready(output_text):
@@ -28,7 +28,7 @@ Example:
 """
 
 from nerve.core.parsers.base import Parser
-from nerve.core.parsers.claude import ClaudeParser
+from nerve.core.parsers.claude_code import ClaudeCodeParser
 from nerve.core.parsers.gemini import GeminiParser
 from nerve.core.parsers.none import NoneParser
 from nerve.core.types import ParserType
@@ -47,7 +47,7 @@ def get_parser(parser_type: ParserType) -> Parser:
         ValueError: If parser type is not supported.
     """
     parsers: dict[ParserType, type[Parser]] = {
-        ParserType.CLAUDE: ClaudeParser,
+        ParserType.CLAUDE_CODE: ClaudeCodeParser,
         ParserType.GEMINI: GeminiParser,
         ParserType.NONE: NoneParser,
     }
@@ -59,4 +59,4 @@ def get_parser(parser_type: ParserType) -> Parser:
     return parser_class()
 
 
-__all__ = ["Parser", "ClaudeParser", "GeminiParser", "NoneParser", "get_parser"]
+__all__ = ["Parser", "ClaudeCodeParser", "GeminiParser", "NoneParser", "get_parser"]

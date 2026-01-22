@@ -21,14 +21,14 @@ from nerve.core.types import ParsedResponse, Section
 logger = logging.getLogger(__name__)
 
 
-class ClaudeParser(Parser):
+class ClaudeCodeParser(Parser):
     """Parser for Claude Code CLI output.
 
     Parses the terminal output format used by Claude Code,
     extracting thinking blocks, tool calls, and text responses.
 
     Example:
-        >>> parser = ClaudeParser()
+        >>> parser = ClaudeCodeParser()
         >>>
         >>> if parser.is_ready(content):
         ...     response = parser.parse(content)

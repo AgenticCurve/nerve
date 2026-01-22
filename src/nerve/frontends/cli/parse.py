@@ -1,32 +1,31 @@
-"""Extract and parse AI CLI responses.
+"""Parse AI CLI pane output into structured sections.
 
-Standalone tool for extracting structured responses from
-Claude Code or Gemini CLI output.
+Standalone tool for parsing Claude Code or Gemini CLI pane output.
 
 Usage:
-    # Extract from file
-    nerve extract /tmp/output.txt
+    # Parse Claude Code pane output from file
+    nerve parse --claude-code /tmp/pane_output.txt
 
-    # Extract from stdin
-    cat /tmp/output.txt | nerve extract
+    # Parse from stdin
+    cat /tmp/pane_output.txt | nerve parse --claude-code
 
-    # Extract from WezTerm pane
-    nerve extract --pane 42
+    # Parse from WezTerm pane
+    nerve parse --claude-code --pane 42
 
     # List available WezTerm panes
-    nerve extract --list-panes
+    nerve parse --list-panes
 
     # Watch a pane (use watch command)
-    watch -n 2 'nerve extract --pane 42'
+    watch -n 2 'nerve parse --claude-code --pane 42'
 
     # Output as JSON
-    nerve extract --json /tmp/output.txt
+    nerve parse --claude-code --json /tmp/pane_output.txt
 
     # Show only raw response
-    nerve extract --raw /tmp/output.txt
+    nerve parse --claude-code --raw /tmp/pane_output.txt
 
     # Show only the last section
-    nerve extract --last /tmp/output.txt
+    nerve parse --claude-code --last /tmp/pane_output.txt
 """
 
 from __future__ import annotations
@@ -107,15 +106,15 @@ def format_pane_list(panes: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def extract_response(
+def parse_pane_output(
     content: str,
-    parser_type: ParserType = ParserType.CLAUDE,
+    parser_type: ParserType = ParserType.CLAUDE_CODE,
 ) -> ParsedResponse:
-    """Extract structured response from CLI output.
+    """Parse pane output into structured response.
 
     Args:
-        content: Raw text content from CLI output.
-        parser_type: Parser type (CLAUDE, GEMINI, or NONE).
+        content: Raw text content from CLI pane output.
+        parser_type: Parser type (CLAUDE_CODE, GEMINI, or NONE).
 
     Returns:
         ParsedResponse with sections and metadata.
@@ -227,7 +226,7 @@ def read_input(file_path: str | None = None) -> tuple[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entry point for extract command.
+    """CLI entry point for parse command.
 
     Args:
         argv: Command line arguments (uses sys.argv if None).
@@ -236,29 +235,41 @@ def main(argv: list[str] | None = None) -> int:
         Exit code (0 for success).
     """
     parser = argparse.ArgumentParser(
-        description="Extract structured responses from AI CLI output",
+        description="Parse AI CLI pane output into structured sections",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    nerve extract output.txt          # Pretty print from file
-    nerve extract --json output.txt   # JSON output
-    cat output.txt | nerve extract    # From stdin
-    nerve extract -l output.txt       # Last section only
-    nerve extract -t gemini out.txt   # Parse Gemini output
-    nerve extract --pane 42           # Extract from WezTerm pane
-    nerve extract --list-panes        # List available panes
+    nerve parse --claude-code pane.txt      # Parse Claude Code pane output
+    nerve parse --claude-code --json pane.txt   # JSON output
+    cat pane.txt | nerve parse --claude-code    # From stdin
+    nerve parse --claude-code -l pane.txt   # Last section only
+    nerve parse --gemini pane.txt           # Parse Gemini output
+    nerve parse --claude-code --pane 42     # Parse from WezTerm pane
+    nerve parse --list-panes                # List available panes
         """,
     )
     parser.add_argument(
         "file",
         nargs="?",
-        help="File containing CLI output (stdin if not provided)",
+        help="File containing CLI pane output (stdin if not provided)",
+    )
+    parser.add_argument(
+        "--claude-code",
+        "-c",
+        action="store_true",
+        help="Parse Claude Code CLI pane output",
+    )
+    parser.add_argument(
+        "--gemini",
+        "-g",
+        action="store_true",
+        help="Parse Gemini CLI pane output",
     )
     parser.add_argument(
         "--pane",
         "-p",
         metavar="ID",
-        help="WezTerm pane ID to extract from",
+        help="WezTerm pane ID to parse from",
     )
     parser.add_argument(
         "--list-panes",
@@ -290,13 +301,6 @@ Examples:
         action="store_true",
         help="Show full content without truncation",
     )
-    parser.add_argument(
-        "--type",
-        "-t",
-        choices=["claude", "gemini"],
-        default="claude",
-        help="CLI type to parse (default: claude)",
-    )
 
     args = parser.parse_args(argv)
 
@@ -305,6 +309,18 @@ Examples:
         panes = list_wezterm_panes()
         print(format_pane_list(panes))
         return 0
+
+    # Determine parser type
+    if args.claude_code and args.gemini:
+        print("Error: Cannot specify both --claude-code and --gemini", file=sys.stderr)
+        return 1
+    elif args.gemini:
+        parser_type = ParserType.GEMINI
+    elif args.claude_code:
+        parser_type = ParserType.CLAUDE_CODE
+    else:
+        # Default to Claude Code if no parser specified
+        parser_type = ParserType.CLAUDE_CODE
 
     # Read input
     try:
@@ -324,8 +340,7 @@ Examples:
         return 1
 
     # Parse
-    parser_type = ParserType.CLAUDE if args.type == "claude" else ParserType.GEMINI
-    response = extract_response(content, parser_type)
+    response = parse_pane_output(content, parser_type)
 
     # Output
     if args.json:

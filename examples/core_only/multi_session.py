@@ -31,7 +31,7 @@ async def main():
     ctx1 = ExecutionContext(
         session=session,
         input="Say 'Hello from node 1'",
-        parser=ParserType.CLAUDE,
+        parser=ParserType.CLAUDE_CODE,
     )
     r1 = await claude1.execute(ctx1)
     print(f"  Response: {r1.raw[:100]}...")
@@ -40,7 +40,7 @@ async def main():
     ctx2 = ExecutionContext(
         session=session,
         input="Say 'Hello from node 2'",
-        parser=ParserType.CLAUDE,
+        parser=ParserType.CLAUDE_CODE,
     )
     r2 = await claude2.execute(ctx2)
     print(f"  Response: {r2.raw[:100]}...")

@@ -106,7 +106,7 @@ class SessionStore:
         >>> store.add(SessionMetadata(
         ...     id="abc123",
         ...     name="my-project",
-        ...     parser_type=ParserType.CLAUDE,
+        ...     parser_type=ParserType.CLAUDE_CODE,
         ...     command="claude",
         ...     cwd="/path/to/project",
         ... ))

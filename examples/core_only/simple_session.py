@@ -38,7 +38,7 @@ async def main():
     context = ExecutionContext(
         session=session,
         input="What is 2 + 2? Reply with just the number.",
-        parser=ParserType.CLAUDE,
+        parser=ParserType.CLAUDE_CODE,
     )
     response = await node.execute(context)
 

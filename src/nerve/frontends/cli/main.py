@@ -44,7 +44,7 @@ def _run_cli() -> None:
 
         **Standalone commands** (no server required):
 
-            nerve extract    Parse AI CLI output into structured sections
+            nerve parse      Parse AI CLI pane output into structured sections
 
             nerve repl       Interactive graph definition and execution
 
@@ -76,47 +76,55 @@ def _run_cli() -> None:
     # =========================================================================
     @cli.command()
     @click.argument("file", required=False)
-    @click.option("--pane", "-p", "pane_id", help="WezTerm pane ID to extract from")
+    @click.option(
+        "--claude-code", "-c", "claude_code", is_flag=True, help="Parse Claude Code CLI pane output"
+    )
+    @click.option("--gemini", "-g", "gemini", is_flag=True, help="Parse Gemini CLI pane output")
+    @click.option("--pane", "-p", "pane_id", help="WezTerm pane ID to parse from")
     @click.option("--list-panes", "-P", is_flag=True, help="List available WezTerm panes")
     @click.option("--json", "-j", "json_output", is_flag=True, help="Output as JSON")
     @click.option("--raw", "-r", is_flag=True, help="Show only raw response")
     @click.option("--last", "-l", is_flag=True, help="Show only the last section")
     @click.option("--full", "-F", is_flag=True, help="Show full content without truncation")
-    @click.option("--type", "-t", "cli_type", default="claude", help="CLI type (claude, gemini)")
-    def extract(
+    def parse(
         file: str | None,
+        claude_code: bool,
+        gemini: bool,
         pane_id: str | None,
         list_panes: bool,
         json_output: bool,
         raw: bool,
         last: bool,
         full: bool,
-        cli_type: str,
     ) -> None:
-        """Extract structured response from AI CLI output.
+        """Parse AI CLI pane output into structured sections.
 
-        Parse Claude Code or Gemini CLI output into structured sections
+        Parse Claude Code or Gemini CLI pane output into structured sections
         (thinking, tool calls, text). Works standalone without a server.
 
         **Examples:**
 
-            nerve extract output.txt
+            nerve parse --claude-code pane.txt
 
-            nerve extract output.txt --json
+            nerve parse --claude-code --json pane.txt
 
-            cat output.txt | nerve extract
+            cat pane.txt | nerve parse --claude-code
 
-            nerve extract --last output.txt
+            nerve parse --claude-code --last pane.txt
 
-            nerve extract --pane 42
+            nerve parse --claude-code --pane 42
 
-            nerve extract --list-panes
+            nerve parse --list-panes
         """
-        from nerve.frontends.cli.extract import main as extract_main
+        from nerve.frontends.cli.parse import main as parse_main
 
         args = []
         if file:
             args.append(file)
+        if claude_code:
+            args.append("--claude-code")
+        if gemini:
+            args.append("--gemini")
         if pane_id:
             args.extend(["--pane", pane_id])
         if list_panes:
@@ -129,10 +137,8 @@ def _run_cli() -> None:
             args.append("--last")
         if full:
             args.append("--full")
-        if cli_type != "claude":
-            args.extend(["--type", cli_type])
 
-        sys.exit(extract_main(args))
+        sys.exit(parse_main(args))
 
     @cli.command()
     @click.argument("file", required=False)

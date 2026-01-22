@@ -486,7 +486,7 @@ class WezTermNode:
         parser_type = context.parser or self._default_parser
         timeout = context.timeout or self._response_timeout
 
-        is_claude = parser_type == ParserType.CLAUDE
+        is_claude = parser_type == ParserType.CLAUDE_CODE
         parser_instance = get_parser(parser_type)
 
         try:
@@ -640,7 +640,7 @@ class WezTermNode:
 
         parser_type = context.parser or self._default_parser
         parser_instance = get_parser(parser_type)
-        is_claude = parser_type == ParserType.CLAUDE
+        is_claude = parser_type == ParserType.CLAUDE_CODE
 
         try:
             # Send input (WezTerm sends keystrokes via CLI - no INSERT mode needed)

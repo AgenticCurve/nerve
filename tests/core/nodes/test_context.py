@@ -34,7 +34,7 @@ class TestExecutionContext:
             session=session,
             input="test input",
             upstream={"prev": "result"},
-            parser=ParserType.CLAUDE,
+            parser=ParserType.CLAUDE_CODE,
             timeout=30.0,
             budget=budget,
             usage=usage,
@@ -43,7 +43,7 @@ class TestExecutionContext:
 
         assert context.input == "test input"
         assert context.upstream["prev"] == "result"
-        assert context.parser == ParserType.CLAUDE
+        assert context.parser == ParserType.CLAUDE_CODE
         assert context.timeout == 30.0
         assert context.budget is budget
         assert context.usage is usage
@@ -75,9 +75,9 @@ class TestExecutionContext:
         session = Session()
         context = ExecutionContext(session=session)
 
-        new_context = context.with_parser(ParserType.CLAUDE)
+        new_context = context.with_parser(ParserType.CLAUDE_CODE)
 
-        assert new_context.parser == ParserType.CLAUDE
+        assert new_context.parser == ParserType.CLAUDE_CODE
         assert context.parser is None
 
     def test_check_cancelled_not_cancelled(self):

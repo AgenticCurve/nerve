@@ -12,7 +12,7 @@ from typing import Any
 class ParserType(Enum):
     """Supported parser types for CLI output."""
 
-    CLAUDE = "claude"
+    CLAUDE_CODE = "claude_code"
     GEMINI = "gemini"
     NONE = "none"  # No parsing, raw output only
 

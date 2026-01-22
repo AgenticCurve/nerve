@@ -59,7 +59,7 @@ class ClaudeWezTermNode:
     _command: str = ""
 
     # Internal fields (not in __init__)
-    _default_parser: ParserType = field(default=ParserType.CLAUDE, init=False)
+    _default_parser: ParserType = field(default=ParserType.CLAUDE_CODE, init=False)
     _last_input: str = field(default="", init=False)
     persistent: bool = field(default=True, init=False)
     state: NodeState = field(default=NodeState.READY, init=False)
@@ -95,7 +95,7 @@ class ClaudeWezTermNode:
         command: str,
         cwd: str | None = None,
         history: bool | None = None,
-        parser: ParserType = ParserType.CLAUDE,
+        parser: ParserType = ParserType.CLAUDE_CODE,
         ready_timeout: float = 60.0,
         response_timeout: float = 1800.0,
         proxy_url: str | None = None,

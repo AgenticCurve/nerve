@@ -35,7 +35,7 @@ async def main():
     context = ExecutionContext(
         session=session,
         input="Count from 1 to 5, one number per line.",
-        parser=ParserType.CLAUDE,
+        parser=ParserType.CLAUDE_CODE,
     )
 
     async for chunk in node.execute_stream(context):

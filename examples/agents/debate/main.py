@@ -48,7 +48,7 @@ async def main():
         context = ExecutionContext(
             session=session,
             input=prompt,
-            parser=ParserType.CLAUDE,
+            parser=ParserType.CLAUDE_CODE,
         )
         response = await advocate_python.execute(context)
         message = response["attributes"]["raw"][:500]
@@ -59,7 +59,7 @@ async def main():
         context = ExecutionContext(
             session=session,
             input=prompt,
-            parser=ParserType.CLAUDE,
+            parser=ParserType.CLAUDE_CODE,
         )
         response = await advocate_js.execute(context)
         message = response["attributes"]["raw"][:500]

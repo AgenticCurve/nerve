@@ -33,7 +33,7 @@ async def main():
             ExecutionContext(
                 session=session,
                 input="Write a haiku about programming. Just the haiku, nothing else.",
-                parser=ParserType.CLAUDE,
+                parser=ParserType.CLAUDE_CODE,
             )
         )
         return response["attributes"]["raw"]
@@ -50,7 +50,7 @@ async def main():
             ExecutionContext(
                 session=session,
                 input=f"Critique this haiku in one sentence:\n{haiku}",
-                parser=ParserType.CLAUDE,
+                parser=ParserType.CLAUDE_CODE,
             )
         )
         return response["attributes"]["raw"]
@@ -70,7 +70,7 @@ async def main():
                 session=session,
                 input=f"Original haiku:\n{haiku}\n\nCritique:\n{critique}\n\n"
                 "Write an improved version. Just the haiku.",
-                parser=ParserType.CLAUDE,
+                parser=ParserType.CLAUDE_CODE,
             )
         )
         return response["attributes"]["raw"]

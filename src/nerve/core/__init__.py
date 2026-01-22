@@ -94,7 +94,7 @@ from nerve.core.nodes.history import (
 )
 
 # Parsers
-from nerve.core.parsers import ClaudeParser, GeminiParser, NoneParser, get_parser
+from nerve.core.parsers import ClaudeCodeParser, GeminiParser, NoneParser, get_parser
 
 # PTY backends
 from nerve.core.pty import (
@@ -201,7 +201,7 @@ __all__ = [
     "PTYConfig",
     "PTYManager",
     # Parsers
-    "ClaudeParser",
+    "ClaudeCodeParser",
     "GeminiParser",
     "NoneParser",
     "get_parser",
